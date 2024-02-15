@@ -8,3 +8,5 @@ spinal-model-bmsnetwork
 src/old
 old_src
 .env
+tree.txt
+*.log
