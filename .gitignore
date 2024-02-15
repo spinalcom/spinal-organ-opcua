@@ -1,0 +1,10 @@
+.vscode
+node_modules
+db
+config.json5
+logs
+pilote_script.js
+spinal-model-bmsnetwork
+src/old
+old_src
+.env
