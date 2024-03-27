@@ -15,7 +15,7 @@ async function makeCertificate() {
 		rootFolder: pkiFolder,
 	});
 
-	console.log("PKI Folder = ", pkiFolder);
+	// console.log("PKI Folder = ", pkiFolder);
 
 	const clientCertificateManager = new OPCUACertificateManager({
 		rootFolder: pkiFolder,

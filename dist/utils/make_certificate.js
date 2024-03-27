@@ -23,7 +23,7 @@ function makeCertificate() {
         const certificateManager = new node_opcua_certificate_manager_1.OPCUACertificateManager({
             rootFolder: pkiFolder,
         });
-        console.log("PKI Folder = ", pkiFolder);
+        // console.log("PKI Folder = ", pkiFolder);
         const clientCertificateManager = new node_opcua_certificate_manager_1.OPCUACertificateManager({
             rootFolder: pkiFolder,
             automaticallyAcceptUnknownCertificate: true,

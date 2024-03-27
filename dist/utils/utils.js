@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
+exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
 function getConfig() {
     return {
@@ -48,4 +48,47 @@ function convertSpinalNodeToOPCNode(node) {
     };
 }
 exports.convertSpinalNodeToOPCNode = convertSpinalNodeToOPCNode;
+const coerceBoolean = (data) => {
+    return data === "true" || data === "1" || data === true;
+};
+exports.coerceBoolean = coerceBoolean;
+const coerceNumber = (data) => {
+    return parseInt(data, 10);
+};
+exports.coerceNumber = coerceNumber;
+const coerceNumberR = (data) => {
+    return parseFloat(data);
+};
+exports.coerceNumberR = coerceNumberR;
+const coerceNoop = (data) => data;
+exports.coerceNoop = coerceNoop;
+const coerceFunc = (dataType) => {
+    switch (dataType) {
+        case node_opcua_1.DataType.Boolean:
+            return exports.coerceBoolean;
+        case node_opcua_1.DataType.Int16:
+        case node_opcua_1.DataType.Int32:
+        case node_opcua_1.DataType.Int64:
+        case node_opcua_1.DataType.UInt16:
+        case node_opcua_1.DataType.UInt32:
+        case node_opcua_1.DataType.UInt64:
+            return exports.coerceNumber;
+        case node_opcua_1.DataType.Double:
+        case node_opcua_1.DataType.Float:
+            return exports.coerceNumberR;
+        default:
+            return exports.coerceNoop;
+    }
+};
+exports.coerceFunc = coerceFunc;
+function coerceStringToDataType(dataType, arrayType, VariantArrayType, data) {
+    const c = (0, exports.coerceFunc)(dataType);
+    if (arrayType === VariantArrayType.Scalar) {
+        return c(data);
+    }
+    else {
+        return data.map((d) => c(d));
+    }
+}
+exports.coerceStringToDataType = coerceStringToDataType;
 //# sourceMappingURL=utils.js.map

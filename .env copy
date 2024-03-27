@@ -1,0 +1,10 @@
+ORGAN_NAME="name"
+USER_ID="XXX"
+PASSWORD="*******"
+PROTOCOL="http"
+HOST="127.0.0.1"
+PORT=8080
+ORGAN_FOLDER_PATH="/__users__/admin/organs"
+
+OPCUA_SERVER_ENTRYPOINT="/My Computer/Assets/Metiers" #if empty, the server will discover the default entry point (Objects Folder) otherwise, it will use the provided path (/  Objects Folder)
+

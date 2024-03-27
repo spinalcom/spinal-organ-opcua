@@ -1,9 +1,9 @@
-import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask } from "node-opcua";
+import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest } from "node-opcua";
 import { IServer } from "spinal-model-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
-import { convertToBrowseDescription } from "./utils";
+import { coerceStringToDataType, convertToBrowseDescription } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
 
@@ -47,6 +47,7 @@ export class OPCUAService extends EventEmitter {
 			securityPolicy,
 			// certificateFile,
 			defaultSecureTokenLifetime: 30 * 1000,
+			requestedSessionTimeout: 30000,
 			// clientCertificateManager,
 			// applicationName,
 			// applicationUri,
@@ -61,32 +62,32 @@ export class OPCUAService extends EventEmitter {
 
 		try {
 			const parameters = {
-				requestedPublishingInterval: 500,
-				requestedLifetimeCount: 1000,
-				requestedMaxKeepAliveCount: 12,
-				maxNotificationsPerPublish: 100,
+				requestedPublishingInterval: 1000,
+				requestedLifetimeCount: 10,
+				requestedMaxKeepAliveCount: 5,
+				maxNotificationsPerPublish: 10,
 				publishingEnabled: true,
 				priority: 10,
 			};
 
 			this.subscription = await this.session.createSubscription2(parameters);
-			console.log("subscription created !");
 		} catch (error) {
 			console.log("cannot create subscription !");
 		}
 	}
 
-	public async connect(endpointUrl: string, userIdentity: UserIdentityInfo) {
+	public async connect(endpointUrl: string, userIdentity?: UserIdentityInfo) {
 		try {
-			this.userIdentity = userIdentity;
-			console.log("connecting to", endpointUrl);
+			this.userIdentity = userIdentity || { type: UserTokenType.Anonymous };
+			// console.log("connecting to", endpointUrl);
 			await this.client.connect(endpointUrl);
 			await this._createSession();
-			console.log("connected to ....", endpointUrl);
+			// console.log("connected to ....", endpointUrl);
 			await this.createSubscription();
 		} catch (error) {
 			console.log(" Cannot connect", error.toString());
 			this.emit("connectionError", error);
+			throw error;
 		}
 	}
 
@@ -100,13 +101,15 @@ export class OPCUAService extends EventEmitter {
 		await this.client!.disconnect();
 	}
 
-	public async getTree() {
+
+	///////////////////////////////////////////////////////////////////////////
+	//					Exemple 1 : [getTree] - Browse several node 		 //
+	//					May have timeout error if the tree is too big		 //
+	///////////////////////////////////////////////////////////////////////////
+
+	public async getTree(entryPointPath?: string) {
 		const _self = this;
-		const tree = {
-			displayName: "RootFolder",
-			nodeId: resolveNodeId("RootFolder"),
-			children: [],
-		};
+		const tree = await this._getEntryPoint(entryPointPath);
 
 		let variables = [];
 		let queue = [tree];
@@ -128,12 +131,10 @@ export class OPCUAService extends EventEmitter {
 			for (const key in childrenObj) {
 				const children = childrenObj[key];
 				for (const child of children) {
-					const nodeInfo = {
-						displayName: child.displayName.text || child.browseName.toString(),
-						nodeId: child.nodeId,
-						nodeClass: child.nodeClass as number,
-						children: [],
-					};
+					const name = (child.displayName.text || child.browseName.toString()).toLowerCase();
+					if (name == "server" || name[0] == ".") continue;
+
+					const nodeInfo: any = _self._formatReference(child);
 					if (nodeInfo.nodeClass === NodeClass.Variable) variables.push(nodeInfo.nodeId.toString());
 
 					obj[nodeInfo.nodeId.toString()] = nodeInfo;
@@ -169,18 +170,23 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	///////////////////////////////////////////////////////////////////////////
-	//					Exemple 1 : getTree (take a lot of time)		 	 //
+	//					Exemple 2 : getTree (take a lot of time)		 	 //
 	///////////////////////////////////////////////////////////////////////////
-	public async getTree2(): Promise<any> {
-		const tree = {
-			displayName: "RootFolder",
-			nodeId: resolveNodeId("RootFolder"),
-			children: [],
-		};
+	public async getTree2(entryPointPath?: string): Promise<any> {
+		
+		const tree = await this._getEntryPoint(entryPointPath);
+
+		// const tree = {
+		// 	displayName: "Metiers",
+		// 	nodeId: "ns=14;s=O=ac:Metiers/;B=ac:Metiers/;S=Metiers",
+		// 	children: [],
+		// };
+
+		
 
 		await this.browseNode(tree);
 
-		return tree;
+		return { tree };
 	}
 
 	public async browseNode(node: any) {
@@ -214,16 +220,12 @@ export class OPCUAService extends EventEmitter {
 		const res = [];
 
 		for (const reference of references) {
-			if ((reference.displayName.text || reference.browseName.toString()).toLowerCase() === "server") continue;
+			const name = (reference.displayName.text || reference.browseName.toString()).toLowerCase()
+			if (name == "server" || name[0] == ".") continue;
 
-			const nodeInfo = {
-				displayName: reference.displayName.text || reference.browseName.toString(),
-				nodeId: reference.nodeId,
-				nodeClass: reference.nodeClass as number,
-				children: [],
-			};
+			const nodeInfo = this._formatReference(reference);
 
-			const childNodeInfo = await this.browseNode(nodeInfo);
+			await this.browseNode(nodeInfo);
 			res.push(nodeInfo);
 		}
 
@@ -285,7 +287,7 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	///////////////////////////////////////////////////////////////////////////
-	//					End Exemple 1									 	 //
+	//					End Exemple 2									 	 //
 	///////////////////////////////////////////////////////////////////////////
 
 	public async extractBrowsePath(nodeId: NodeId): Promise<string> {
@@ -355,6 +357,41 @@ export class OPCUAService extends EventEmitter {
 		return null;
 	}
 
+	public async writeNode(node: IOPCNode, value: any): Promise<any> {
+		if (!this.session) {
+			return;
+		}
+
+		const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
+
+		if (dataType) {
+			try {
+				const arrayType = valueRank === -1 ? VariantArrayType.Scalar : valueRank === 1 ? VariantArrayType.Array : VariantArrayType.Matrix;
+				const dimensions = arrayType === VariantArrayType.Matrix ? arrayDimension : undefined;
+
+				const _value = new Variant({
+					dataType,
+					arrayType,
+					dimensions,
+					value: coerceStringToDataType(dataType, arrayType, VariantArrayType, value),
+				});
+
+				const writeValue = new WriteValue({
+					nodeId: node.nodeId,
+					attributeId: AttributeIds.Value,
+					value: { value: _value },
+				});
+
+				let statusCode = await this.session.write(writeValue);
+
+				return statusCode;
+			} catch (error) {
+				console.log("error writing value", error);
+				return StatusCodes.BadInternalError;
+			}
+		}
+	}
+
 	public async monitorItem(nodeIds: string | string[], callback: (id: string, data: DataValue) => any): Promise<void> {
 		if (!this.subscription) return;
 
@@ -418,7 +455,10 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private _listenClientEvents(): void {
-		this.client.on("backoff", (number, delay) => console.log(`connection failed, retrying in ${delay / 1000.0} seconds`));
+		this.client.on("backoff", (number, delay) => {
+			if(number === 3) return this.client.disconnect();
+			console.log(`connection failed, retrying attempt ${number + 1}`)
+		});
 
 		this.client.on("start_reconnection", () => console.log("Starting reconnection...." + this.endpointUrl));
 
@@ -432,18 +472,22 @@ export class OPCUAService extends EventEmitter {
 		this.client.on("security_token_renewed", () => {
 			if (this.verbose) console.log(" security_token_renewed on " + this.endpointUrl);
 		});
+
+		this.client.on("timed_out_request", (request) => {
+			console.log(`Client request timed out !!`);
+		});
 	}
 
 	private _listenSessionEvent(): void {
 		this.session.on("session_closed", () => {
-			console.log(" Warning => Session closed");
-		});
+			// console.log(" Warning => Session closed");
+		})
 		this.session.on("keepalive", () => {
 			console.log("session keepalive");
-		});
+		})
 		this.session.on("keepalive_failure", () => {
-			console.log("session keepalive failure");
-		});
+			this._restartConnection();
+		})
 	}
 
 	private async _readBrowseName(nodeId: NodeId): Promise<QualifiedName> {
@@ -481,6 +525,90 @@ export class OPCUAService extends EventEmitter {
 		}
 
 		return null;
+	}
+
+	private async _getNodesDetails(node: IOPCNode) {
+		const dataTypeIdDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.DataType });
+		const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
+		const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
+
+		const dataTypeId = dataTypeIdDataValue.value.value as NodeId;
+		const dataType = await findBasicDataType(this.session, dataTypeId);
+
+		const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
+		const valueRank = valueRankDataValue.value.value as number;
+
+		return { dataType, arrayDimension, valueRank };
+	}
+
+	private  _restartConnection = async () => {
+		try {
+		  await this.client.disconnect()
+		  await this.client.connect(this.endpointUrl)
+		} catch (error) {
+		  console.log("OpcUa: restartConnection", error)
+		}
+	}
+
+	private async _getEntryPoint(entryPointPath?: string): Promise<{ displayName: string; nodeId: NodeIdLike; children: any[] }>{
+		let start : any = {
+			// displayName: "RootFolder",
+			// nodeId: resolveNodeId("RootFolder"),
+			displayName: "Objects",
+			nodeId: ObjectIds.ObjectsFolder,			
+			children: [],
+		};
+
+		if(!entryPointPath || entryPointPath === "/") {
+			return start;
+		}
+		
+		return this._getNodeWithPath(start, entryPointPath);
+
+		// const path = new BrowsePath({
+		// 	startingNode: ObjectIds.ObjectsFolder,
+		// 	relativePath: makeRelativePath(entryPointPath),
+		// });
+
+		// this.session.translateBrowsePath(path).then((result) => {
+		// 	console.log(result.targets[0].targetId.toString());
+		// });
+				
+	}
+
+	private async _getNodeWithPath(start: any, entryPointPath?: string): Promise<{ displayName: string; nodeId: NodeIdLike; children: any[] }> {
+		const paths = entryPointPath.split("/").filter((el) => el !== "");
+		let error;
+		let node = start;
+		let lastNode;
+
+		while (paths.length && !error) {
+			const children = await this.getNodeChildren2(node);
+			const path = paths.shift();
+			let found = children.find((el) => el.displayName.toLocaleLowerCase() === path.toLocaleLowerCase());
+
+			if(!found){
+				error = "Node not found";
+				break;
+			}
+
+			node = found;
+			if(paths.length === 0) lastNode = node;
+		}
+
+		if(error) throw new Error(error);
+
+		return {...lastNode, children: []};
+	}
+
+	private _formatReference(reference: ReferenceDescription): IOPCNode {
+		return {
+			displayName: reference.displayName.text || reference.browseName.toString(),
+			browseName: reference.browseName.toString(),
+			nodeId: reference.nodeId,
+			nodeClass: reference.nodeClass as number,
+			children: [],
+		};
 	}
 }
 

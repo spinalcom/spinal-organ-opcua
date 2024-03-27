@@ -1,6 +1,6 @@
 import { IOPCNode } from "../interfaces/OPCNode";
 import { IConfig } from "../interfaces/IConfig";
-import { BrowseDirection, ResultMask } from "node-opcua";
+import { BrowseDirection, DataType, ResultMask } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
 
 export function getConfig(): IConfig {
@@ -48,4 +48,47 @@ export function convertSpinalNodeToOPCNode(node: SpinalNode | string): IOPCNode 
 		displayName: isString ? node : node.info.name.get(),
 		nodeId: isString ? node : node.info.idNetwork.get(),
 	};
+}
+
+export const coerceBoolean = (data: any) => {
+	return data === "true" || data === "1" || data === true;
+};
+
+export const coerceNumber = (data: any) => {
+	return parseInt(data, 10);
+};
+
+export const coerceNumberR = (data: any) => {
+	return parseFloat(data);
+};
+
+export const coerceNoop = (data: any) => data;
+
+export const coerceFunc = (dataType: DataType) => {
+	switch (dataType) {
+		case DataType.Boolean:
+			return coerceBoolean;
+		case DataType.Int16:
+		case DataType.Int32:
+		case DataType.Int64:
+		case DataType.UInt16:
+		case DataType.UInt32:
+		case DataType.UInt64:
+			return coerceNumber;
+		case DataType.Double:
+		case DataType.Float:
+			return coerceNumberR;
+		default:
+			return coerceNoop;
+	}
+};
+
+
+export function coerceStringToDataType(dataType, arrayType, VariantArrayType, data: any) {
+	const c = coerceFunc(dataType);
+	if (arrayType === VariantArrayType.Scalar) {
+		return c(data);
+	} else {
+		return data.map((d: any) => c(d));
+	}
 }

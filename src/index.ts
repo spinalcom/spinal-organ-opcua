@@ -3,14 +3,12 @@ import * as nodePath from "path";
 import { spinalCore } from "spinal-core-connectorjs_type";
 import * as pm2 from "pm2";
 import { getConfig } from "./utils/utils";
-import { connectionErrorCallback, CreateOrganConfigFile, GetPm2Instance, SpinalDiscoverCallback } from "./utils/Functions";
-import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
-import { SpinalDevice } from "./modules/SpinalDevice";
-import { getNetwork } from "./test";
+import { connectionErrorCallback, CreateOrganConfigFile, GetPm2Instance, SpinalDiscoverCallback, SpinalListnerCallback, SpinalPilotCallback } from "./utils/Functions";
+import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot} from "spinal-model-opcua";
+
 
 import * as fs from "fs";
 import * as nodepath from "path";
-import { text } from "stream/consumers";
 
 dotenvConfig({ path: nodePath.resolve(__dirname, "../.env"), override: true });
 
@@ -63,25 +61,17 @@ function writeInFile(argPath, text) {
 }
 
 const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA) => {
-	loadTypeInSpinalCore(
-		connect,
-		"SpinalOPCUADiscoverModel",
-		(spinalDisoverModel: SpinalOPCUADiscoverModel) => {
-			SpinalDiscoverCallback(spinalDisoverModel, organModel);
-		},
-		connectionErrorCallback
-	);
+	loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel: SpinalOPCUADiscoverModel) => {
+		SpinalDiscoverCallback(spinalDisoverModel, organModel);
+	}, connectionErrorCallback);
 
-	// loadTypeInSpinalCore(
-	// 	connect,
-	// 	"SpinalListenerModel",
-	// 	(spinalListenerModel: SpinalListenerModel) => {
-	// 		// SpinalListnerCallback(spinalListenerModel, organModel);
-	// 		// // const child = fork("../fork_process/Listener");
-	// 		// // child.send({ organModel, spinalListenerModel });
-	// 	},
-	// 	connectionErrorCallback
-	// );
+	loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel: SpinalOPCUAListener) => {
+		SpinalListnerCallback(spinalListenerModel, organModel);
+	},	connectionErrorCallback);
+
+	loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel: SpinalOPCUAPilot) => {
+		SpinalPilotCallback(spinalPilotModel, organModel);
+	}, connectionErrorCallback);
 
 	// loadTypeInSpinalCore(
 	// 	connect,
@@ -92,14 +82,7 @@ const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA
 	// 	connectionErrorCallback
 	// );
 
-	// loadTypeInSpinalCore(
-	// 	connect,
-	// 	"SpinalPilotModel",
-	// 	(spinalPilotModel: SpinalPilotModel) => {
-	// 		// SpinalPilotCallback(spinalPilotModel, organModel);
-	// 	},
-	// 	connectionErrorCallback
-	// );
+	
 };
 
 const loadTypeInSpinalCore = (connect, type, callback, errorCallback) => {

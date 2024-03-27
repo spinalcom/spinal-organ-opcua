@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { ReferenceDescription, UserIdentityInfo, NodeId, DataValue } from "node-opcua";
+import { ReferenceDescription, UserIdentityInfo, NodeId, DataValue, NodeIdLike } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 export declare class OPCUAService extends EventEmitter {
@@ -24,12 +24,12 @@ export declare class OPCUAService extends EventEmitter {
     constructor();
     initialize(endpointUrl: string): Promise<void>;
     createSubscription(): Promise<void>;
-    connect(endpointUrl: string, userIdentity: UserIdentityInfo): Promise<void>;
+    connect(endpointUrl: string, userIdentity?: UserIdentityInfo): Promise<void>;
     disconnect(): Promise<void>;
-    getTree(): Promise<{
+    getTree(entryPointPath?: string): Promise<{
         tree: {
             displayName: string;
-            nodeId: NodeId;
+            nodeId: NodeIdLike;
             children: any[];
         };
         variables: any[];
@@ -37,7 +37,7 @@ export declare class OPCUAService extends EventEmitter {
     getChildren(nodesToBrowse: any[]): Promise<{
         [key: string]: ReferenceDescription[];
     }>;
-    getTree2(): Promise<any>;
+    getTree2(entryPointPath?: string): Promise<any>;
     browseNode(node: any): Promise<any[]>;
     getNodeChildren2(node: IOPCNode): Promise<IOPCNode[]>;
     extractBrowsePath(nodeId: NodeId): Promise<string>;
@@ -46,6 +46,7 @@ export declare class OPCUAService extends EventEmitter {
         dataType: string;
         value: any;
     }[]>;
+    writeNode(node: IOPCNode, value: any): Promise<any>;
     monitorItem(nodeIds: string | string[], callback: (id: string, data: DataValue) => any): Promise<void>;
     isVaraiable(node: IOPCNode): boolean;
     isObject(node: IOPCNode): boolean;
@@ -54,6 +55,11 @@ export declare class OPCUAService extends EventEmitter {
     private _listenSessionEvent;
     private _readBrowseName;
     private _getNodeParent;
+    private _getNodesDetails;
+    private _restartConnection;
+    private _getEntryPoint;
+    private _getNodeWithPath;
+    private _formatReference;
 }
 export declare function w(s: string, l: number, c: string): string;
 export default OPCUAService;

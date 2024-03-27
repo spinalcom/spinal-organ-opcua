@@ -8,9 +8,9 @@ declare class SpinalDiscover extends EventEmitter {
     private listenEvent;
     addToQueue(model: SpinalOPCUADiscoverModel): void;
     private _discoverNext;
-    private _getOPCUATree;
     private _bindDiscoverModel;
     private _discoverDevice;
+    private _getOPCUATree;
     private _createNetworkTreeInGraph;
     private _getVariablesValues;
     private delay;

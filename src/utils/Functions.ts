@@ -23,15 +23,17 @@
  */
 
 import { FileSystem, File as SpinalFile } from "spinal-core-connectorjs_type";
-import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES } from "spinal-model-opcua";
+import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { discover } from "../modules/SpinalDiscover";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { NodeClass } from "node-opcua";
+import { SpinalNode } from "spinal-env-viewer-graph-service";
+import { spinalMonitoring } from "../modules/SpinalMonitoring";
+import { spinalPilot } from "../modules/SpinalPilot";
 
 // import { SpinalDevice } from "../modules/SpinalDevice";
 // import { SpinalNetworkServiceUtilities } from "./SpinalNetworkServiceUtilities";
 // import { spinalMonitoring } from "../modules/SpinalMonitoring";
-// import { spinalPilot } from "../modules/SpinalPilot copy";
 
 const Q = require("q");
 const pm2 = require("pm2");
@@ -139,17 +141,17 @@ function findFileInDirectory(directory: spinal.Directory, fileName: string): Pro
 // 	}
 // };
 
-// export const SpinalListnerCallback = async (spinalListenerModel: SpinalListenerModel, organModel: SpinalOrganConfigModel): Promise<void> => {
-// 	await WaitModelReady();
+export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA): Promise<void> => {
+	await WaitModelReady();
+	const organNode: SpinalNode = await spinalListenerModel.getOrgan();
+	const spinalDisoverModelOrgan = await organNode.getElement(true);
 
-// 	spinalListenerModel.organ.load((organ) => {
-// 		if (organ) {
-// 			if (organ.id?.get() === organModel.id?.get()) {
-// 				spinalMonitoring.addToMonitoringList(spinalListenerModel);
-// 			}
-// 		}
-// 	});
-// };
+	if(organModel.id?.get() === spinalDisoverModelOrgan.id?.get()) {
+		spinalMonitoring.addToMonitoringList(spinalListenerModel);
+	}
+
+
+};
 
 export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA): Promise<void | boolean> => {
 	await WaitModelReady();
@@ -190,9 +192,23 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 	}
 }
 
-// export const SpinalPilotCallback = async (spinalPilotModel: SpinalPilotModel, organModel: SpinalOrganConfigModel): Promise<void> => {
-// 	await WaitModelReady();
-// 	if (spinalPilotModel.organ?.id.get() === organModel.id?.get()) {
-// 		spinalPilot.addToPilotList(spinalPilotModel);
-// 	}
-// };
+
+export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA): Promise<void> => {
+	await WaitModelReady();
+	const organNode: SpinalNode = await spinalPilotModel.getOrgan();
+	const organ = await organNode.getElement(true);
+
+	if (organ?.id.get() === organModel.id?.get()) {
+		spinalPilot.addToPilotList(spinalPilotModel);
+	}
+};
+
+
+export function getServerUrl(serverInfo: any): string {
+	let endpoint = serverInfo.endpoint || "";
+
+	if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
+	if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
+
+	return `opc.tcp://${serverInfo.ip}:${serverInfo.port}${endpoint}`;
+}

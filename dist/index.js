@@ -60,29 +60,17 @@ const listenLoadType = (connect, organModel) => {
     loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel) => {
         (0, Functions_1.SpinalDiscoverCallback)(spinalDisoverModel, organModel);
     }, Functions_1.connectionErrorCallback);
-    // loadTypeInSpinalCore(
-    // 	connect,
-    // 	"SpinalListenerModel",
-    // 	(spinalListenerModel: SpinalListenerModel) => {
-    // 		// SpinalListnerCallback(spinalListenerModel, organModel);
-    // 		// // const child = fork("../fork_process/Listener");
-    // 		// // child.send({ organModel, spinalListenerModel });
-    // 	},
-    // 	connectionErrorCallback
-    // );
+    loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel) => {
+        (0, Functions_1.SpinalListnerCallback)(spinalListenerModel, organModel);
+    }, Functions_1.connectionErrorCallback);
+    loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel) => {
+        (0, Functions_1.SpinalPilotCallback)(spinalPilotModel, organModel);
+    }, Functions_1.connectionErrorCallback);
     // loadTypeInSpinalCore(
     // 	connect,
     // 	"SpinalBacnetValueModel",
     // 	(spinalBacnetValueModel: SpinalBacnetValueModel) => {
     // 		// SpinalBacnetValueModelCallback(spinalBacnetValueModel, organModel);
-    // 	},
-    // 	connectionErrorCallback
-    // );
-    // loadTypeInSpinalCore(
-    // 	connect,
-    // 	"SpinalPilotModel",
-    // 	(spinalPilotModel: SpinalPilotModel) => {
-    // 		// SpinalPilotCallback(spinalPilotModel, organModel);
     // 	},
     // 	connectionErrorCallback
     // );

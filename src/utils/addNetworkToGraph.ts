@@ -2,19 +2,20 @@ import { SpinalNode, SPINAL_RELATION_PTR_LST_TYPE, SpinalContext } from "spinal-
 import { SpinalBmsNetwork } from "spinal-model-bmsnetwork";
 import { SpinalOrganOPCUA } from "spinal-model-opcua";
 
-export async function addNetworkToGraph(model: any, nodes: { node: SpinalNode; relation: string; attributes: any }[], context: SpinalContext) {
-	context = context || (await model.getContext());
+export async function addNetworkToGraph(model: any, nodes: { node: SpinalNode; relation: string; attributes: any }[], context: SpinalContext, network: SpinalNode, organ: SpinalNode) {
 
-	const { network, organ } = await getOrGenNetworkNode(model, context);
-
-	const promises = nodes.map(({ node, relation }) => network.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context));
+	const promises = nodes.map(({ node, relation }) => {
+		return network.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => {});
+	});
 
 	return Promise.all(promises).then(async (net) => {
-		return organ.addChildInContext(network, SpinalBmsNetwork.relationName, SPINAL_RELATION_PTR_LST_TYPE, context);
+		return organ.addChildInContext(network, SpinalBmsNetwork.relationName, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => {
+			return network;
+		});
 	});
 }
 
-async function getOrGenNetworkNode(model: any, context: SpinalContext) {
+export async function getOrGenNetworkNode(model: any, context: SpinalContext) {
 	context = context || (await model.getContext());
 	const organElement = await model.getOrgan();
 	const organ = await getOrganNode(organElement, context.getId().get());

@@ -9,22 +9,23 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports._transformTreeToGraphRecursively = void 0;
+exports.getNodeAlreadyCreated = exports._transformTreeToGraphRecursively = void 0;
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
 const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
 const spinal_env_viewer_plugin_documentation_service_1 = require("spinal-env-viewer-plugin-documentation-service");
 const node_opcua_1 = require("node-opcua");
 const OPCUAService_1 = require("./OPCUAService");
-function _transformTreeToGraphRecursively(context, tree, parent, values = {}) {
+function _transformTreeToGraphRecursively(context, tree, nodesAlreadyCreated, parent, values = {}, depth = 0) {
     return __awaiter(this, void 0, void 0, function* () {
-        const { node, relation, alreadyExist } = getNodeAndRelation(tree, values);
+        const { node, relation, alreadyExist } = yield getNodeAndRelation(tree, nodesAlreadyCreated, values, depth);
         const { children, attributes } = _formatTree(tree);
-        yield _createNodeAttributes(node, attributes, values);
+        if (attributes && attributes.length > 0)
+            yield _createNodeAttributes(node, attributes, values);
         if (parent && !alreadyExist) {
             yield parent.addChildInContext(node, relation, spinal_env_viewer_graph_service_1.SPINAL_RELATION_PTR_LST_TYPE, context);
         }
         const promises = (children || []).map((el) => __awaiter(this, void 0, void 0, function* () {
-            const childNodeInfo = yield _transformTreeToGraphRecursively(context, el, node, values);
+            const childNodeInfo = yield _transformTreeToGraphRecursively(context, el, nodesAlreadyCreated, node, values, depth + 1);
             return childNodeInfo;
         }));
         return Promise.all(promises).then((result) => {
@@ -33,13 +34,33 @@ function _transformTreeToGraphRecursively(context, tree, parent, values = {}) {
     });
 }
 exports._transformTreeToGraphRecursively = _transformTreeToGraphRecursively;
-function getNodeAndRelation(node, values = {}) {
-    // let spinalNode: SpinalNode = this.nodes[node.nodeId.toString()];
-    // if (!spinalNode) return this._generateNodeAndRelation(node, values);
-    // const relation = _getNodeRelationName(spinalNode.getType().get());
-    // // return { node: spinalNode, relation, alreadyExist: true };
-    // return { node: spinalNode, relation, alreadyExist: true };
-    return _generateNodeAndRelation(node, values);
+function getNodeAlreadyCreated(context, network) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const obj = {};
+        return network.findInContext(context, (node) => {
+            var _a, _b;
+            if ((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.idNetwork) === null || _b === void 0 ? void 0 : _b.get())
+                obj[node.info.idNetwork.get()] = node;
+            return true;
+        }).then((result) => {
+            return obj;
+        });
+    });
+}
+exports.getNodeAlreadyCreated = getNodeAlreadyCreated;
+function getNodeAndRelation(node, nodesAlreadyCreated, values = {}, depth = 0) {
+    return __awaiter(this, void 0, void 0, function* () {
+        let spinalNode = nodesAlreadyCreated[node.nodeId.toString()];
+        if (!spinalNode) {
+            if (depth == 0)
+                return _generateDevice(node);
+            return _generateNodeAndRelation(node, values);
+        }
+        const relation = _getNodeRelationName(spinalNode.getType().get());
+        const data = values[node.nodeId.toString()];
+        yield _changeValueAndDataType(spinalNode, data);
+        return { node: spinalNode, relation, alreadyExist: true };
+    });
 }
 function _generateNodeAndRelation(node, values = {}) {
     let element;
@@ -58,6 +79,20 @@ function _generateNodeAndRelation(node, values = {}) {
         param = Object.assign(Object.assign({}, param), { nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsEndpointGroup.nodeTypeName, type: spinal_model_bmsnetwork_1.SpinalBmsEndpointGroup.nodeTypeName });
         element = new spinal_model_bmsnetwork_1.SpinalBmsEndpointGroup(param);
     }
+    const spinalNode = new spinal_env_viewer_graph_service_1.SpinalNode(param.name, param.type, element);
+    spinalNode.info.add_attr({ idNetwork: param.id });
+    return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
+}
+function _generateDevice(node) {
+    let param = {
+        id: node.nodeId.toString(),
+        name: node.displayName,
+        type: spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName,
+        path: node.path,
+        nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName,
+        address: "",
+    };
+    let element = new spinal_model_bmsnetwork_1.SpinalBmsDevice(param);
     const spinalNode = new spinal_env_viewer_graph_service_1.SpinalNode(param.name, param.type, element);
     spinalNode.info.add_attr({ idNetwork: param.id });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
@@ -97,6 +132,13 @@ function _createNodeAttributes(node, attributes, values = {}) {
             promises.push(spinal_env_viewer_plugin_documentation_service_1.serviceDocumentation.addAttributeByCategory(node, attributeCategory, name, value));
         }
         return Promise.all(promises);
+    });
+}
+function _changeValueAndDataType(node, data) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const element = yield node.getElement();
+        element.mod_attr("currentValue", (data === null || data === void 0 ? void 0 : data.value) || "null");
+        element.mod_attr("dataType", (data === null || data === void 0 ? void 0 : data.dataType) || "");
     });
 }
 //# sourceMappingURL=transformTreeToGraph.js.map

@@ -10,3 +10,6 @@ old_src
 .env
 tree.txt
 *.log
+*tree.json
+tree.txt
+

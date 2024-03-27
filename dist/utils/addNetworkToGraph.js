@@ -9,16 +9,18 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getOrganNode = exports.addNetworkToGraph = void 0;
+exports.getOrganNode = exports.getOrGenNetworkNode = exports.addNetworkToGraph = void 0;
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
 const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
-function addNetworkToGraph(model, nodes, context) {
+function addNetworkToGraph(model, nodes, context, network, organ) {
     return __awaiter(this, void 0, void 0, function* () {
-        context = context || (yield model.getContext());
-        const { network, organ } = yield getOrGenNetworkNode(model, context);
-        const promises = nodes.map(({ node, relation }) => network.addChildInContext(node, relation, spinal_env_viewer_graph_service_1.SPINAL_RELATION_PTR_LST_TYPE, context));
+        const promises = nodes.map(({ node, relation }) => {
+            return network.addChildInContext(node, relation, spinal_env_viewer_graph_service_1.SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => { });
+        });
         return Promise.all(promises).then((net) => __awaiter(this, void 0, void 0, function* () {
-            return organ.addChildInContext(network, spinal_model_bmsnetwork_1.SpinalBmsNetwork.relationName, spinal_env_viewer_graph_service_1.SPINAL_RELATION_PTR_LST_TYPE, context);
+            return organ.addChildInContext(network, spinal_model_bmsnetwork_1.SpinalBmsNetwork.relationName, spinal_env_viewer_graph_service_1.SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => {
+                return network;
+            });
         }));
     });
 }
@@ -39,6 +41,7 @@ function getOrGenNetworkNode(model, context) {
         return { network, organ, context };
     });
 }
+exports.getOrGenNetworkNode = getOrGenNetworkNode;
 function getOrganNode(organ, contextId) {
     return new Promise((resolve, reject) => {
         try {

@@ -71,27 +71,15 @@ class SpinalDiscover extends events_1.EventEmitter {
             }
         });
     }
-    _getOPCUATree(server) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const endpointUrl = `opc.tcp://${server.ip}:${server.port}`;
-            const opcuaService = new OPCUAService_1.default();
-            yield opcuaService.initialize(endpointUrl);
-            yield opcuaService.connect(endpointUrl, userIdentity);
-            const tree = yield opcuaService.getTree();
-            yield opcuaService.disconnect();
-            return tree;
-        });
-    }
     _bindDiscoverModel(model) {
         const processBind = model.state.bind(() => {
             const state = model.state.get();
             switch (state) {
                 case spinal_model_opcua_1.OPCUA_ORGAN_STATES.readyToCreate:
-                    console.log("create nodes");
+                    console.log("creating nodes...");
                     this._createNetworkTreeInGraph(model);
                     break;
                 case spinal_model_opcua_1.OPCUA_ORGAN_STATES.error:
-                    console.log("error");
                     break;
                 default:
                     break;
@@ -100,23 +88,33 @@ class SpinalDiscover extends events_1.EventEmitter {
     }
     _discoverDevice(model) {
         return __awaiter(this, void 0, void 0, function* () {
-            try {
-                console.log("discover device");
-                this._bindDiscoverModel(model);
-                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering);
-                const server = model.network.get();
-                const { tree, variables } = yield this._getOPCUATree(server);
-                // const tree = testJSON;
-                console.log(tree);
+            this._bindDiscoverModel(model);
+            model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering);
+            const server = model.network.get();
+            console.log("discovering", server.name || "");
+            // const tree = testJSON;
+            return this._getOPCUATree(server)
+                .then(({ tree, variables }) => __awaiter(this, void 0, void 0, function* () {
                 yield model.setTreeDiscovered(tree);
+                console.log(server.name, "discovered !!");
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered);
-                console.log("discovered");
+                // await writeInFile("../../tree.txt", JSON.stringify(tree));
                 return tree;
-            }
-            catch (error) {
+            })).catch((err) => {
+                console.error("hello error", err);
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
-                console.error(error);
-            }
+            });
+        });
+    }
+    _getOPCUATree(server) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const endpointUrl = (0, Functions_1.getServerUrl)(server);
+            const opcuaService = new OPCUAService_1.default();
+            yield opcuaService.initialize(endpointUrl);
+            yield opcuaService.connect(endpointUrl, userIdentity);
+            const tree = yield opcuaService.getTree(process.env.OPCUA_SERVER_ENTRYPOINT);
+            yield opcuaService.disconnect();
+            return tree;
         });
     }
     _createNetworkTreeInGraph(model) {
@@ -126,15 +124,17 @@ class SpinalDiscover extends events_1.EventEmitter {
             const variables = (0, Functions_1.getVariablesList)(treeToCreate);
             const values = yield this._getVariablesValues(server, variables);
             const context = yield model.getContext();
-            const promises = treeToCreate.children.map((tree) => (0, transformTreeToGraph_1._transformTreeToGraphRecursively)(context, tree, undefined, values));
+            const { network, organ } = yield (0, addNetworkToGraph_1.getOrGenNetworkNode)(model, context);
+            const nodesAlreadyCreated = yield (0, transformTreeToGraph_1.getNodeAlreadyCreated)(context, network);
+            const promises = (treeToCreate.children || []).map((tree) => (0, transformTreeToGraph_1._transformTreeToGraphRecursively)(context, tree, nodesAlreadyCreated, undefined, values));
             const nodes = yield Promise.all(promises);
-            return (0, addNetworkToGraph_1.addNetworkToGraph)(model, nodes, context)
+            return (0, addNetworkToGraph_1.addNetworkToGraph)(model, nodes, context, network, organ)
                 .then((result) => {
-                console.log("nodes created");
+                console.log("network", network.getName().get(), "created !!");
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.created);
             })
                 .catch((err) => {
-                console.error(err);
+                console.log(network.getName().get(), "creation failed !");
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
             });
         });
@@ -152,7 +152,7 @@ class SpinalDiscover extends events_1.EventEmitter {
     // }
     _getVariablesValues(server, variables) {
         return __awaiter(this, void 0, void 0, function* () {
-            const endpointUrl = `opc.tcp://${server.ip}:${server.port}`;
+            const endpointUrl = (0, Functions_1.getServerUrl)(server);
             const opcuaService = new OPCUAService_1.default();
             yield opcuaService.initialize(endpointUrl);
             yield opcuaService.connect(endpointUrl, userIdentity);
@@ -176,6 +176,11 @@ class SpinalDiscover extends events_1.EventEmitter {
     }
 }
 exports.discover = new SpinalDiscover();
+const fs = require("fs");
+const nodePath = require("path");
+function writeInFile(argPath, text) {
+    return fs.writeFileSync(nodePath.resolve(__dirname, argPath), text);
+}
 /*
 export class SpinalDiscover {
     private bindSateProcess: any;

@@ -6,8 +6,9 @@ import { NodeClass } from "node-opcua";
 import OPCUAService from "./OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
 
-export async function _transformTreeToGraphRecursively(context: SpinalContext, tree: IOPCNode, parent?: SpinalNode, values: { [key: string]: any } = {}) {
-	const { node, relation, alreadyExist } = getNodeAndRelation(tree, values);
+export async function _transformTreeToGraphRecursively(context: SpinalContext, tree: IOPCNode, nodesAlreadyCreated: {[key:string]: SpinalNode}, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0) {
+	
+	const { node, relation, alreadyExist } = await getNodeAndRelation(tree, nodesAlreadyCreated, values, depth);
 
 	const { children, attributes } = _formatTree(tree);
 	if (attributes && attributes.length > 0) await _createNodeAttributes(node, attributes, values);
@@ -17,7 +18,7 @@ export async function _transformTreeToGraphRecursively(context: SpinalContext, t
 	}
 
 	const promises = (children || []).map(async (el) => {
-		const childNodeInfo = await _transformTreeToGraphRecursively(context, el, node, values);
+		const childNodeInfo = await _transformTreeToGraphRecursively(context, el, nodesAlreadyCreated, node, values, depth + 1);
 		return childNodeInfo;
 	});
 
@@ -26,16 +27,31 @@ export async function _transformTreeToGraphRecursively(context: SpinalContext, t
 	});
 }
 
-function getNodeAndRelation(node: IOPCNode, values: { [key: string]: any } = {}): { node: SpinalNode; relation: string; alreadyExist: boolean } {
-	// let spinalNode: SpinalNode = this.nodes[node.nodeId.toString()];
-	// if (!spinalNode) return this._generateNodeAndRelation(node, values);
+export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode): Promise<{[key:string]: SpinalNode}> {
+	const obj = {};
 
-	// const relation = _getNodeRelationName(spinalNode.getType().get());
-	// // return { node: spinalNode, relation, alreadyExist: true };
-	// return { node: spinalNode, relation, alreadyExist: true };
-
-	return _generateNodeAndRelation(node, values);
+	return network.findInContext(context, (node) => {
+		if(node.info?.idNetwork?.get()) obj[node.info.idNetwork.get()] = node;
+		return true;
+	}).then((result) => {
+		return obj;
+	})
 }
+
+async function getNodeAndRelation(node: IOPCNode, nodesAlreadyCreated: {[key:string]: SpinalNode}, values: { [key: string]: any } = {}, depth: number = 0): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
+	let spinalNode: SpinalNode = nodesAlreadyCreated[node.nodeId.toString()];
+
+	if (!spinalNode) {
+		if(depth == 0) return _generateDevice(node);
+		return _generateNodeAndRelation(node, values);
+	}
+
+	const relation = _getNodeRelationName(spinalNode.getType().get());
+	const data = values[node.nodeId.toString()];
+	await _changeValueAndDataType(spinalNode, data);
+	return { node: spinalNode, relation, alreadyExist: true };
+} 
+
 
 function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any } = {}): { node: SpinalNode; relation: string; alreadyExist: boolean } {
 	let element;
@@ -70,6 +86,24 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 		element = new SpinalBmsEndpointGroup(param);
 	}
 
+	const spinalNode = new SpinalNode(param.name, param.type, element);
+	spinalNode.info.add_attr({ idNetwork: param.id });
+
+	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
+}
+
+function _generateDevice(node: IOPCNode) {
+	let param = {
+		id: node.nodeId.toString(),
+		name: node.displayName,
+		type: SpinalBmsDevice.nodeTypeName,
+		path: node.path,
+		nodeTypeName: SpinalBmsDevice.nodeTypeName,
+		address: "",
+	};
+
+
+	let element = new SpinalBmsDevice(param as any);
 	const spinalNode = new SpinalNode(param.name, param.type, element);
 	spinalNode.info.add_attr({ idNetwork: param.id });
 
@@ -122,4 +156,10 @@ function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values:
 
 		return Promise.all(promises);
 	});
+}
+
+async function _changeValueAndDataType(node: SpinalNode, data: { value: any; dataType: string }) {
+	const element = await node.getElement();
+	element.mod_attr("currentValue", data?.value || "null");
+	element.mod_attr("dataType", data?.dataType || "");
 }
