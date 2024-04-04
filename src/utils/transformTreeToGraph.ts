@@ -50,8 +50,7 @@ async function getNodeAndRelation(node: IOPCNode, nodesAlreadyCreated: {[key:str
 	const data = values[node.nodeId.toString()];
 	await _changeValueAndDataType(spinalNode, data);
 	return { node: spinalNode, relation, alreadyExist: true };
-} 
-
+}
 
 function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any } = {}): { node: SpinalNode; relation: string; alreadyExist: boolean } {
 	let element;
@@ -59,6 +58,8 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 		id: node.nodeId.toString(),
 		name: node.displayName,
 		path: node.path,
+		displayName: node.displayName || "",
+		browseName: node.browseName || ""
 	};
 
 	const opcuaService: OPCUAService = new OPCUAService();
@@ -87,7 +88,12 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 	}
 
 	const spinalNode = new SpinalNode(param.name, param.type, element);
-	spinalNode.info.add_attr({ idNetwork: param.id });
+	spinalNode.info.add_attr({ 
+		idNetwork: param.id, 
+		displayName: param.displayName || "",
+		browseName: param.browseName || "",
+		path: param.path
+	});
 
 	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }
@@ -100,12 +106,19 @@ function _generateDevice(node: IOPCNode) {
 		path: node.path,
 		nodeTypeName: SpinalBmsDevice.nodeTypeName,
 		address: "",
+		displayName: node?.displayName,
+		browseName: node?.browseName
 	};
 
 
 	let element = new SpinalBmsDevice(param as any);
 	const spinalNode = new SpinalNode(param.name, param.type, element);
-	spinalNode.info.add_attr({ idNetwork: param.id });
+	spinalNode.info.add_attr({ 
+		idNetwork: param.id,
+		displayName: param.displayName || "",
+		browseName: param.browseName || "",
+		path: param.path
+	});
 
 	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }

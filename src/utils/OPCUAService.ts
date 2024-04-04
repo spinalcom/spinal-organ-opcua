@@ -6,6 +6,7 @@ import * as lodash from "lodash";
 import { coerceStringToDataType, convertToBrowseDescription } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
+import path = require("path");
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
@@ -20,17 +21,6 @@ export class OPCUAService extends EventEmitter {
 	private endpointUrl: string = "";
 	private monitoredItemsListData: any[] = [];
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
-
-	public data = {
-		reconnectionCount: 0,
-		tokenRenewalCount: 0,
-		receivedBytes: 0,
-		sentBytes: 0,
-		sentChunks: 0,
-		receivedChunks: 0,
-		backoffCount: 0,
-		transactionCount: 0,
-	};
 
 	public constructor() {
 		super();
@@ -52,6 +42,11 @@ export class OPCUAService extends EventEmitter {
 			// applicationName,
 			// applicationUri,
 			keepSessionAlive: true,
+			connectionStrategy: {
+				maxRetry: 3,
+				initialDelay: 1000,
+				maxDelay: 10 * 1000,
+			},
 		});
 
 		this._listenClientEvents();
@@ -101,13 +96,14 @@ export class OPCUAService extends EventEmitter {
 		await this.client!.disconnect();
 	}
 
-
 	///////////////////////////////////////////////////////////////////////////
 	//					Exemple 1 : [getTree] - Browse several node 		 //
 	//					May have timeout error if the tree is too big		 //
 	///////////////////////////////////////////////////////////////////////////
 
 	public async getTree(entryPointPath?: string) {
+		console.log("discovering", this.endpointUrl || "");
+
 		const _self = this;
 		const tree = await this._getEntryPoint(entryPointPath);
 
@@ -133,14 +129,19 @@ export class OPCUAService extends EventEmitter {
 				for (const child of children) {
 					const name = (child.displayName.text || child.browseName.toString()).toLowerCase();
 					if (name == "server" || name[0] == ".") continue;
+					
+					const parent = obj[key];
 
-					const nodeInfo: any = _self._formatReference(child);
+					const nodeInfo: any = _self._formatReference(child, parent.path || "");
+	
 					if (nodeInfo.nodeClass === NodeClass.Variable) variables.push(nodeInfo.nodeId.toString());
-
-					obj[nodeInfo.nodeId.toString()] = nodeInfo;
-					obj[key].children.push(nodeInfo);
-
+					
+					
+					parent.children.push(nodeInfo);
+					
 					newQueue.push(nodeInfo);
+					
+					obj[nodeInfo.nodeId.toString()] = nodeInfo;
 				}
 			}
 
@@ -173,7 +174,7 @@ export class OPCUAService extends EventEmitter {
 	//					Exemple 2 : getTree (take a lot of time)		 	 //
 	///////////////////////////////////////////////////////////////////////////
 	public async getTree2(entryPointPath?: string): Promise<any> {
-		
+		console.log("discovering", this.endpointUrl || "", "may take up to 30min or more...");
 		const tree = await this._getEntryPoint(entryPointPath);
 
 		// const tree = {
@@ -223,7 +224,7 @@ export class OPCUAService extends EventEmitter {
 			const name = (reference.displayName.text || reference.browseName.toString()).toLowerCase()
 			if (name == "server" || name[0] == ".") continue;
 
-			const nodeInfo = this._formatReference(reference);
+			const nodeInfo = this._formatReference(reference, node.path);
 
 			await this.browseNode(nodeInfo);
 			res.push(nodeInfo);
@@ -550,12 +551,13 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	private async _getEntryPoint(entryPointPath?: string): Promise<{ displayName: string; nodeId: NodeIdLike; children: any[] }>{
+	private async _getEntryPoint(entryPointPath?: string): Promise<{ displayName: string; path: string; nodeId: NodeIdLike; children: any[] }>{
 		let start : any = {
 			// displayName: "RootFolder",
 			// nodeId: resolveNodeId("RootFolder"),
 			displayName: "Objects",
-			nodeId: ObjectIds.ObjectsFolder,			
+			nodeId: ObjectIds.ObjectsFolder,
+			path: "/",			
 			children: [],
 		};
 
@@ -576,7 +578,7 @@ export class OPCUAService extends EventEmitter {
 				
 	}
 
-	private async _getNodeWithPath(start: any, entryPointPath?: string): Promise<{ displayName: string; nodeId: NodeIdLike; children: any[] }> {
+	private async _getNodeWithPath(start: any, entryPointPath?: string): Promise<{ displayName: string; path: string; nodeId: NodeIdLike; children: any[] }> {
 		const paths = entryPointPath.split("/").filter((el) => el !== "");
 		let error;
 		let node = start;
@@ -598,15 +600,19 @@ export class OPCUAService extends EventEmitter {
 
 		if(error) throw new Error(error);
 
-		return {...lastNode, children: []};
+		return {...lastNode, children: [], path: `/${paths.join("/")}`};
 	}
 
-	private _formatReference(reference: ReferenceDescription): IOPCNode {
+	private _formatReference(reference: ReferenceDescription, path: string): IOPCNode {
+		const name = reference.displayName.text || reference.browseName.toString();
+		path = path.endsWith("/") ? path : `${path}/`;
+
 		return {
-			displayName: reference.displayName.text || reference.browseName.toString(),
+			displayName: name,
 			browseName: reference.browseName.toString(),
 			nodeId: reference.nodeId,
 			nodeClass: reference.nodeClass as number,
+			path: path + name,
 			children: [],
 		};
 	}

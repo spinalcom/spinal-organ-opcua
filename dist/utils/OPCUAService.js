@@ -26,16 +26,6 @@ class OPCUAService extends events_1.EventEmitter {
         this.endpointUrl = "";
         this.monitoredItemsListData = [];
         this.clientAlarms = new node_opcua_1.ClientAlarmList();
-        this.data = {
-            reconnectionCount: 0,
-            tokenRenewalCount: 0,
-            receivedBytes: 0,
-            sentBytes: 0,
-            sentChunks: 0,
-            receivedChunks: 0,
-            backoffCount: 0,
-            transactionCount: 0,
-        };
         this._restartConnection = () => __awaiter(this, void 0, void 0, function* () {
             try {
                 yield this.client.disconnect();
@@ -62,6 +52,11 @@ class OPCUAService extends events_1.EventEmitter {
                 // applicationName,
                 // applicationUri,
                 keepSessionAlive: true,
+                connectionStrategy: {
+                    maxRetry: 3,
+                    initialDelay: 1000,
+                    maxDelay: 10 * 1000,
+                },
             });
             this._listenClientEvents();
         });
@@ -119,6 +114,7 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
+            console.log("discovering", this.endpointUrl || "");
             const _self = this;
             const tree = yield this._getEntryPoint(entryPointPath);
             let variables = [];
@@ -141,12 +137,13 @@ class OPCUAService extends events_1.EventEmitter {
                             const name = (child.displayName.text || child.browseName.toString()).toLowerCase();
                             if (name == "server" || name[0] == ".")
                                 continue;
-                            const nodeInfo = _self._formatReference(child);
+                            const parent = obj[key];
+                            const nodeInfo = _self._formatReference(child, parent.path || "");
                             if (nodeInfo.nodeClass === node_opcua_1.NodeClass.Variable)
                                 variables.push(nodeInfo.nodeId.toString());
-                            obj[nodeInfo.nodeId.toString()] = nodeInfo;
-                            obj[key].children.push(nodeInfo);
+                            parent.children.push(nodeInfo);
                             newQueue.push(nodeInfo);
+                            obj[nodeInfo.nodeId.toString()] = nodeInfo;
                         }
                     }
                     return newQueue;
@@ -178,6 +175,7 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree2(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
+            console.log("discovering", this.endpointUrl || "", "may take up to 30min or more...");
             const tree = yield this._getEntryPoint(entryPointPath);
             // const tree = {
             // 	displayName: "Metiers",
@@ -220,7 +218,7 @@ class OPCUAService extends events_1.EventEmitter {
                 const name = (reference.displayName.text || reference.browseName.toString()).toLowerCase();
                 if (name == "server" || name[0] == ".")
                     continue;
-                const nodeInfo = this._formatReference(reference);
+                const nodeInfo = this._formatReference(reference, node.path);
                 yield this.browseNode(nodeInfo);
                 res.push(nodeInfo);
             }
@@ -518,6 +516,7 @@ class OPCUAService extends events_1.EventEmitter {
                 // nodeId: resolveNodeId("RootFolder"),
                 displayName: "Objects",
                 nodeId: node_opcua_1.ObjectIds.ObjectsFolder,
+                path: "/",
                 children: [],
             };
             if (!entryPointPath || entryPointPath === "/") {
@@ -553,15 +552,18 @@ class OPCUAService extends events_1.EventEmitter {
             }
             if (error)
                 throw new Error(error);
-            return Object.assign(Object.assign({}, lastNode), { children: [] });
+            return Object.assign(Object.assign({}, lastNode), { children: [], path: `/${paths.join("/")}` });
         });
     }
-    _formatReference(reference) {
+    _formatReference(reference, path) {
+        const name = reference.displayName.text || reference.browseName.toString();
+        path = path.endsWith("/") ? path : `${path}/`;
         return {
-            displayName: reference.displayName.text || reference.browseName.toString(),
+            displayName: name,
             browseName: reference.browseName.toString(),
             nodeId: reference.nodeId,
             nodeClass: reference.nodeClass,
+            path: path + name,
             children: [],
         };
     }

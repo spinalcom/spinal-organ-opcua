@@ -68,6 +68,8 @@ function _generateNodeAndRelation(node, values = {}) {
         id: node.nodeId.toString(),
         name: node.displayName,
         path: node.path,
+        displayName: node.displayName || "",
+        browseName: node.browseName || ""
     };
     const opcuaService = new OPCUAService_1.default();
     if (opcuaService.isVaraiable(node)) {
@@ -80,7 +82,12 @@ function _generateNodeAndRelation(node, values = {}) {
         element = new spinal_model_bmsnetwork_1.SpinalBmsEndpointGroup(param);
     }
     const spinalNode = new spinal_env_viewer_graph_service_1.SpinalNode(param.name, param.type, element);
-    spinalNode.info.add_attr({ idNetwork: param.id });
+    spinalNode.info.add_attr({
+        idNetwork: param.id,
+        displayName: param.displayName || "",
+        browseName: param.browseName || "",
+        path: param.path
+    });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }
 function _generateDevice(node) {
@@ -91,10 +98,17 @@ function _generateDevice(node) {
         path: node.path,
         nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName,
         address: "",
+        displayName: node === null || node === void 0 ? void 0 : node.displayName,
+        browseName: node === null || node === void 0 ? void 0 : node.browseName
     };
     let element = new spinal_model_bmsnetwork_1.SpinalBmsDevice(param);
     const spinalNode = new spinal_env_viewer_graph_service_1.SpinalNode(param.name, param.type, element);
-    spinalNode.info.add_attr({ idNetwork: param.id });
+    spinalNode.info.add_attr({
+        idNetwork: param.id,
+        displayName: param.displayName || "",
+        browseName: param.browseName || "",
+        path: param.path
+    });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }
 function _getNodeRelationName(type) {

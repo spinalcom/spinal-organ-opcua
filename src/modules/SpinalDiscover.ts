@@ -90,21 +90,17 @@ class SpinalDiscover extends EventEmitter {
 		this._bindDiscoverModel(model);
 		
 		model.changeState(OPCUA_ORGAN_STATES.discovering);
-		const server = model.network.get();
-		console.log("discovering", server.name || "");
-		
-		// const tree = testJSON;
+		const server = model.network.get();		
 
 		return this._getOPCUATree(server)
 			.then(async ({ tree, variables }) => {
 				await model.setTreeDiscovered(tree);
 				console.log(server.name, "discovered !!");
 				model.changeState(OPCUA_ORGAN_STATES.discovered);
-				// await writeInFile("../../tree.txt", JSON.stringify(tree));
+				await writeInFile("../../tree.txt", JSON.stringify(tree));
 				return tree;
 				
 			}).catch((err) => {
-				console.error("hello error", err);
 				model.changeState(OPCUA_ORGAN_STATES.error);
 			});
 
@@ -117,7 +113,11 @@ class SpinalDiscover extends EventEmitter {
 		await opcuaService.initialize(endpointUrl);
 		await opcuaService.connect(endpointUrl, userIdentity);
 
+		// const tree = testJSON;
+		// return {tree, variables: []}
+
 		const tree = await opcuaService.getTree(process.env.OPCUA_SERVER_ENTRYPOINT);
+		// const tree = await opcuaService.getTree2(process.env.OPCUA_SERVER_ENTRYPOINT);
 
 		await opcuaService.disconnect();
 		return tree;

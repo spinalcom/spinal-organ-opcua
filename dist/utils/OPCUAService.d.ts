@@ -11,16 +11,6 @@ export declare class OPCUAService extends EventEmitter {
     private endpointUrl;
     private monitoredItemsListData;
     private clientAlarms;
-    data: {
-        reconnectionCount: number;
-        tokenRenewalCount: number;
-        receivedBytes: number;
-        sentBytes: number;
-        sentChunks: number;
-        receivedChunks: number;
-        backoffCount: number;
-        transactionCount: number;
-    };
     constructor();
     initialize(endpointUrl: string): Promise<void>;
     createSubscription(): Promise<void>;
@@ -29,6 +19,7 @@ export declare class OPCUAService extends EventEmitter {
     getTree(entryPointPath?: string): Promise<{
         tree: {
             displayName: string;
+            path: string;
             nodeId: NodeIdLike;
             children: any[];
         };
