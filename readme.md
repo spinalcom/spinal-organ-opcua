@@ -20,9 +20,9 @@ spinal-organ-opcua requires at less :
 To install this connector clone it, then inside de folder run npm install.
 
 ```
-git clone [text](https://github.com/spinalcom/spinal-organ-opcua.git)
-npm install
-``
+# git clone https://github.com/spinalcom/spinal-organ-opcua.git
+# npm install
+```
 
 ## Usage
 
@@ -32,7 +32,6 @@ Rename ```.env copy``` file as ```.env```, then modify the following information
 
 
 ```
-
 ORGAN_NAME="name"                               # the connector config name
 USER_ID="XXX"                                   # hub user id
 PASSWORD="*******"                              # hub user password
@@ -43,8 +42,7 @@ ORGAN_FOLDER_PATH="/__users__/admin/organs"     # the path to store/retrieve the
 
 OPCUA_SERVER_ENTRYPOINT="/"                     #if empty, the server will discover the default entry point (Objects Folder) otherwise, it will use the provided path.
 
-
 ```
 
 
-This connector also requires the viewer plugin [text](https://github.com/spinalcom/spinal-env-viewer-plugin-opcua-manager). you can follow the link to know how to intall the plugin.
+This connector also requires the viewer plugin https://github.com/spinalcom/spinal-env-viewer-plugin-opcua-manager. you can follow the link to know how to intall the plugin.
