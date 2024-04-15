@@ -45,4 +45,4 @@ OPCUA_SERVER_ENTRYPOINT="/"                     #if empty, the server will disco
 ```
 
 
-This connector also requires the viewer plugin https://github.com/spinalcom/spinal-env-viewer-plugin-opcua-manager. you can follow the link to know how to intall the plugin.
+This connector also requires the viewer plugin https://github.com/spinalcom/spinal-env-viewer-plugin-opcua-manager. you can follow the link to know how to intall it.
