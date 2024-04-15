@@ -113,14 +113,14 @@ class SpinalDiscover extends EventEmitter {
 		await opcuaService.initialize(endpointUrl);
 		await opcuaService.connect(endpointUrl, userIdentity);
 
-		// const tree = testJSON;
-		// return {tree, variables: []}
+		const tree = testJSON;
+		return {tree, variables: []}
 
-		const tree = await opcuaService.getTree(process.env.OPCUA_SERVER_ENTRYPOINT);
+		// const tree = await opcuaService.getTree(process.env.OPCUA_SERVER_ENTRYPOINT);
 		// const tree = await opcuaService.getTree2(process.env.OPCUA_SERVER_ENTRYPOINT);
 
-		await opcuaService.disconnect();
-		return tree;
+		// await opcuaService.disconnect();
+		// return tree;
 	}
 
 	private async _createNetworkTreeInGraph(model: SpinalOPCUADiscoverModel) {

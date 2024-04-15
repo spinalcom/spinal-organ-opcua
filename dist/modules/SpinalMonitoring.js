@@ -26,6 +26,7 @@ class SpinalMonitoring {
         this.initializedMap = new Map();
         this.spinalDevices = new Map();
         this.idNetworkToSpinalDevice = new Map();
+        this.spinalNetworkUtils = SpinalNetworkUtils_1.SpinalNetworkUtils.getInstance();
     }
     addToMonitoringList(spinalListenerModel) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -33,18 +34,17 @@ class SpinalMonitoring {
         });
     }
     init() {
-        this.queue.on("start", () => {
-            this.startDeviceInitialisation();
-        });
+        this.queue.on("start", () => this.startDeviceInitialisation());
+        this.spinalNetworkUtils.on("profileUpdated", ({ profileId, devicesIds }) => this._updateProfile(profileId, devicesIds));
     }
     startDeviceInitialisation() {
         return __awaiter(this, void 0, void 0, function* () {
             const list = this.queue.getQueue();
             this.queue.refresh();
-            const promises = list.map(el => SpinalNetworkUtils_1.SpinalNetworkUtils.getInstance().initSpinalListenerModel(el));
+            const promises = list.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
             const devices = lodash.flattenDeep(yield Promise.all(promises));
             const filtered = devices.filter(el => typeof el !== "undefined");
-            yield this._addToMaps(filtered);
+            yield this._bindData(filtered);
             // // await this.addToQueue(filtered);
             if (!this.isProcessing) {
                 this.isProcessing = true;
@@ -63,6 +63,11 @@ class SpinalMonitoring {
                 const { priority, element } = this.priorityQueue.dequeue();
                 const data = this.intervalTimesMap.get(element.interval);
                 if (data) {
+                    // if(priority > Date.now()) {
+                    //     await this.waitFct(200); // wait pour ne pas avoir une boucle infinie
+                    //     this.priorityQueue.enqueue({ interval: element.interval }, priority);
+                    //     continue;
+                    // }
                     yield this.updateData(data, element.interval, priority);
                 }
             }
@@ -92,7 +97,7 @@ class SpinalMonitoring {
             this.priorityQueue.enqueue({ interval }, Date.now() + interval);
         });
     }
-    _addToMaps(data) {
+    _bindData(data) {
         for (const { context, spinalDevice, profile, spinalModel, network } of data) {
             this.spinalDevices.set(spinalDevice.deviceInfo.id, spinalDevice);
             spinalModel.monitored.bind(() => __awaiter(this, void 0, void 0, function* () {
@@ -101,44 +106,49 @@ class SpinalMonitoring {
                 const serverInfo = network.info.serverInfo.get();
                 const url = (0, Functions_1.getServerUrl)(serverInfo);
                 if (!monitored) {
-                    console.log(deviceInfo.name, "not monitored");
-                    this._removeToMaps(deviceInfo.id, url);
+                    console.log(deviceInfo.name, "is stopped");
+                    this._removeFromMaps(deviceInfo.id, url);
                     return;
                 }
                 console.log("start monitoring", deviceInfo.name);
-                const promises = profile.intervals.map((el) => {
-                    var _a;
-                    const interval = Number(el.value);
-                    if (isNaN(interval) || interval <= 0 || !((_a = el.children) === null || _a === void 0 ? void 0 : _a.length))
-                        return;
-                    // add to interval map
-                    let intervalObj = this.intervalTimesMap.get(interval) || {};
-                    const value = intervalObj[url] || [];
-                    value.push({
-                        id: deviceInfo.id,
-                        nodeToUpdate: el.children.map((el) => {
-                            const i = el.idNetwork;
-                            this.idNetworkToSpinalDevice.set(i, spinalDevice);
-                            return { displayName: i, nodeId: i };
-                        })
-                    });
-                    intervalObj[url] = value;
-                    this.intervalTimesMap.set(interval, intervalObj);
-                    // end add to interval map
-                    // add to priority queue
-                    const arr = this.priorityQueue.toArray();
-                    //@ts-ignore
-                    const found = arr.find((p) => p.interval === interval);
-                    if (!found)
-                        this.priorityQueue.enqueue({ interval }, interval + Date.now());
-                    // end add to priority queue
-                    return;
-                });
-                return Promise.all(promises);
+                yield this._addToMaps({ url, spinalDevice, profile, deviceInfo });
             }));
         }
     }
-    _removeToMaps(deviceId, url) {
+    _addToMaps({ url, spinalDevice, profile, deviceInfo }) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const promises = profile.intervals.map((el) => {
+                var _a;
+                const interval = Number(el.value);
+                if (isNaN(interval) || interval <= 0 || !((_a = el.children) === null || _a === void 0 ? void 0 : _a.length))
+                    return;
+                // add to interval map
+                let intervalObj = this.intervalTimesMap.get(interval) || {};
+                const value = intervalObj[url] || [];
+                value.push({
+                    id: deviceInfo.id,
+                    nodeToUpdate: el.children.map((el) => {
+                        const i = el.idNetwork;
+                        this.idNetworkToSpinalDevice.set(i, spinalDevice);
+                        return { displayName: i, nodeId: i };
+                    })
+                });
+                intervalObj[url] = value;
+                this.intervalTimesMap.set(interval, intervalObj);
+                // end add to interval map
+                // add to priority queue
+                const arr = this.priorityQueue.toArray();
+                //@ts-ignore
+                const found = arr.find((p) => p.interval === interval);
+                if (!found)
+                    this.priorityQueue.enqueue({ interval }, interval + Date.now());
+                // end add to priority queue
+                return;
+            });
+            return Promise.all(promises);
+        });
+    }
+    _removeFromMaps(deviceId, url) {
         this.intervalTimesMap.forEach((valueObj, key) => {
             if (valueObj[url]) {
                 valueObj[url] = valueObj[url].filter(el => el.id !== deviceId);
@@ -204,6 +214,14 @@ class SpinalMonitoring {
             obj[device.deviceInfo.id][key] = value;
         }
         return obj;
+    }
+    _updateProfile(profileId, devicesIds) {
+        return devicesIds.map((deviceId) => {
+            const device = this.spinalDevices.get(deviceId);
+            if (!device)
+                return;
+            device.restartMonitoring();
+        });
     }
 }
 const spinalMonitoring = new SpinalMonitoring();

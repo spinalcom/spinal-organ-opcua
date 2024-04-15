@@ -2,7 +2,8 @@ import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 import { SpinalOPCUAListener } from "spinal-model-opcua";
 import { OPCUAProfileService } from "./profile_service";
 import { SpinalDevice } from "../modules/SpinalDevice";
-
+import { EventEmitter } from "stream";
+import { Process } from "spinal-core-connectorjs_type";
 export interface IProfile {
     modificationDate: number;
     node: SpinalNode;
@@ -22,12 +23,16 @@ export interface IDeviceInfo {
     network: SpinalNode;
 }
 
-export class SpinalNetworkUtils {
+export class SpinalNetworkUtils extends EventEmitter {
     static instance : SpinalNetworkUtils;
 
     profiles : Map<string, IProfile> = new Map();
+    profileToDevices : Map<string, Set<string>> = new Map();
+    profileBinded: Map<string, Process> = new Map();
 
-    private constructor() {}
+    private constructor() {
+        super();
+    }
 
     static getInstance() {
         if (!this.instance) this.instance = new SpinalNetworkUtils();
@@ -39,14 +44,16 @@ export class SpinalNetworkUtils {
         
         const { context, device, profile, network} = await spinalListenerModel.getAllData();
         const serverinfo = network.info.serverInfo.get();
-        const spinalDevice = new SpinalDevice(serverinfo,context, network, device, spinalListenerModel.saveTimeSeries);
+        const spinalDevice = new SpinalDevice(serverinfo,context, network, device, spinalListenerModel);
         await spinalDevice.init();
 
-        return {context, spinalDevice, profile : await this.initProfile(profile), spinalModel : spinalListenerModel, network};
+        const deviceId = spinalDevice.deviceInfo.id;
+
+        return {context, spinalDevice, profile : await this.initProfile(profile, deviceId), spinalModel : spinalListenerModel, network};
     }
 
 
-    public async initProfile(profile: SpinalNode): Promise<IProfile> {
+    public async initProfile(profile: SpinalNode, deviceId: string): Promise<IProfile> {
         const profileId = profile.getId().get();
         
         if (this.profiles.has(profileId) && this.profiles.get(profileId).modificationDate === profile.info.indirectModificationDate.get()) {
@@ -59,9 +66,30 @@ export class SpinalNetworkUtils {
             node: profile,
             intervals
         }
-
         this.profiles.set(profileId, data);
+
+
+        const ids = this.profileToDevices.get(profileId) || new Set();
+        ids.add(deviceId);
+        
+        this.profileToDevices.set(profileId, ids);
+
+        this._bindProfile(profile);
+
         return data;
+    }
+
+    private _bindProfile(profile: SpinalNode) {
+        const profileId = profile.getId().get(); 
+        if(this.profileBinded.has(profileId)) return;
+        
+        const bindProcess = profile.info.indirectModificationDate.bind(() => {
+            const devicesIds = this.profileToDevices.get(profileId);
+            console.log(`profile changed`)
+            this.emit("profileUpdated", {profileId: profileId, devicesIds: Array.from(devicesIds) });
+        }, false);
+
+        this.profileBinded.set(profileId, bindProcess);
     }
 }
 

@@ -35,6 +35,7 @@ import { SpinalServiceTimeseries } from "spinal-model-timeseries";
 import { SpinalGraphService } from "spinal-env-viewer-graph-service";
 import { convertSpinalNodeToOPCNode } from "../utils/utils";
 import { getServerUrl } from "../utils/Functions";
+import { SpinalOPCUAListener } from "spinal-model-opcua";
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
@@ -52,16 +53,16 @@ export class SpinalDevice extends EventEmitter {
 
 	private nodes: { [key: string]: SpinalNode } = {};
 	private endpoints: { [key: string]: SpinalNode } = {};
-	private variablesIds = [];
+	private spinalListenerModel: SpinalOPCUAListener;
 
-	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, saveTimeSeries: spinal.Bool) {
+	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener) {
 		super();
 		this.endpointUrl = getServerUrl(server);
 		this.context = context;
 		this.network = network;
 		this.device = device;
 		this.deviceInfo = device.info.get();
-		this.saveTimeSeries = saveTimeSeries;
+		this.spinalListenerModel = spinalListenerModel;
 	}
 
 
@@ -83,57 +84,20 @@ export class SpinalDevice extends EventEmitter {
 
 
 
-	// public async createTreeInGraph(tree: IOPCNode): Promise<SpinalNode[]> {
-	// 	console.log("creating in graph...");
+	stopMonitoring() {
+		this.spinalListenerModel.monitored.set(false);
+	}
 
-	// 	const values = await this._getVariablesValues(this.variablesIds);
-	// 	const nodes = await this._transformTreeToGraphRecursively(tree, undefined, values);
+	startMonitoring() {
+		this.spinalListenerModel.monitored.set(true);
+	}
 
-	// 	const promises = nodes.map(({ node, relation, alreadyExist }) => {
-	// 		if (!alreadyExist) {
-	// 			this.device.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, this.context);
-	// 		}
-	// 		return node;
-	// 	});
-
-	// 	return Promise.all(promises).then((result) => {
-	// 		console.log("created");
-	// 		return result;
-	// 	});
-
-	// 	// return Promise.all(promises).then(async (result) => {
-	// 	// 	console.log("created");
-	// 	// 	console.log("updating variables values..");
-	// 	// 	const keys = Object.keys(this.endpoints);
-	// 	// 	const values = await this._getVariablesValues(keys);
-	// 	// 	const promises = keys.map(async (id) => {
-	// 	// 		try {
-	// 	// 			const node = this.endpoints[id];
-	// 	// 			if (node) {
-	// 	// 				const value = values[id]?.value && values[id]?.value.toString().length ? values[id].value : null;
-	// 	// 				const dataType = values[id]?.dataType || "";
-
-	// 	// 				const element = await node.getElement(true);
-	// 	// 				console.log(node._server_id, value, dataType);
-	// 	// 				element.mod_attr("currentValue", value);
-	// 	// 				element.mod_attr("dataType", dataType);
-	// 	// 			}
-	// 	// 		} catch (error) {}
-	// 	// 	});
-
-	// 	// 	return Promise.all(promises).then(() => {
-	// 	// 		console.log("updated");
-	// 	// 		return result;
-	// 	// 	});
-	// 	// });
-	// }
-
-	// public async monitorItems(nodeIds: string | string[]) {
-	// 	nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
-	// 	await this.opcuaService.monitorItem(nodeIds, this.monitorCallback.bind(this));
-	// }
-
-	
+	restartMonitoring() {
+		this.stopMonitoring();
+		setTimeout(() => {
+			this.startMonitoring();
+		}, 1000);
+	}
 
 
 	/////////////////////////////////////////////////////////////////////////
@@ -145,7 +109,8 @@ export class SpinalDevice extends EventEmitter {
 
 			if(value === null) value = "null";
 
-			const saveTimeSeries = this.saveTimeSeries?.get();
+			const saveTimeSeries = this.spinalListenerModel.saveTimeSeries?.get();
+
 			const element = await endpointNode.getElement(true);
 			if (!element) return false;
 

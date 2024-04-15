@@ -18,6 +18,7 @@ const transformTreeToGraph_1 = require("../utils/transformTreeToGraph");
 const Functions_1 = require("../utils/Functions");
 const node_opcua_1 = require("node-opcua");
 const addNetworkToGraph_1 = require("../utils/addNetworkToGraph");
+const testJSON = require("./test.json");
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDiscover extends events_1.EventEmitter {
     constructor() {
@@ -109,12 +110,12 @@ class SpinalDiscover extends events_1.EventEmitter {
             const opcuaService = new OPCUAService_1.default();
             yield opcuaService.initialize(endpointUrl);
             yield opcuaService.connect(endpointUrl, userIdentity);
-            // const tree = testJSON;
-            // return {tree, variables: []}
-            const tree = yield opcuaService.getTree(process.env.OPCUA_SERVER_ENTRYPOINT);
+            const tree = testJSON;
+            return { tree, variables: [] };
+            // const tree = await opcuaService.getTree(process.env.OPCUA_SERVER_ENTRYPOINT);
             // const tree = await opcuaService.getTree2(process.env.OPCUA_SERVER_ENTRYPOINT);
-            yield opcuaService.disconnect();
-            return tree;
+            // await opcuaService.disconnect();
+            // return tree;
         });
     }
     _createNetworkTreeInGraph(model) {

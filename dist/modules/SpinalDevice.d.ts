@@ -2,6 +2,7 @@
 import { EventEmitter } from "events";
 import { SpinalNode, SpinalContext } from "spinal-env-viewer-graph-service";
 import { IServer } from "spinal-model-opcua";
+import { SpinalOPCUAListener } from "spinal-model-opcua";
 export declare class SpinalDevice extends EventEmitter {
     private endpointUrl;
     private opcuaService;
@@ -17,8 +18,8 @@ export declare class SpinalDevice extends EventEmitter {
     };
     private nodes;
     private endpoints;
-    private variablesIds;
-    constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, saveTimeSeries: spinal.Bool);
+    private spinalListenerModel;
+    constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener);
     init(): Promise<SpinalNode<any>[]>;
     updateEndpoints(values: {
         [key: string]: {
@@ -26,6 +27,9 @@ export declare class SpinalDevice extends EventEmitter {
             value: any;
         };
     }): Promise<boolean[]>;
+    stopMonitoring(): void;
+    startMonitoring(): void;
+    restartMonitoring(): void;
     private _updateEndpoint;
     private _convertNodesToObj;
 }

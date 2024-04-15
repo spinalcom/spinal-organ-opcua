@@ -12,9 +12,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SpinalNetworkUtils = void 0;
 const profile_service_1 = require("./profile_service");
 const SpinalDevice_1 = require("../modules/SpinalDevice");
-class SpinalNetworkUtils {
+const stream_1 = require("stream");
+class SpinalNetworkUtils extends stream_1.EventEmitter {
     constructor() {
+        super();
         this.profiles = new Map();
+        this.profileToDevices = new Map();
+        this.profileBinded = new Map();
     }
     static getInstance() {
         if (!this.instance)
@@ -25,12 +29,13 @@ class SpinalNetworkUtils {
         return __awaiter(this, void 0, void 0, function* () {
             const { context, device, profile, network } = yield spinalListenerModel.getAllData();
             const serverinfo = network.info.serverInfo.get();
-            const spinalDevice = new SpinalDevice_1.SpinalDevice(serverinfo, context, network, device, spinalListenerModel.saveTimeSeries);
+            const spinalDevice = new SpinalDevice_1.SpinalDevice(serverinfo, context, network, device, spinalListenerModel);
             yield spinalDevice.init();
-            return { context, spinalDevice, profile: yield this.initProfile(profile), spinalModel: spinalListenerModel, network };
+            const deviceId = spinalDevice.deviceInfo.id;
+            return { context, spinalDevice, profile: yield this.initProfile(profile, deviceId), spinalModel: spinalListenerModel, network };
         });
     }
-    initProfile(profile) {
+    initProfile(profile, deviceId) {
         return __awaiter(this, void 0, void 0, function* () {
             const profileId = profile.getId().get();
             if (this.profiles.has(profileId) && this.profiles.get(profileId).modificationDate === profile.info.indirectModificationDate.get()) {
@@ -43,8 +48,23 @@ class SpinalNetworkUtils {
                 intervals
             };
             this.profiles.set(profileId, data);
+            const ids = this.profileToDevices.get(profileId) || new Set();
+            ids.add(deviceId);
+            this.profileToDevices.set(profileId, ids);
+            this._bindProfile(profile);
             return data;
         });
+    }
+    _bindProfile(profile) {
+        const profileId = profile.getId().get();
+        if (this.profileBinded.has(profileId))
+            return;
+        const bindProcess = profile.info.indirectModificationDate.bind(() => {
+            const devicesIds = this.profileToDevices.get(profileId);
+            console.log(`profile changed`);
+            this.emit("profileUpdated", { profileId: profileId, devicesIds: Array.from(devicesIds) });
+        }, false);
+        this.profileBinded.set(profileId, bindProcess);
     }
 }
 exports.SpinalNetworkUtils = SpinalNetworkUtils;

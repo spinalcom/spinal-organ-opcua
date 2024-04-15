@@ -45,19 +45,18 @@ const securityMode = node_opcua_client_1.MessageSecurityMode["None"];
 const securityPolicy = node_opcua_client_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDevice extends events_1.EventEmitter {
-    constructor(server, context, network, device, saveTimeSeries) {
+    constructor(server, context, network, device, spinalListenerModel) {
         super();
         this.opcuaService = new OPCUAService_1.default();
         this.isInit = false;
         this.nodes = {};
         this.endpoints = {};
-        this.variablesIds = [];
         this.endpointUrl = (0, Functions_1.getServerUrl)(server);
         this.context = context;
         this.network = network;
         this.device = device;
         this.deviceInfo = device.info.get();
-        this.saveTimeSeries = saveTimeSeries;
+        this.spinalListenerModel = spinalListenerModel;
     }
     init() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -79,48 +78,18 @@ class SpinalDevice extends events_1.EventEmitter {
             return Promise.all(promises);
         });
     }
-    // public async createTreeInGraph(tree: IOPCNode): Promise<SpinalNode[]> {
-    // 	console.log("creating in graph...");
-    // 	const values = await this._getVariablesValues(this.variablesIds);
-    // 	const nodes = await this._transformTreeToGraphRecursively(tree, undefined, values);
-    // 	const promises = nodes.map(({ node, relation, alreadyExist }) => {
-    // 		if (!alreadyExist) {
-    // 			this.device.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, this.context);
-    // 		}
-    // 		return node;
-    // 	});
-    // 	return Promise.all(promises).then((result) => {
-    // 		console.log("created");
-    // 		return result;
-    // 	});
-    // 	// return Promise.all(promises).then(async (result) => {
-    // 	// 	console.log("created");
-    // 	// 	console.log("updating variables values..");
-    // 	// 	const keys = Object.keys(this.endpoints);
-    // 	// 	const values = await this._getVariablesValues(keys);
-    // 	// 	const promises = keys.map(async (id) => {
-    // 	// 		try {
-    // 	// 			const node = this.endpoints[id];
-    // 	// 			if (node) {
-    // 	// 				const value = values[id]?.value && values[id]?.value.toString().length ? values[id].value : null;
-    // 	// 				const dataType = values[id]?.dataType || "";
-    // 	// 				const element = await node.getElement(true);
-    // 	// 				console.log(node._server_id, value, dataType);
-    // 	// 				element.mod_attr("currentValue", value);
-    // 	// 				element.mod_attr("dataType", dataType);
-    // 	// 			}
-    // 	// 		} catch (error) {}
-    // 	// 	});
-    // 	// 	return Promise.all(promises).then(() => {
-    // 	// 		console.log("updated");
-    // 	// 		return result;
-    // 	// 	});
-    // 	// });
-    // }
-    // public async monitorItems(nodeIds: string | string[]) {
-    // 	nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
-    // 	await this.opcuaService.monitorItem(nodeIds, this.monitorCallback.bind(this));
-    // }
+    stopMonitoring() {
+        this.spinalListenerModel.monitored.set(false);
+    }
+    startMonitoring() {
+        this.spinalListenerModel.monitored.set(true);
+    }
+    restartMonitoring() {
+        this.stopMonitoring();
+        setTimeout(() => {
+            this.startMonitoring();
+        }, 1000);
+    }
     /////////////////////////////////////////////////////////////////////////
     //						PRIVATES METHODS
     /////////////////////////////////////////////////////////////////////////
@@ -130,7 +99,7 @@ class SpinalDevice extends events_1.EventEmitter {
             try {
                 if (value === null)
                     value = "null";
-                const saveTimeSeries = (_a = this.saveTimeSeries) === null || _a === void 0 ? void 0 : _a.get();
+                const saveTimeSeries = (_a = this.spinalListenerModel.saveTimeSeries) === null || _a === void 0 ? void 0 : _a.get();
                 const element = yield endpointNode.getElement(true);
                 if (!element)
                     return false;
