@@ -56,20 +56,19 @@ class SpinalMonitoring {
         let p = true;
         while (p) {
             if (this.priorityQueue.isEmpty()) {
-  
-              await this.waitFct(100);
-              continue;
+                await this.waitFct(900);
+                continue;
             }
   
             const { priority, element } = this.priorityQueue.dequeue();
             const data = this.intervalTimesMap.get(element.interval);
 
             if (data) {
-                // if(priority > Date.now()) {
-                //     await this.waitFct(200); // wait pour ne pas avoir une boucle infinie
-                //     this.priorityQueue.enqueue({ interval: element.interval }, priority);
-                //     continue;
-                // }
+                if(priority > Date.now()) {
+                    this.priorityQueue.enqueue({ interval: element.interval }, priority);
+                    await this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
+                    continue;
+                }
 
                 await this.updateData(data, element.interval, priority);
             }
@@ -78,7 +77,6 @@ class SpinalMonitoring {
     }
 
     public async updateData(data, interval: number, date?: number) {
-        
         
         try {
             
@@ -110,7 +108,6 @@ class SpinalMonitoring {
     }
 
     
-
     private _bindData(data: IDeviceInfo[]) {
         for (const {context, spinalDevice, profile, spinalModel, network} of data) {
             this.spinalDevices.set(spinalDevice.deviceInfo.id, spinalDevice);

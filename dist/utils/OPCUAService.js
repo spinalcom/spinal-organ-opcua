@@ -52,6 +52,7 @@ class OPCUAService extends events_1.EventEmitter {
                 // applicationName,
                 // applicationUri,
                 keepSessionAlive: true,
+                transportTimeout: 60 * 1000,
                 connectionStrategy: {
                     maxRetry: 3,
                     initialDelay: 1000,
@@ -124,7 +125,9 @@ class OPCUAService extends events_1.EventEmitter {
             };
             while (queue.length) {
                 queue = yield getAndFormatChilren(queue);
+                console.log(`[getTree] ${queue.length} nodes to browse`);
             }
+            console.log(`${this.endpointUrl} discovered ${Object.keys(obj).length} nodes.`);
             return { tree, variables };
             function getAndFormatChilren(list) {
                 return __awaiter(this, void 0, void 0, function* () {
@@ -175,19 +178,20 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree2(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
-            console.log("discovering", this.endpointUrl || "", "may take up to 30min or more...");
+            console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
             const tree = yield this._getEntryPoint(entryPointPath);
             // const tree = {
             // 	displayName: "Metiers",
             // 	nodeId: "ns=14;s=O=ac:Metiers/;B=ac:Metiers/;S=Metiers",
             // 	children: [],
             // };
-            yield this.browseNode(tree);
+            yield this.browseNodeRec(tree);
             return { tree };
         });
     }
-    browseNode(node) {
+    browseNodeRec(node) {
         return __awaiter(this, void 0, void 0, function* () {
+            console.log("browsing", node.displayName, "inside browseNodeRec");
             const nodesToBrowse = [
                 {
                     nodeId: node.nodeId,
@@ -219,7 +223,7 @@ class OPCUAService extends events_1.EventEmitter {
                 if (name == "server" || name[0] == ".")
                     continue;
                 const nodeInfo = this._formatReference(reference, node.path);
-                yield this.browseNode(nodeInfo);
+                yield this.browseNodeRec(nodeInfo);
                 res.push(nodeInfo);
             }
             node.children.push(...res);
@@ -264,6 +268,7 @@ class OPCUAService extends events_1.EventEmitter {
                                 continue;
                             children.push({
                                 displayName: ref.displayName.text || ref.browseName.toString(),
+                                browseName: ref.browseName.toString() || "",
                                 nodeId: ref.nodeId,
                                 nodeClass: ref.nodeClass,
                             });
@@ -447,7 +452,7 @@ class OPCUAService extends events_1.EventEmitter {
                 console.log(" security_token_renewed on " + this.endpointUrl);
         });
         this.client.on("timed_out_request", (request) => {
-            console.log(`Client request timed out !!`);
+            this.emit("timed_out_request", request);
         });
     }
     _listenSessionEvent() {

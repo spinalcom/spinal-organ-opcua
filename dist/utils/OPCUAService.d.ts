@@ -29,7 +29,7 @@ export declare class OPCUAService extends EventEmitter {
         [key: string]: ReferenceDescription[];
     }>;
     getTree2(entryPointPath?: string): Promise<any>;
-    browseNode(node: any): Promise<any[]>;
+    browseNodeRec(node: any): Promise<any[]>;
     getNodeChildren2(node: IOPCNode): Promise<IOPCNode[]>;
     extractBrowsePath(nodeId: NodeId): Promise<string>;
     readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;

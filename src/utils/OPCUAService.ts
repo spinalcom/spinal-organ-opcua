@@ -42,6 +42,7 @@ export class OPCUAService extends EventEmitter {
 			// applicationName,
 			// applicationUri,
 			keepSessionAlive: true,
+			transportTimeout: 60 * 1000,
 			connectionStrategy: {
 				maxRetry: 3,
 				initialDelay: 1000,
@@ -115,8 +116,10 @@ export class OPCUAService extends EventEmitter {
 
 		while (queue.length) {
 			queue = await getAndFormatChilren(queue);
+			console.log(`[getTree] ${queue.length} nodes to browse`);
 		}
 
+		console.log(`${this.endpointUrl} discovered ${Object.keys(obj).length} nodes.`);
 		return { tree, variables };
 
 		async function getAndFormatChilren(list) {
@@ -174,7 +177,7 @@ export class OPCUAService extends EventEmitter {
 	//					Exemple 2 : getTree (take a lot of time)		 	 //
 	///////////////////////////////////////////////////////////////////////////
 	public async getTree2(entryPointPath?: string): Promise<any> {
-		console.log("discovering", this.endpointUrl || "", "may take up to 30min or more...");
+		console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
 		const tree = await this._getEntryPoint(entryPointPath);
 
 		// const tree = {
@@ -185,12 +188,14 @@ export class OPCUAService extends EventEmitter {
 
 		
 
-		await this.browseNode(tree);
+		await this.browseNodeRec(tree);
 
 		return { tree };
 	}
 
-	public async browseNode(node: any) {
+	public async browseNodeRec(node: any) {
+		console.log("browsing", node.displayName, "inside browseNodeRec");
+
 		const nodesToBrowse = [
 			{
 				nodeId: node.nodeId,
@@ -226,7 +231,7 @@ export class OPCUAService extends EventEmitter {
 
 			const nodeInfo = this._formatReference(reference, node.path);
 
-			await this.browseNode(nodeInfo);
+			await this.browseNodeRec(nodeInfo);
 			res.push(nodeInfo);
 		}
 
@@ -273,6 +278,7 @@ export class OPCUAService extends EventEmitter {
 
 						children.push({
 							displayName: ref.displayName.text || ref.browseName.toString(),
+							browseName: ref.browseName.toString() || "",
 							nodeId: ref.nodeId,
 							nodeClass: ref.nodeClass as number,
 						});
@@ -475,7 +481,7 @@ export class OPCUAService extends EventEmitter {
 		});
 
 		this.client.on("timed_out_request", (request) => {
-			console.log(`Client request timed out !!`);
+			this.emit("timed_out_request", request);
 		});
 	}
 

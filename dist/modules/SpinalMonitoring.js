@@ -57,17 +57,17 @@ class SpinalMonitoring {
             let p = true;
             while (p) {
                 if (this.priorityQueue.isEmpty()) {
-                    yield this.waitFct(100);
+                    yield this.waitFct(900);
                     continue;
                 }
                 const { priority, element } = this.priorityQueue.dequeue();
                 const data = this.intervalTimesMap.get(element.interval);
                 if (data) {
-                    // if(priority > Date.now()) {
-                    //     await this.waitFct(200); // wait pour ne pas avoir une boucle infinie
-                    //     this.priorityQueue.enqueue({ interval: element.interval }, priority);
-                    //     continue;
-                    // }
+                    if (priority > Date.now()) {
+                        this.priorityQueue.enqueue({ interval: element.interval }, priority);
+                        yield this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
+                        continue;
+                    }
                     yield this.updateData(data, element.interval, priority);
                 }
             }
