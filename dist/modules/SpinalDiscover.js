@@ -102,7 +102,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 return tree;
             })).catch((err) => __awaiter(this, void 0, void 0, function* () {
                 if (tryTree2) {
-                    console.log("getTree failed, trying with tree2");
+                    console.log("failed to use multi browsing, trying with unique browsing");
                     return opcuaService.getTree2(entryPointPath);
                 }
                 throw err;

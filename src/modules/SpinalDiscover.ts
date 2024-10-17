@@ -63,15 +63,15 @@ class SpinalDiscover extends EventEmitter {
 				case OPCUA_ORGAN_STATES.readyToCreate:
 					this._createNetworkTreeInGraph(model);
 					break;
-					case OPCUA_ORGAN_STATES.error:
-					case OPCUA_ORGAN_STATES.timeout:
+				case OPCUA_ORGAN_STATES.error:
+				case OPCUA_ORGAN_STATES.timeout:
 					break;
 			}
 		});
 	}
 
-	private async _discoverDevice(model: SpinalOPCUADiscoverModel) {	
-		const server = model.network.get();		
+	private async _discoverDevice(model: SpinalOPCUADiscoverModel) {
+		const server = model.network.get();
 		console.log("discovering", server.name);
 
 		return this._getOPCUATree(server, true)
@@ -81,7 +81,7 @@ class SpinalDiscover extends EventEmitter {
 				model.changeState(OPCUA_ORGAN_STATES.discovered);
 				await writeInFile("../../tree.txt", JSON.stringify(tree));
 				return tree;
-				
+
 			}).catch((err) => {
 				console.log(server.name, "discovery failed !!");
 				model.changeState(OPCUA_ORGAN_STATES.error);
@@ -91,32 +91,32 @@ class SpinalDiscover extends EventEmitter {
 
 	// tryTree2 is used to try the second method to get the tree if the first one failed
 	private async _getOPCUATree(server, tryTree2 = true) {
-			const endpointUrl = getServerUrl(server);
-			const entryPointPath = process.env.OPCUA_SERVER_ENTRYPOINT;
+		const endpointUrl = getServerUrl(server);
+		const entryPointPath = process.env.OPCUA_SERVER_ENTRYPOINT;
 
-			const opcuaService: OPCUAService = new OPCUAService();
-			
-			await opcuaService.initialize(endpointUrl);
-			await opcuaService.connect(endpointUrl, userIdentity);
+		const opcuaService: OPCUAService = new OPCUAService();
+
+		await opcuaService.initialize(endpointUrl);
+		await opcuaService.connect(endpointUrl, userIdentity);
 
 
-			// const tree = testJSON;
-			// return {tree, variables: []}
+		// const tree = testJSON;
+		// return {tree, variables: []}
 
-			return opcuaService.getTree(entryPointPath)
-				.then(async (tree) => {
-					await opcuaService.disconnect();
-					return tree;
-				}).catch(async (err) => {
-					if(tryTree2) {
-						console.log("getTree failed, trying with tree2");
-						return opcuaService.getTree2(entryPointPath);
-					}
-					throw err;
-				}).finally(async () => {
-					await opcuaService.disconnect();
-				});
-		
+		return opcuaService.getTree(entryPointPath)
+			.then(async (tree) => {
+				await opcuaService.disconnect();
+				return tree;
+			}).catch(async (err) => {
+				if (tryTree2) {
+					console.log("failed to use multi browsing, trying with unique browsing");
+					return opcuaService.getTree2(entryPointPath);
+				}
+				throw err;
+			}).finally(async () => {
+				await opcuaService.disconnect();
+			});
+
 	}
 
 	private async _createNetworkTreeInGraph(model: SpinalOPCUADiscoverModel) {
@@ -129,7 +129,6 @@ class SpinalDiscover extends EventEmitter {
 		const values = await this._getVariablesValues(server, variables);
 
 		const context = await model.getContext();
-
 		const { network, organ } = await getOrGenNetworkNode(model, context);
 
 		const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network);
@@ -140,10 +139,10 @@ class SpinalDiscover extends EventEmitter {
 				return addNetworkToGraph(model, nodes, context, network, organ)
 			}).then(() => {
 				model.changeState(OPCUA_ORGAN_STATES.created);
-				console.log("network", network.getName().get() ,"created !!");
+				console.log("network", network.getName().get(), "created !!");
 			}).catch((err) => {
 				model.changeState(OPCUA_ORGAN_STATES.error);
-				console.log(network.getName().get(),"creation failed !")
+				console.log(network.getName().get(), "creation failed !")
 			});
 
 	}

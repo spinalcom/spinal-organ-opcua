@@ -25,7 +25,7 @@ export declare class OPCUAService extends EventEmitter {
         };
         variables: any[];
     }>;
-    getChildren(nodesToBrowse: any[]): Promise<{
+    _chunckAndGetChildren(nodesToBrowse: any[], chunkSize?: number): Promise<{
         [key: string]: ReferenceDescription[];
     }>;
     getTree2(entryPointPath?: string): Promise<any>;

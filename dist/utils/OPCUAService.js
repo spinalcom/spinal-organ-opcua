@@ -115,7 +115,7 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
-            console.log("discovering", this.endpointUrl || "");
+            console.log("discovering", this.endpointUrl || "", "using getTree [1] - browsing several nodes");
             const _self = this;
             const tree = yield this._getEntryPoint(entryPointPath);
             let variables = [];
@@ -132,7 +132,7 @@ class OPCUAService extends events_1.EventEmitter {
             function getAndFormatChilren(list) {
                 return __awaiter(this, void 0, void 0, function* () {
                     const nodesToBrowse = list.map((el) => (0, utils_1.convertToBrowseDescription)(el)).flat();
-                    const childrenObj = yield _self.getChildren(nodesToBrowse);
+                    const childrenObj = yield _self._chunckAndGetChildren(nodesToBrowse);
                     const newQueue = [];
                     for (const key in childrenObj) {
                         const children = childrenObj[key];
@@ -154,9 +154,9 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    getChildren(nodesToBrowse) {
+    _chunckAndGetChildren(nodesToBrowse, chunkSize = 100) {
         return __awaiter(this, void 0, void 0, function* () {
-            const list = lodash.chunk(nodesToBrowse, 500);
+            const list = lodash.chunk(nodesToBrowse, chunkSize);
             const browseResults = [];
             for (const i of list) {
                 const t = yield this.session.browse(i);
@@ -180,12 +180,24 @@ class OPCUAService extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
             const tree = yield this._getEntryPoint(entryPointPath);
-            // const tree = {
-            // 	displayName: "Metiers",
-            // 	nodeId: "ns=14;s=O=ac:Metiers/;B=ac:Metiers/;S=Metiers",
-            // 	children: [],
-            // };
-            yield this.browseNodeRec(tree);
+            const queue = [tree];
+            while (queue.length > 0) {
+                const node = queue.shift();
+                const nodesToBrowse = (0, utils_1.convertToBrowseDescription)(node);
+                const browseResults = yield this.session.browse(nodesToBrowse);
+                const references = browseResults.map((el) => el.references).flat();
+                const children = [];
+                for (const reference of references) {
+                    const name = (reference.displayName.text || reference.browseName.toString()).toLowerCase();
+                    if (name === "server" || name[0] === ".")
+                        continue;
+                    const nodeInfo = this._formatReference(reference, node.path);
+                    queue.push(nodeInfo);
+                    children.push(nodeInfo);
+                }
+                node.children = children;
+            }
+            // await this.browseNodeRec(tree);
             return { tree };
         });
     }
@@ -328,24 +340,6 @@ class OPCUAService extends events_1.EventEmitter {
                 dataValues.push(...values);
             }
             return dataValues.map((dataValue) => formatDataValue(dataValue));
-            // if (dataValues.statusCode == StatusCodes.Good) {
-            // 	if (dataValues.value.value) {
-            // 		const obj = { dataType: DataType[dataValues.value.dataType], value: undefined };
-            // 		switch (dataValues.value.arrayType) {
-            // 			case VariantArrayType.Scalar:
-            // 				obj.value = dataValues.value.value;
-            // 				break;
-            // 			case VariantArrayType.Array:
-            // 				obj.value = dataValues.value.value.join(",");
-            // 				break;
-            // 			default:
-            // 				obj.value = null;
-            // 				break;
-            // 		}
-            // 		return obj;
-            // 	}
-            // }
-            return null;
         });
     }
     writeNode(node, value) {
@@ -517,8 +511,6 @@ class OPCUAService extends events_1.EventEmitter {
     _getEntryPoint(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
             let start = {
-                // displayName: "RootFolder",
-                // nodeId: resolveNodeId("RootFolder"),
                 displayName: "Objects",
                 nodeId: node_opcua_1.ObjectIds.ObjectsFolder,
                 path: "/",
@@ -528,13 +520,6 @@ class OPCUAService extends events_1.EventEmitter {
                 return start;
             }
             return this._getNodeWithPath(start, entryPointPath);
-            // const path = new BrowsePath({
-            // 	startingNode: ObjectIds.ObjectsFolder,
-            // 	relativePath: makeRelativePath(entryPointPath),
-            // });
-            // this.session.translateBrowsePath(path).then((result) => {
-            // 	console.log(result.targets[0].targetId.toString());
-            // });
         });
     }
     _getNodeWithPath(start, entryPointPath) {

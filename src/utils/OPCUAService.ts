@@ -103,12 +103,12 @@ export class OPCUAService extends EventEmitter {
 	///////////////////////////////////////////////////////////////////////////
 
 	public async getTree(entryPointPath?: string) {
-		console.log("discovering", this.endpointUrl || "");
+		console.log("discovering", this.endpointUrl || "", "using getTree [1] - browsing several nodes");
 
 		const _self = this;
 		const tree = await this._getEntryPoint(entryPointPath);
-
 		let variables = [];
+
 		let queue = [tree];
 		const obj = {
 			[tree.nodeId.toString()]: tree,
@@ -124,26 +124,27 @@ export class OPCUAService extends EventEmitter {
 
 		async function getAndFormatChilren(list) {
 			const nodesToBrowse = list.map((el) => convertToBrowseDescription(el)).flat();
-			const childrenObj = await _self.getChildren(nodesToBrowse);
+			const childrenObj = await _self._chunckAndGetChildren(nodesToBrowse);
 			const newQueue = [];
 
 			for (const key in childrenObj) {
 				const children = childrenObj[key];
+
 				for (const child of children) {
 					const name = (child.displayName.text || child.browseName.toString()).toLowerCase();
 					if (name == "server" || name[0] == ".") continue;
-					
+
 					const parent = obj[key];
 
 					const nodeInfo: any = _self._formatReference(child, parent.path || "");
-	
+
 					if (nodeInfo.nodeClass === NodeClass.Variable) variables.push(nodeInfo.nodeId.toString());
-					
-					
+
+
 					parent.children.push(nodeInfo);
-					
+
 					newQueue.push(nodeInfo);
-					
+
 					obj[nodeInfo.nodeId.toString()] = nodeInfo;
 				}
 			}
@@ -152,8 +153,9 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	public async getChildren(nodesToBrowse: any[]): Promise<{ [key: string]: ReferenceDescription[] }> {
-		const list = lodash.chunk(nodesToBrowse, 500);
+	public async _chunckAndGetChildren(nodesToBrowse: any[], chunkSize: number = 100): Promise<{ [key: string]: ReferenceDescription[] }> {
+		const list = lodash.chunk(nodesToBrowse, chunkSize);
+
 		const browseResults = [];
 
 		for (const i of list) {
@@ -180,15 +182,28 @@ export class OPCUAService extends EventEmitter {
 		console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
 		const tree = await this._getEntryPoint(entryPointPath);
 
-		// const tree = {
-		// 	displayName: "Metiers",
-		// 	nodeId: "ns=14;s=O=ac:Metiers/;B=ac:Metiers/;S=Metiers",
-		// 	children: [],
-		// };
+		const queue: any[] = [tree];
 
-		
+		while (queue.length > 0) {
+			const node = queue.shift();
+			const nodesToBrowse = convertToBrowseDescription(node as any);
+			const browseResults = await this.session.browse(nodesToBrowse);
+			const references = browseResults.map((el) => el.references).flat();
+			const children = [];
 
-		await this.browseNodeRec(tree);
+			for (const reference of references) {
+				const name = (reference.displayName.text || reference.browseName.toString()).toLowerCase();
+				if (name === "server" || name[0] === ".") continue;
+
+				const nodeInfo = this._formatReference(reference, node.path);
+				queue.push(nodeInfo);
+				children.push(nodeInfo);
+			}
+
+			node.children = children;
+		}
+
+		// await this.browseNodeRec(tree);
 
 		return { tree };
 	}
@@ -341,27 +356,6 @@ export class OPCUAService extends EventEmitter {
 		}
 
 		return dataValues.map((dataValue) => formatDataValue(dataValue));
-
-		// if (dataValues.statusCode == StatusCodes.Good) {
-		// 	if (dataValues.value.value) {
-		// 		const obj = { dataType: DataType[dataValues.value.dataType], value: undefined };
-
-		// 		switch (dataValues.value.arrayType) {
-		// 			case VariantArrayType.Scalar:
-		// 				obj.value = dataValues.value.value;
-		// 				break;
-		// 			case VariantArrayType.Array:
-		// 				obj.value = dataValues.value.value.join(",");
-		// 				break;
-		// 			default:
-		// 				obj.value = null;
-		// 				break;
-		// 		}
-
-		// 		return obj;
-		// 	}
-		// }
-		return null;
 	}
 
 	public async writeNode(node: IOPCNode, value: any): Promise<any> {
@@ -463,7 +457,7 @@ export class OPCUAService extends EventEmitter {
 
 	private _listenClientEvents(): void {
 		this.client.on("backoff", (number, delay) => {
-			if(number === 3) return this.client.disconnect();
+			if (number === 3) return this.client.disconnect();
 			console.log(`connection failed, retrying attempt ${number + 1}`)
 		});
 
@@ -548,40 +542,28 @@ export class OPCUAService extends EventEmitter {
 		return { dataType, arrayDimension, valueRank };
 	}
 
-	private  _restartConnection = async () => {
+	private _restartConnection = async () => {
 		try {
-		  await this.client.disconnect()
-		  await this.client.connect(this.endpointUrl)
+			await this.client.disconnect()
+			await this.client.connect(this.endpointUrl)
 		} catch (error) {
-		  console.log("OpcUa: restartConnection", error)
+			console.log("OpcUa: restartConnection", error)
 		}
 	}
 
-	private async _getEntryPoint(entryPointPath?: string): Promise<{ displayName: string; path: string; nodeId: NodeIdLike; children: any[] }>{
-		let start : any = {
-			// displayName: "RootFolder",
-			// nodeId: resolveNodeId("RootFolder"),
+	private async _getEntryPoint(entryPointPath?: string): Promise<{ displayName: string; path: string; nodeId: NodeIdLike; children: any[] }> {
+		let start: any = {
 			displayName: "Objects",
 			nodeId: ObjectIds.ObjectsFolder,
-			path: "/",			
+			path: "/",
 			children: [],
 		};
 
-		if(!entryPointPath || entryPointPath === "/") {
+		if (!entryPointPath || entryPointPath === "/") {
 			return start;
 		}
-		
+
 		return this._getNodeWithPath(start, entryPointPath);
-
-		// const path = new BrowsePath({
-		// 	startingNode: ObjectIds.ObjectsFolder,
-		// 	relativePath: makeRelativePath(entryPointPath),
-		// });
-
-		// this.session.translateBrowsePath(path).then((result) => {
-		// 	console.log(result.targets[0].targetId.toString());
-		// });
-				
 	}
 
 	private async _getNodeWithPath(start: any, entryPointPath?: string): Promise<{ displayName: string; path: string; nodeId: NodeIdLike; children: any[] }> {
@@ -595,18 +577,18 @@ export class OPCUAService extends EventEmitter {
 			const path = paths.shift();
 			let found = children.find((el) => el.displayName.toLocaleLowerCase() === path.toLocaleLowerCase());
 
-			if(!found){
+			if (!found) {
 				error = "Node not found";
 				break;
 			}
 
 			node = found;
-			if(paths.length === 0) lastNode = node;
+			if (paths.length === 0) lastNode = node;
 		}
 
-		if(error) throw new Error(error);
+		if (error) throw new Error(error);
 
-		return {...lastNode, children: [], path: `/${paths.join("/")}`};
+		return { ...lastNode, children: [], path: `/${paths.join("/")}` };
 	}
 
 	private _formatReference(reference: ReferenceDescription, path: string): IOPCNode {
