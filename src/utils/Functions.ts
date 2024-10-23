@@ -146,7 +146,7 @@ export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAList
 	const organNode: SpinalNode = await spinalListenerModel.getOrgan();
 	const spinalDisoverModelOrgan = await organNode.getElement(true);
 
-	if(organModel.id?.get() === spinalDisoverModelOrgan.id?.get()) {
+	if (organModel.id?.get() === spinalDisoverModelOrgan.id?.get()) {
 		spinalMonitoring.addToMonitoringList(spinalListenerModel);
 	}
 

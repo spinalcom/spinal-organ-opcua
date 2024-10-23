@@ -74,7 +74,7 @@ class SpinalDiscover extends EventEmitter {
 		const server = model.network.get();
 		console.log("discovering", server.name);
 
-		return this._getOPCUATree(server, true)
+		return this._getOPCUATree(server, true, true)
 			.then(async ({ tree, variables }) => {
 				await model.setTreeDiscovered(tree);
 				console.log(server.name, "discovered !!");
@@ -83,14 +83,14 @@ class SpinalDiscover extends EventEmitter {
 				return tree;
 
 			}).catch((err) => {
-				console.log(server.name, "discovery failed !!");
+				console.log(`${server.name} discovery failed !! reason: "${err.message}"`);
 				model.changeState(OPCUA_ORGAN_STATES.error);
 			});
 
 	}
 
 	// tryTree2 is used to try the second method to get the tree if the first one failed
-	private async _getOPCUATree(server, tryTree2 = true) {
+	private async _getOPCUATree(server: any, useLastResult: boolean, tryTree2: boolean = true) {
 		const endpointUrl = getServerUrl(server);
 		const entryPointPath = process.env.OPCUA_SERVER_ENTRYPOINT;
 
@@ -99,20 +99,18 @@ class SpinalDiscover extends EventEmitter {
 		await opcuaService.initialize(endpointUrl);
 		await opcuaService.connect(endpointUrl, userIdentity);
 
+		const options: ITreeOption = { useLastResult, useBroadCast: true };
 
-		// const tree = testJSON;
-		// return {tree, variables: []}
-
-		return opcuaService.getTree(entryPointPath)
-			.then(async (tree) => {
-				await opcuaService.disconnect();
-				return tree;
+		return opcuaService.getTree(entryPointPath, options)
+			.then(async (result) => {
+				return result;
 			}).catch(async (err) => {
-				if (tryTree2) {
-					console.log("failed to use multi browsing, trying with unique browsing");
-					return opcuaService.getTree2(entryPointPath);
-				}
-				throw err;
+				if (!tryTree2) throw err;
+
+				console.log("failed to use multi browsing, trying with unique browsing");
+				options.useBroadCast = false;
+				return opcuaService.getTree(entryPointPath, options);
+
 			}).finally(async () => {
 				await opcuaService.disconnect();
 			});
@@ -135,8 +133,9 @@ class SpinalDiscover extends EventEmitter {
 
 		const promises = (treeToCreate.children || []).map((tree) => _transformTreeToGraphRecursively(context, tree, nodesAlreadyCreated, undefined, values));
 		return Promise.all(promises)
-			.then((nodes) => {
-				return addNetworkToGraph(model, nodes, context, network, organ)
+			.then(async (nodes) => {
+				const r = await addNetworkToGraph(model, nodes, context, network, organ);
+				return r;
 			}).then(() => {
 				model.changeState(OPCUA_ORGAN_STATES.created);
 				console.log("network", network.getName().get(), "created !!");
@@ -146,6 +145,8 @@ class SpinalDiscover extends EventEmitter {
 			});
 
 	}
+
+
 
 	// private convertToBase64(tree: any) {
 	// 	return new Promise((resolve, reject) => {
@@ -191,6 +192,7 @@ export const discover = new SpinalDiscover();
 
 import * as fs from "fs";
 import * as nodePath from "path";
+import { ITreeOption } from "../interfaces/ITreeOption";
 
 function writeInFile(argPath, text) {
 	return fs.writeFileSync(nodePath.resolve(__dirname, argPath), text);

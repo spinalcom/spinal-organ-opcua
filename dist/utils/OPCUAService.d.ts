@@ -1,7 +1,8 @@
 /// <reference types="node" />
-import { ReferenceDescription, UserIdentityInfo, NodeId, DataValue, NodeIdLike } from "node-opcua";
+import { UserIdentityInfo, NodeId, DataValue } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
+import { ITreeOption } from "../interfaces/ITreeOption";
 export declare class OPCUAService extends EventEmitter {
     private client?;
     private session?;
@@ -16,41 +17,39 @@ export declare class OPCUAService extends EventEmitter {
     createSubscription(): Promise<void>;
     connect(endpointUrl: string, userIdentity?: UserIdentityInfo): Promise<void>;
     disconnect(): Promise<void>;
-    getTree(entryPointPath?: string): Promise<{
-        tree: {
-            displayName: string;
-            path: string;
-            nodeId: NodeIdLike;
-            children: any[];
-        };
-        variables: any[];
+    getTree(entryPointPath?: string, options?: ITreeOption): Promise<{
+        tree: IOPCNode;
+        variables: string[];
     }>;
-    _chunckAndGetChildren(nodesToBrowse: any[], chunkSize?: number): Promise<{
-        [key: string]: ReferenceDescription[];
-    }>;
-    getTree2(entryPointPath?: string): Promise<any>;
-    browseNodeRec(node: any): Promise<any[]>;
-    getNodeChildren2(node: IOPCNode): Promise<IOPCNode[]>;
+    browseNodeRec(node: any): Promise<IOPCNode[]>;
+    _getChildrenAndSaveAddToObj(nodes: IOPCNode[], nodesObj?: {
+        [key: string]: IOPCNode;
+    }, variables?: string[]): Promise<IOPCNode[]>;
     extractBrowsePath(nodeId: NodeId): Promise<string>;
-    readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
     readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{
         dataType: string;
         value: any;
     }[]>;
     writeNode(node: IOPCNode, value: any): Promise<any>;
     monitorItem(nodeIds: string | string[], callback: (id: string, data: DataValue) => any): Promise<void>;
-    isVaraiable(node: IOPCNode): boolean;
-    isObject(node: IOPCNode): boolean;
+    private _browseNode;
+    private _browseUsingBrowseDescription;
+    private _getNodesDetails;
+    private _getNodeParent;
+    private _getDiscoverData;
+    private _convertTreeToObject;
     private _createSession;
     private _listenClientEvents;
     private _listenSessionEvent;
-    private _readBrowseName;
-    private _getNodeParent;
-    private _getNodesDetails;
     private _restartConnection;
     private _getEntryPoint;
-    private _getNodeWithPath;
+    private _getEntryPointWithPath;
     private _formatReference;
+    private _formatDataValue;
+    private _readBrowseName;
+    isVariable(node: IOPCNode): boolean;
+    isObject(node: IOPCNode): boolean;
+    private _parseValue;
+    readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
 }
-export declare function w(s: string, l: number, c: string): string;
 export default OPCUAService;

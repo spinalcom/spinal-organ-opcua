@@ -12,5 +12,4 @@ tree.txt
 *.log
 *tree.json
 tree.txt
-discover_db
-
+discover.db

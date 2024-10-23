@@ -1,16 +1,18 @@
-import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest } from "node-opcua";
-import { IServer } from "spinal-model-opcua";
+import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
 import { coerceStringToDataType, convertToBrowseDescription } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
-import path = require("path");
+import discoveringStore from "./discoveringProcessStore";
+import { OPCUA_ORGAN_STATES } from "spinal-model-opcua";
+import { ITreeOption } from "../interfaces/ITreeOption";
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
+
 
 export class OPCUAService extends EventEmitter {
 	private client?: OPCUAClient;
@@ -37,7 +39,7 @@ export class OPCUAService extends EventEmitter {
 			securityPolicy,
 			// certificateFile,
 			defaultSecureTokenLifetime: 30 * 1000,
-			requestedSessionTimeout: 30000,
+			requestedSessionTimeout: 30 * 1000,
 			// clientCertificateManager,
 			// applicationName,
 			// applicationUri,
@@ -102,215 +104,109 @@ export class OPCUAService extends EventEmitter {
 	//					May have timeout error if the tree is too big		 //
 	///////////////////////////////////////////////////////////////////////////
 
-	public async getTree(entryPointPath?: string) {
-		console.log("discovering", this.endpointUrl || "", "using getTree [1] - browsing several nodes");
+	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
 
-		const _self = this;
-		const tree = await this._getEntryPoint(entryPointPath);
-		let variables = [];
+		// if (options.useBroadCast) throw new Error("throw error to simulate unicast"); //throw error to simulate unicast
 
-		let queue = [tree];
-		const obj = {
-			[tree.nodeId.toString()]: tree,
-		};
+		let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
+
+		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
 		while (queue.length) {
-			queue = await getAndFormatChilren(queue);
-			console.log(`[getTree] ${queue.length} nodes to browse`);
-		}
 
-		console.log(`${this.endpointUrl} discovered ${Object.keys(obj).length} nodes.`);
-		return { tree, variables };
+			let discoverState = null;
+			let _error = null;
+			const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
 
-		async function getAndFormatChilren(list) {
-			const nodesToBrowse = list.map((el) => convertToBrowseDescription(el)).flat();
-			const childrenObj = await _self._chunckAndGetChildren(nodesToBrowse);
-			const newQueue = [];
-
-			for (const key in childrenObj) {
-				const children = childrenObj[key];
-
-				for (const child of children) {
-					const name = (child.displayName.text || child.browseName.toString()).toLowerCase();
-					if (name == "server" || name[0] == ".") continue;
-
-					const parent = obj[key];
-
-					const nodeInfo: any = _self._formatReference(child, parent.path || "");
-
-					if (nodeInfo.nodeClass === NodeClass.Variable) variables.push(nodeInfo.nodeId.toString());
-
-
-					parent.children.push(nodeInfo);
-
-					newQueue.push(nodeInfo);
-
-					obj[nodeInfo.nodeId.toString()] = nodeInfo;
-				}
+			try {
+				discoverState = OPCUA_ORGAN_STATES.discovering;
+				const newsItems = await this._getChildrenAndSaveAddToObj(chunked, nodesObj, variables);
+				queue.push(...newsItems);
+				if (newsItems.length) console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`);
+				console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`);
+			} catch (error) {
+				queue.unshift(...chunked);
+				_error = error;
+				discoverState = OPCUA_ORGAN_STATES.error;
 			}
 
-			return newQueue;
+			if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
+			await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
+
+			if (_error) throw _error;
 		}
+
+		console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
+		return { tree, variables };
 	}
 
-	public async _chunckAndGetChildren(nodesToBrowse: any[], chunkSize: number = 100): Promise<{ [key: string]: ReferenceDescription[] }> {
-		const list = lodash.chunk(nodesToBrowse, chunkSize);
 
-		const browseResults = [];
-
-		for (const i of list) {
-			const t = await this.session.browse(i);
-			browseResults.push(...t);
-		}
-
-		const obj = {};
-		for (let index = 0; index < browseResults.length; index++) {
-			const element = browseResults[index].references;
-			const parentId = nodesToBrowse[index].nodeId.toString();
-			if (!obj[parentId]) obj[parentId] = [];
-
-			obj[parentId].push(...element);
-		}
-
-		return obj;
-	}
 
 	///////////////////////////////////////////////////////////////////////////
 	//					Exemple 2 : getTree (take a lot of time)		 	 //
 	///////////////////////////////////////////////////////////////////////////
-	public async getTree2(entryPointPath?: string): Promise<any> {
-		console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
-		const tree = await this._getEntryPoint(entryPointPath);
+	// public async getTree2(entryPointPath?: string): Promise<any> {
+	// 	console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
+	// 	const tree = await this._getEntryPoint(entryPointPath);
+	// 	const queue: any[] = [tree];
+	// 	const variables = [];
+	// 	const nodesObj = { [tree.nodeId.toString()]: tree };
 
-		const queue: any[] = [tree];
+	// 	while (queue.length) {
+	// 		const node = queue.shift();
+	// 		let _error = null;
+	// 		let discoverState = OPCUA_ORGAN_STATES.discovering;
 
-		while (queue.length > 0) {
-			const node = queue.shift();
-			const nodesToBrowse = convertToBrowseDescription(node as any);
-			const browseResults = await this.session.browse(nodesToBrowse);
-			const references = browseResults.map((el) => el.references).flat();
-			const children = [];
+	// 		try {
+	// 			console.log("[getTree2] browsing", node.displayName);
+	// 			// if (this.isVariable(node)) variables.push(node.nodeId.toString());
+	// 			// const children = await this._browseNode(node);
+	// 			// node.children = children;
+	// 			// queue.push(...children);
+	// 			const children = await this._getChildrenAndSaveAddToObj([node], nodesObj, variables);
+	// 			queue.push(...children);
+	// 		} catch (error) {
+	// 			discoverState = OPCUA_ORGAN_STATES.error;
+	// 			queue.unshift(node);
+	// 			_error = error;
+	// 			console.log("error", error);
+	// 		}
 
-			for (const reference of references) {
-				const name = (reference.displayName.text || reference.browseName.toString()).toLowerCase();
-				if (name === "server" || name[0] === ".") continue;
+	// 		if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
+	// 		await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
 
-				const nodeInfo = this._formatReference(reference, node.path);
-				queue.push(nodeInfo);
-				children.push(nodeInfo);
-			}
+	// 		if (_error) throw _error;
+	// 	}
 
-			node.children = children;
-		}
-
-		// await this.browseNodeRec(tree);
-
-		return { tree };
-	}
+	// 	return { tree, variables };
+	// }
 
 	public async browseNodeRec(node: any) {
 		console.log("browsing", node.displayName, "inside browseNodeRec");
-
-		const nodesToBrowse = [
-			{
-				nodeId: node.nodeId,
-				referenceTypeId: "Organizes",
-				includeSubtypes: true,
-				browseDirection: BrowseDirection.Forward,
-				resultMask: 0x3f,
-			},
-			{
-				nodeId: node.nodeId,
-				referenceTypeId: "Aggregates",
-				includeSubtypes: true,
-				browseDirection: BrowseDirection.Forward,
-				resultMask: 0x3f,
-			},
-			{
-				nodeId: node.nodeId,
-				referenceTypeId: "HasSubtype",
-				includeSubtypes: true,
-				browseDirection: BrowseDirection.Forward,
-				resultMask: 0x3f,
-			},
-		];
-
-		const browseResults = await this.session.browse(nodesToBrowse);
-
-		const references = browseResults.map((el) => el.references).flat();
-		const res = [];
-
-		for (const reference of references) {
-			const name = (reference.displayName.text || reference.browseName.toString()).toLowerCase()
-			if (name == "server" || name[0] == ".") continue;
-
-			const nodeInfo = this._formatReference(reference, node.path);
-
-			await this.browseNodeRec(nodeInfo);
-			res.push(nodeInfo);
+		const children = await this._browseNode(node);
+		for (const child of children) {
+			await this.browseNodeRec(child);
 		}
+		node.children = children;
+		return children;
 
-		node.children.push(...res);
-		return res;
-	}
-
-	public async getNodeChildren2(node: IOPCNode): Promise<IOPCNode[]> {
-		if (!this.session) throw new Error("No Session yet");
-
-		if (this.session.isReconnecting) throw new Error("Session is not available (reconnecting)");
-
-		const nodesToBrowse = [
-			{
-				nodeId: node.nodeId,
-				referenceTypeId: "Organizes",
-				includeSubtypes: true,
-				browseDirection: BrowseDirection.Forward,
-				resultMask: 0x3f,
-			},
-			{
-				nodeId: node.nodeId,
-				referenceTypeId: "Aggregates",
-				includeSubtypes: true,
-				browseDirection: BrowseDirection.Forward,
-				resultMask: 0x3f,
-			},
-			{
-				nodeId: node.nodeId,
-				referenceTypeId: "HasSubtype",
-				includeSubtypes: true,
-				browseDirection: BrowseDirection.Forward,
-				resultMask: 0x3f,
-			},
-		];
-
-		try {
-			const results = await this.session.browse(nodesToBrowse);
-
-			return results.reduce((children: IOPCNode[], result: BrowseResult) => {
-				if (result.references) {
-					for (const ref of result.references) {
-						if (ref.displayName.text.toLowerCase() === "server") continue;
-
-						children.push({
-							displayName: ref.displayName.text || ref.browseName.toString(),
-							browseName: ref.browseName.toString() || "",
-							nodeId: ref.nodeId,
-							nodeClass: ref.nodeClass as number,
-						});
-					}
-				}
-
-				return children;
-			}, []);
-		} catch (err) {
-			console.log(err);
-			return [];
-		}
 	}
 
 	///////////////////////////////////////////////////////////////////////////
-	//					End Exemple 2									 	 //
-	///////////////////////////////////////////////////////////////////////////
+
+	public async _getChildrenAndSaveAddToObj(nodes: IOPCNode[], nodesObj: { [key: string]: IOPCNode } = {}, variables: string[] = []) {
+
+		const children = await this._browseNode(nodes);
+
+		for (const child of children) {
+			const parent = nodesObj[child.parentId];
+			if (this.isVariable(child)) variables.push(child.nodeId.toString());
+			nodesObj[child.nodeId.toString()] = child;
+			if (parent) parent.children.push(child);
+		}
+
+		return children;
+	}
 
 	public async extractBrowsePath(nodeId: NodeId): Promise<string> {
 		const browseName = await this._readBrowseName(nodeId);
@@ -336,30 +232,29 @@ export class OPCUAService extends EventEmitter {
 		return browsePath + " (" + a.targets[0]?.targetId?.toString() + ")";
 	}
 
-	public async readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]> {
-		if (!Array.isArray(node)) node = [node];
-		return this.session.read(node);
-	}
-
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{ dataType: string; value: any }[]> {
 		if (!this.session) {
+			console.log("no session");
 			return null;
 		}
 
-		if (!Array.isArray(node)) node = [node];
+		node = Array.isArray(node) ? node : [node];
+
 		const nodesChunk = lodash.chunk(node, 500);
-		const dataValues = [];
+		const _promise = nodesChunk.reduce(async (prom, chunk) => {
+			let list = await prom;
+			const values = await this.readNode(chunk);
+			list.push(...values);
+			return list;
+		}, Promise.resolve([]));
 
-		for (const i of nodesChunk) {
-			const values = await this.readNode(i);
-			dataValues.push(...values);
-		}
-
-		return dataValues.map((dataValue) => formatDataValue(dataValue));
+		const dataValues = await _promise;
+		return dataValues.map((dataValue) => this._formatDataValue(dataValue));
 	}
 
 	public async writeNode(node: IOPCNode, value: any): Promise<any> {
 		if (!this.session) {
+			console.log("no session");
 			return;
 		}
 
@@ -367,15 +262,7 @@ export class OPCUAService extends EventEmitter {
 
 		if (dataType) {
 			try {
-				const arrayType = valueRank === -1 ? VariantArrayType.Scalar : valueRank === 1 ? VariantArrayType.Array : VariantArrayType.Matrix;
-				const dimensions = arrayType === VariantArrayType.Matrix ? arrayDimension : undefined;
-
-				const _value = new Variant({
-					dataType,
-					arrayType,
-					dimensions,
-					value: coerceStringToDataType(dataType, arrayType, VariantArrayType, value),
-				});
+				const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
 
 				const writeValue = new WriteValue({
 					nodeId: node.nodeId,
@@ -403,43 +290,146 @@ export class OPCUAService extends EventEmitter {
 		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, TimestampsToReturn.Both);
 		for (const monitoredItem of monitoredItemGroup.monitoredItems) {
 			monitoredItem.on("changed", (dataValue: DataValue) => {
-				const value = formatDataValue(dataValue);
+				const value = this._formatDataValue(dataValue);
 				callback(monitoredItem.itemToMonitor.nodeId.toString(), value?.value || "null");
 			});
 		}
-		// this.subscription.monitor(monitoredItems, { samplingInterval: 1000, discardOldest: true, queueSize: 100 }, TimestampsToReturn.Both, MonitoringMode.Reporting, (err: Error | null, monitoredItem: ClientMonitoredItem) => {
-		// 	if (err) {
-		// 		console.log("cannot create monitored item", err.message);
-		// 		return;
-		// 	}
-
-		// 	(<any>node).monitoredItem = monitoredItem;
-
-		// 	monitoredItem.on("changed", (dataValue: DataValue) => {
-		// 		callback(node.nodeId.toString(), dataValue.value.value);
-
-		// 		// console.log(" value ", node.browseName, node.nodeId.toString(), " changed to ", dataValue.value.toString());
-		// 		// if (dataValue.value.value.toFixed) {
-		// 		// 	node.valueAsString = w(dataValue.value.value.toFixed(3), 16, " ");
-		// 		// } else {
-		// 		// 	node.valueAsString = w(dataValue.value.value.toString(), 16, " ");
-		// 		// }
-		// 		// monitoredItemData[2] = node.valueAsString;
-
-		// 		// this.emit("monitoredItemChanged", this.monitoredItemsListData, node, dataValue);
-		// 	});
-		// });
-	}
-
-	public isVaraiable(node: IOPCNode): boolean {
-		return node.nodeClass === NodeClass.Variable;
-	}
-
-	public isObject(node: IOPCNode): boolean {
-		return node.nodeClass === NodeClass.Object;
 	}
 
 	///////////////////////////////////////////////////////////////////////////
+
+	private _browseNode(node: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
+		node = Array.isArray(node) ? node : [node];
+		const nodeToBrowse = node.reduce((list, n) => {
+			const configs = convertToBrowseDescription(n);
+			list.push(...configs);
+			return list;
+		}, []);
+
+		return this._browseUsingBrowseDescription(nodeToBrowse);
+	}
+
+	private async _browseUsingBrowseDescription(descriptions: BrowseDescriptionLike[]): Promise<IOPCNode[]> {
+		const browseResults = await this.session.browse(descriptions);
+
+		return browseResults.reduce((children: IOPCNode[], el: BrowseResult, index: number) => {
+			const parentId = (descriptions[index] as any)?.nodeId?.toString();
+			for (const ref of el.references) {
+				const refName = ref.displayName.text || ref.browseName?.toString();
+				if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") continue; // skip server and hidden nodes
+
+				const formatted = this._formatReference(ref, "", parentId);
+				children.push(formatted);
+			}
+
+			return children;
+		}, []);
+
+		// const references = browseResults.map((el) => el.references).flat(); // each browseResult has an array of references for each description;
+		// return references.reduce((list, ref, index) => {
+		// 	const refName = ref.displayName.text || ref.browseName?.toString();
+		// 	if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") return list; // skip server and hidden nodes
+
+		// 	const parentId = (descriptions[index] as any)?.nodeId?.toString();
+		// 	const formatted = this._formatReference(ref, "", parentId);
+		// 	list.push(formatted);
+		// 	return list;
+		// }, []);
+	}
+
+	private async _getNodesDetails(node: IOPCNode) {
+		const dataTypeIdDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.DataType });
+		const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
+		const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
+
+		const dataTypeId = dataTypeIdDataValue.value.value as NodeId;
+		const dataType = await findBasicDataType(this.session, dataTypeId);
+
+		const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
+		const valueRank = valueRankDataValue.value.value as number;
+
+		return { dataType, arrayDimension, valueRank };
+	}
+
+	private async _getNodeParent(nodeId: NodeId): Promise<{ sep: string; parentNodeId: NodeId } | null> {
+		let browseResult = await this.session.browse({
+			browseDirection: BrowseDirection.Inverse,
+			includeSubtypes: true,
+			nodeId,
+			nodeClassMask: 0xff,
+			resultMask: 0xff,
+			referenceTypeId: "HasChild",
+		});
+
+		if (browseResult.statusCode === StatusCodes.Good && browseResult.references?.length) {
+			const parentNodeId = browseResult.references[0].nodeId;
+			return { sep: ".", parentNodeId };
+		}
+
+
+		// using Organizes if HasChild is not found
+		browseResult = await this.session.browse({
+			browseDirection: BrowseDirection.Inverse,
+			includeSubtypes: true,
+			nodeId,
+			nodeClassMask: 0xff,
+			resultMask: 0xff,
+			referenceTypeId: "Organizes",
+		});
+
+		if (browseResult.statusCode === StatusCodes.Good && browseResult.references?.length) {
+			const parentNodeId = browseResult.references[0].nodeId;
+			return { sep: "/", parentNodeId };
+		}
+
+		return null;
+	}
+
+	private async _getDiscoverData(entryPointPath: string, useLastResult: boolean) {
+		let tree, variables, queue, nodesObj, browseMode;
+
+		try {
+			if (!useLastResult) throw new Error("no last result");
+
+			const data = await discoveringStore.getProgress(this.endpointUrl);
+			const converted = await this._convertTreeToObject(data.tree);
+
+			browseMode = "Multicast";
+			tree = data.tree;
+			queue = data.queue;
+			variables = converted.variables;
+			nodesObj = converted.obj;
+
+		} catch (error) {
+			browseMode = "Unicast";
+			tree = await this._getEntryPoint(entryPointPath);
+			variables = [];
+			queue = [tree];
+			nodesObj = { [tree.nodeId.toString()]: tree };
+		}
+
+		return { tree, variables, queue, nodesObj, browseMode };
+	}
+
+	private async _convertTreeToObject(tree: IOPCNode) {
+		const obj = {};
+		const variables = [];
+		const stack = [tree];
+
+		while (stack.length) {
+			const node = stack.shift();
+			obj[node.nodeId.toString()] = node;
+			if (this.isVariable(node)) variables.push(node);
+
+			stack.push(...node.children);
+		}
+
+		return { obj, variables };
+	}
+
+	////////////////////////////////////////////////////////////
+	//							Client			 			  //
+	////////////////////////////////////////////////////////////
 
 	private async _createSession(client?: OPCUAClient): Promise<ClientSession> {
 		try {
@@ -491,57 +481,6 @@ export class OPCUAService extends EventEmitter {
 		})
 	}
 
-	private async _readBrowseName(nodeId: NodeId): Promise<QualifiedName> {
-		const node = await this.session.read({ nodeId, attributeId: AttributeIds.BrowseName });
-		return node.value.value;
-	}
-
-	private async _getNodeParent(nodeId: NodeId): Promise<{ sep: string; parentNodeId: NodeId } | null> {
-		let browseResult = await this.session.browse({
-			browseDirection: BrowseDirection.Inverse,
-			includeSubtypes: true,
-			nodeId,
-			nodeClassMask: 0xff,
-			resultMask: 0xff,
-			referenceTypeId: "HasChild",
-		});
-
-		if (browseResult.statusCode === StatusCodes.Good && browseResult.references?.length) {
-			const parentNodeId = browseResult.references[0].nodeId;
-			return { sep: ".", parentNodeId };
-		}
-
-		browseResult = await this.session.browse({
-			browseDirection: BrowseDirection.Inverse,
-			includeSubtypes: true,
-			nodeId,
-			nodeClassMask: 0xff,
-			resultMask: 0xff,
-			referenceTypeId: "Organizes",
-		});
-
-		if (browseResult.statusCode === StatusCodes.Good && browseResult.references?.length) {
-			const parentNodeId = browseResult.references[0].nodeId;
-			return { sep: "/", parentNodeId };
-		}
-
-		return null;
-	}
-
-	private async _getNodesDetails(node: IOPCNode) {
-		const dataTypeIdDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.DataType });
-		const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
-		const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
-
-		const dataTypeId = dataTypeIdDataValue.value.value as NodeId;
-		const dataType = await findBasicDataType(this.session, dataTypeId);
-
-		const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
-		const valueRank = valueRankDataValue.value.value as number;
-
-		return { dataType, arrayDimension, valueRank };
-	}
-
 	private _restartConnection = async () => {
 		try {
 			await this.client.disconnect()
@@ -551,7 +490,11 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	private async _getEntryPoint(entryPointPath?: string): Promise<{ displayName: string; path: string; nodeId: NodeIdLike; children: any[] }> {
+	///////////////////////////////////////////////////////
+	//					Utils							 //
+	///////////////////////////////////////////////////////
+
+	private async _getEntryPoint(entryPointPath?: string): Promise<IOPCNode> {
 		let start: any = {
 			displayName: "Objects",
 			nodeId: ObjectIds.ObjectsFolder,
@@ -563,22 +506,22 @@ export class OPCUAService extends EventEmitter {
 			return start;
 		}
 
-		return this._getNodeWithPath(start, entryPointPath);
+		return this._getEntryPointWithPath(start, entryPointPath);
 	}
 
-	private async _getNodeWithPath(start: any, entryPointPath?: string): Promise<{ displayName: string; path: string; nodeId: NodeIdLike; children: any[] }> {
+	private async _getEntryPointWithPath(start: any, entryPointPath?: string): Promise<IOPCNode> {
 		const paths = entryPointPath.split("/").filter((el) => el !== "");
 		let error;
 		let node = start;
 		let lastNode;
 
 		while (paths.length && !error) {
-			const children = await this.getNodeChildren2(node);
 			const path = paths.shift();
+			const children = await this._browseNode(node);
 			let found = children.find((el) => el.displayName.toLocaleLowerCase() === path.toLocaleLowerCase());
 
 			if (!found) {
-				error = "Node not found";
+				error = `No node found with entry point : ${entryPointPath}`;
 				break;
 			}
 
@@ -591,7 +534,7 @@ export class OPCUAService extends EventEmitter {
 		return { ...lastNode, children: [], path: `/${paths.join("/")}` };
 	}
 
-	private _formatReference(reference: ReferenceDescription, path: string): IOPCNode {
+	private _formatReference(reference: ReferenceDescription, path: string, parentId?: string): IOPCNode {
 		const name = reference.displayName.text || reference.browseName.toString();
 		path = path.endsWith("/") ? path : `${path}/`;
 
@@ -602,37 +545,66 @@ export class OPCUAService extends EventEmitter {
 			nodeClass: reference.nodeClass as number,
 			path: path + name,
 			children: [],
+			parentId
 		};
 	}
-}
 
-export function w(s: string, l: number, c: string): string {
-	c = c || " ";
-	const filling = Array(25).join(c[0]);
-	return (s + filling).substr(0, l);
-}
+	private _formatDataValue(dataValue: DataValue): { value: any; dataType: string } {
+		if (dataValue.statusCode == StatusCodes.Good) {
+			if (dataValue.value.value) {
+				const obj = { dataType: DataType[dataValue.value.dataType], value: undefined };
 
-function formatDataValue(dataValue: DataValue): { value: any; dataType: string } {
-	if (dataValue.statusCode == StatusCodes.Good) {
-		if (dataValue.value.value) {
-			const obj = { dataType: DataType[dataValue.value.dataType], value: undefined };
+				switch (dataValue.value.arrayType) {
+					case VariantArrayType.Scalar:
+						obj.value = dataValue.value.value;
+						break;
+					case VariantArrayType.Array:
+						obj.value = dataValue.value.value.join(",");
+						break;
+					default:
+						obj.value = null;
+						break;
+				}
 
-			switch (dataValue.value.arrayType) {
-				case VariantArrayType.Scalar:
-					obj.value = dataValue.value.value;
-					break;
-				case VariantArrayType.Array:
-					obj.value = dataValue.value.value.join(",");
-					break;
-				default:
-					obj.value = null;
-					break;
+				return obj;
 			}
-
-			return obj;
 		}
+		return null;
 	}
-	return null;
+
+	private async _readBrowseName(nodeId: NodeId): Promise<QualifiedName> {
+		const node = await this.session.read({ nodeId, attributeId: AttributeIds.BrowseName });
+		return node.value.value;
+	}
+
+
+	public isVariable(node: IOPCNode): boolean {
+		return node.nodeClass === NodeClass.Variable;
+	}
+
+	public isObject(node: IOPCNode): boolean {
+		return node.nodeClass === NodeClass.Object;
+	}
+
+	private _parseValue(valueRank: number, arrayDimension: number[], dataType: DataType, value: any) {
+		const arrayType = valueRank === -1 ? VariantArrayType.Scalar : valueRank === 1 ? VariantArrayType.Array : VariantArrayType.Matrix;
+		const dimensions = arrayType === VariantArrayType.Matrix ? arrayDimension : undefined;
+
+		const _value = new Variant({
+			dataType,
+			arrayType,
+			dimensions,
+			value: coerceStringToDataType(dataType, arrayType, VariantArrayType, value),
+		});
+		return _value;
+	}
+
+	public async readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]> {
+		if (!Array.isArray(node)) node = [node];
+		return this.session.read(node);
+	}
 }
+
+
 
 export default OPCUAService;

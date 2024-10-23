@@ -1,6 +1,6 @@
 import { IOPCNode } from "../interfaces/OPCNode";
 import { IConfig } from "../interfaces/IConfig";
-import { BrowseDirection, DataType, ResultMask } from "node-opcua";
+import { BrowseDescription, BrowseDirection, DataType, ReferenceTypeIds, ResultMask } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
 
 export function getConfig(): IConfig {
@@ -19,25 +19,25 @@ export function convertToBrowseDescription(node: IOPCNode) {
 	return [
 		{
 			nodeId: node.nodeId,
-			referenceTypeId: "Organizes",
+			referenceTypeId: ReferenceTypeIds.Organizes,
 			includeSubtypes: true,
 			browseDirection: BrowseDirection.Forward,
 			resultMask: 0x3f,
 		},
-		{
-			nodeId: node.nodeId,
-			referenceTypeId: "Aggregates",
-			includeSubtypes: true,
-			browseDirection: BrowseDirection.Forward,
-			resultMask: 0x3f,
-		},
-		{
-			nodeId: node.nodeId,
-			referenceTypeId: "HasSubtype",
-			includeSubtypes: true,
-			browseDirection: BrowseDirection.Forward,
-			resultMask: 0x3f,
-		},
+		// {
+		// 	nodeId: node.nodeId,
+		// 	referenceTypeId: ReferenceTypeIds.Aggregates,
+		// 	includeSubtypes: true,
+		// 	browseDirection: BrowseDirection.Forward,
+		// 	resultMask: 0x3f,
+		// },
+		// {
+		// 	nodeId: node.nodeId,
+		// 	referenceTypeId: ReferenceTypeIds.HasSubtype,
+		// 	includeSubtypes: true,
+		// 	browseDirection: BrowseDirection.Forward,
+		// 	resultMask: 0x3f,
+		// },
 	];
 }
 

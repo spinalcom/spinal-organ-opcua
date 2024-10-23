@@ -3,7 +3,7 @@ import * as path from 'path';
 
 class DiscoveringStore {
     private static _instance: DiscoveringStore;
-    private discoveringFolder: string = path.resolve(__dirname + '../../discovering');
+    private discoveringFolder: string = path.resolve(__dirname + '../../../discover.db');
 
     private constructor() { }
 
@@ -14,18 +14,54 @@ class DiscoveringStore {
         return this._instance;
     }
 
+    saveProgress(url: string, tree: any, queue: any, state: any) {
+        const data = JSON.stringify({ url, tree, queue, state });
+        // const base64 = Buffer.from(data).toString('base64');
+        this.wiriteInFile(url, data);
+    }
 
-    save
+    getProgress(url: string) {
+        const filePath = this._createFilePath(url);
+        if (!fs.existsSync(filePath)) return null;
 
+        // const base64 = fs.readFileSync(filePath).toString();
+        // const data = Buffer.from(base64, 'base64').toString('utf8');
+        const data = fs.readFileSync(filePath).toString();
+        return JSON.parse(data);
+    }
 
+    deleteProgress(url: string) {
+        const filePath = this._createFilePath(url);
+        if (!fs.existsSync(filePath)) return;
+        fs.unlinkSync(filePath);
+    }
 
-
-    private _createOrGetDiscoverFolder() {
+    wiriteInFile(url: string, data: string) {
         try {
-            if (!fs.existsSync(this.discoveringFolder)) fs.mkdirSync(this.discoveringFolder);
+            this._createDirectoryIfNotExist(this.discoveringFolder);
+            const filePath = this._createFilePath(url);
+            if (!fs.existsSync(filePath)) {
+                fs.writeFileSync(filePath, data);
+                return;
+            }
+
+            fs.writeFileSync(filePath, data);
+        } catch (error) {
+            console.warn('Error writing file', error.message);
+        }
+
+    }
+
+    private _createDirectoryIfNotExist(path) {
+        try {
+            if (!fs.existsSync(path)) fs.mkdirSync(this.discoveringFolder);
         } catch (error) {
             console.error('Error creating discovering folder', error);
         }
+    }
+
+    private _createFilePath(url: string) {
+        return path.resolve(this.discoveringFolder, url.replace(/[^a-zA-Z0-9]/g, '_') + '.db');
     }
 }
 

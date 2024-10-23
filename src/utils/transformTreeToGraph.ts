@@ -64,7 +64,7 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 
 	const opcuaService: OPCUAService = new OPCUAService();
 
-	if (opcuaService.isVaraiable(node)) {
+	if (opcuaService.isVariable(node)) {
 		const dataValue = values[node.nodeId.toString()];
 		param = {
 			...param,

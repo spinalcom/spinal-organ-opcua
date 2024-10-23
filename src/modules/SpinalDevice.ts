@@ -49,7 +49,7 @@ export class SpinalDevice extends EventEmitter {
 	private network: SpinalNode;
 	private device: SpinalNode;
 	private saveTimeSeries: spinal.Bool;
-	public deviceInfo: {name: string, type: string, id: string};
+	public deviceInfo: { name: string, type: string, id: string };
 
 	private nodes: { [key: string]: SpinalNode } = {};
 	private endpoints: { [key: string]: SpinalNode } = {};
@@ -71,7 +71,7 @@ export class SpinalDevice extends EventEmitter {
 		return this._convertNodesToObj();
 	}
 
-	public async updateEndpoints(values: {[key: string]: {dataType: string; value: any}}) {
+	public async updateEndpoints(values: { [key: string]: { dataType: string; value: any } }) {
 		const promises = Object.keys(values).map((id) => {
 			const value = values[id]?.value || null;
 			const node = this.endpoints[id];
@@ -107,7 +107,7 @@ export class SpinalDevice extends EventEmitter {
 	private async _updateEndpoint(endpointNode: SpinalNode, value: any) {
 		try {
 
-			if(value === null) value = "null";
+			if (value === null) value = "null";
 
 			const saveTimeSeries = this.spinalListenerModel.saveTimeSeries?.get();
 
@@ -115,7 +115,7 @@ export class SpinalDevice extends EventEmitter {
 			if (!element) return false;
 
 			element.mod_attr("currentValue", value);
-			
+
 			console.log(`[${this.deviceInfo.name}] - ${endpointNode.getName().get()} changed value to`, value);
 
 			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
@@ -197,7 +197,7 @@ export class SpinalDevice extends EventEmitter {
 	// 		path: node.path,
 	// 	};
 
-	// 	if (this.opcuaService.isVaraiable(node)) {
+	// 	if (this.opcuaService.isVariable(node)) {
 	// 		const dataValue = values[node.nodeId.toString()];
 	// 		param = {
 	// 			...param,
