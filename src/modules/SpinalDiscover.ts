@@ -9,7 +9,7 @@ import { IOPCNode } from "../interfaces/OPCNode";
 
 import { UserIdentityInfo, UserTokenType } from "node-opcua";
 import { addNetworkToGraph, getOrGenNetworkNode } from "../utils/addNetworkToGraph";
-import * as testJSON from "./test.json";
+// import * as testJSON from "./test.json";
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 

@@ -18,6 +18,7 @@ const transformTreeToGraph_1 = require("../utils/transformTreeToGraph");
 const Functions_1 = require("../utils/Functions");
 const node_opcua_1 = require("node-opcua");
 const addNetworkToGraph_1 = require("../utils/addNetworkToGraph");
+// import * as testJSON from "./test.json";
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDiscover extends events_1.EventEmitter {
     constructor() {
