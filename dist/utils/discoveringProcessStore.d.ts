@@ -7,6 +7,7 @@ declare class DiscoveringStore {
     getProgress(url: string): any;
     deleteProgress(url: string): void;
     wiriteInFile(url: string, data: string): void;
+    fileExist(url: string): boolean;
     private _createDirectoryIfNotExist;
     private _createFilePath;
 }

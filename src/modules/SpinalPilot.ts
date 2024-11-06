@@ -34,12 +34,12 @@ class SpinalPilot {
    private async pilot() {
       if (!this.isProcessing) {
          this.isProcessing = true;
-        while (!this.queue.isEmpty()) {
+         while (!this.queue.isEmpty()) {
             const pilot = this.queue.dequeue();
             try {
                const requests = pilot?.request.get();
                await this._sendPilotToServer(pilot, requests);
-                
+
             } catch (error) {
                pilot.setErrorMode();
             }
@@ -63,27 +63,27 @@ class SpinalPilot {
             // }
 
             // // console.log("pilot",pilot)
-        }
+         }
 
          this.isProcessing = false;
       }
    }
 
 
-   private async _sendPilotToServer(pilot:SpinalOPCUAPilot, requests: IRequest[]) {
+   private async _sendPilotToServer(pilot: SpinalOPCUAPilot, requests: IRequest[]) {
       const request = requests[0];
 
       try {
-         
+
          console.log(`send update request to ${request.nodeId} with value ${request.value}`);
 
          const url = getServerUrl(request.networkInfo);
-         const opcuaService = new OPCUAService();
+         const opcuaService = new OPCUAService(url);
 
-         await opcuaService.initialize(url);
+         await opcuaService.initialize();
 
-         await opcuaService.connect(url);
-         
+         await opcuaService.connect();
+
          await opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
 
          await opcuaService.disconnect();
@@ -94,7 +94,7 @@ class SpinalPilot {
          console.log(`the update of [${request.nodeId}] failed`);
          pilot.setErrorMode();
       }
-      
+
       await pilot.removeFromNode();
 
    }

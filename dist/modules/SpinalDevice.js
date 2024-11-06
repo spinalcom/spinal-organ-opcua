@@ -35,23 +35,19 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SpinalDevice = void 0;
 const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
 const events_1 = require("events");
-const OPCUAService_1 = require("../utils/OPCUAService");
 const node_opcua_client_1 = require("node-opcua-client");
 const node_opcua_1 = require("node-opcua");
 const spinal_model_timeseries_1 = require("spinal-model-timeseries");
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
-const Functions_1 = require("../utils/Functions");
 const securityMode = node_opcua_client_1.MessageSecurityMode["None"];
 const securityPolicy = node_opcua_client_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDevice extends events_1.EventEmitter {
     constructor(server, context, network, device, spinalListenerModel) {
         super();
-        this.opcuaService = new OPCUAService_1.default();
         this.isInit = false;
         this.nodes = {};
         this.endpoints = {};
-        this.endpointUrl = (0, Functions_1.getServerUrl)(server);
         this.context = context;
         this.network = network;
         this.device = device;

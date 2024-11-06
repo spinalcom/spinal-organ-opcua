@@ -2,6 +2,7 @@
 import { UserIdentityInfo, NodeId, DataValue } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
+import { SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 import { ITreeOption } from "../interfaces/ITreeOption";
 export declare class OPCUAService extends EventEmitter {
     private client?;
@@ -12,10 +13,12 @@ export declare class OPCUAService extends EventEmitter {
     private endpointUrl;
     private monitoredItemsListData;
     private clientAlarms;
-    constructor();
-    initialize(endpointUrl: string): Promise<void>;
+    private _discoverModel;
+    isVariable: typeof OPCUAService.isVariable;
+    constructor(modelOrUrl: SpinalOPCUADiscoverModel | string);
+    initialize(): Promise<void>;
     createSubscription(): Promise<void>;
-    connect(endpointUrl: string, userIdentity?: UserIdentityInfo): Promise<void>;
+    connect(userIdentity?: UserIdentityInfo): Promise<void>;
     disconnect(): Promise<void>;
     getTree(entryPointPath?: string, options?: ITreeOption): Promise<{
         tree: IOPCNode;
@@ -47,7 +50,7 @@ export declare class OPCUAService extends EventEmitter {
     private _formatReference;
     private _formatDataValue;
     private _readBrowseName;
-    isVariable(node: IOPCNode): boolean;
+    static isVariable(node: IOPCNode): boolean;
     isObject(node: IOPCNode): boolean;
     private _parseValue;
     readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;

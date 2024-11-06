@@ -17,17 +17,19 @@ const utils_1 = require("./utils");
 const make_certificate_1 = require("../utils/make_certificate");
 const discoveringProcessStore_1 = require("./discoveringProcessStore");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
+const Functions_1 = require("../utils/Functions");
 const securityMode = node_opcua_1.MessageSecurityMode["None"];
 const securityPolicy = node_opcua_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class OPCUAService extends events_1.EventEmitter {
-    constructor() {
+    constructor(modelOrUrl) {
         super();
         this.userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
         this.verbose = false;
         this.endpointUrl = "";
         this.monitoredItemsListData = [];
         this.clientAlarms = new node_opcua_1.ClientAlarmList();
+        this.isVariable = OPCUAService.isVariable;
         this._restartConnection = () => __awaiter(this, void 0, void 0, function* () {
             try {
                 yield this.client.disconnect();
@@ -37,22 +39,23 @@ class OPCUAService extends events_1.EventEmitter {
                 console.log("OpcUa: restartConnection", error);
             }
         });
+        if (typeof modelOrUrl === "string")
+            this.endpointUrl = modelOrUrl;
+        else {
+            const server = modelOrUrl.network.get();
+            this.endpointUrl = (0, Functions_1.getServerUrl)(server);
+            this._discoverModel = modelOrUrl;
+        }
     }
-    initialize(endpointUrl) {
+    initialize() {
         return __awaiter(this, void 0, void 0, function* () {
-            // public async initialize(endpointUrl: string, securityMode: MessageSecurityMode, securityPolicy: SecurityPolicy) {
             const { certificateFile, clientCertificateManager, applicationUri, applicationName } = yield make_certificate_1.default;
-            this.endpointUrl = endpointUrl;
             this.client = node_opcua_1.OPCUAClient.create({
                 endpointMustExist: false,
                 securityMode,
                 securityPolicy,
-                // certificateFile,
                 defaultSecureTokenLifetime: 30 * 1000,
                 requestedSessionTimeout: 30 * 1000,
-                // clientCertificateManager,
-                // applicationName,
-                // applicationUri,
                 keepSessionAlive: true,
                 transportTimeout: 60 * 1000,
                 connectionStrategy: {
@@ -84,19 +87,15 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    connect(endpointUrl, userIdentity) {
+    connect(userIdentity) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 this.userIdentity = userIdentity || { type: node_opcua_1.UserTokenType.Anonymous };
-                // console.log("connecting to", endpointUrl);
-                yield this.client.connect(endpointUrl);
+                yield this.client.connect(this.endpointUrl);
                 yield this._createSession();
-                // console.log("connected to ....", endpointUrl);
                 yield this.createSubscription();
             }
             catch (error) {
-                console.log(" Cannot connect", error.toString());
-                this.emit("connectionError", error);
                 throw error;
             }
         });
@@ -117,10 +116,9 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
-            // if (options.useBroadCast) throw new Error("throw error to simulate unicast"); //throw error to simulate unicast
             let { tree, variables, queue, nodesObj, browseMode } = yield this._getDiscoverData(entryPointPath, options.useBroadCast);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
-            while (queue.length) {
+            while (queue.length && this._discoverModel.state.get() === spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering) {
                 let discoverState = null;
                 let _error = null;
                 const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
@@ -369,7 +367,7 @@ class OPCUAService extends events_1.EventEmitter {
             let tree, variables, queue, nodesObj, browseMode;
             try {
                 if (!useLastResult)
-                    throw new Error("no last result");
+                    throw new Error("no last result"); // thrw error to force unicast browsing
                 const data = yield discoveringProcessStore_1.default.getProgress(this.endpointUrl);
                 const converted = yield this._convertTreeToObject(data.tree);
                 browseMode = "Multicast";
@@ -532,7 +530,7 @@ class OPCUAService extends events_1.EventEmitter {
             return node.value.value;
         });
     }
-    isVariable(node) {
+    static isVariable(node) {
         return node.nodeClass === node_opcua_1.NodeClass.Variable;
     }
     isObject(node) {

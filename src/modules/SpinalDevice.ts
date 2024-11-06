@@ -42,8 +42,6 @@ const securityPolicy = (SecurityPolicy as any)["None"];
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
 export class SpinalDevice extends EventEmitter {
-	private endpointUrl: string;
-	private opcuaService: OPCUAService = new OPCUAService();
 	private isInit: boolean = false;
 	private context: SpinalContext;
 	private network: SpinalNode;
@@ -57,7 +55,6 @@ export class SpinalDevice extends EventEmitter {
 
 	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener) {
 		super();
-		this.endpointUrl = getServerUrl(server);
 		this.context = context;
 		this.network = network;
 		this.device = device;

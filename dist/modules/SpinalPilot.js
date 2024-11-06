@@ -76,9 +76,9 @@ class SpinalPilot {
             try {
                 console.log(`send update request to ${request.nodeId} with value ${request.value}`);
                 const url = (0, Functions_1.getServerUrl)(request.networkInfo);
-                const opcuaService = new OPCUAService_1.OPCUAService();
-                yield opcuaService.initialize(url);
-                yield opcuaService.connect(url);
+                const opcuaService = new OPCUAService_1.OPCUAService(url);
+                yield opcuaService.initialize();
+                yield opcuaService.connect();
                 yield opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
                 yield opcuaService.disconnect();
                 pilot.setSuccessMode();

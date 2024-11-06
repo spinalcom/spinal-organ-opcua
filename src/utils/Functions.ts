@@ -163,9 +163,12 @@ export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADisc
 		const time = Date.now();
 		const creation = spinalDisoverModel.creation?.get() || 0;
 
+		const state = spinalDisoverModel.state.get();
+
+
+
 		// Check if model is not timeout.
-		if (time - creation >= minute || spinalDisoverModel.state.get() === OPCUA_ORGAN_STATES.created) {
-			// spinalDisoverModel.setTimeoutMode();
+		if (time - creation >= minute || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state)) {
 			spinalDisoverModel.changeState(OPCUA_ORGAN_STATES.timeout);
 			return spinalDisoverModel.removeFromGraph();
 		}

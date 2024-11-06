@@ -6,13 +6,14 @@ import { coerceStringToDataType, convertToBrowseDescription } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
 import discoveringStore from "./discoveringProcessStore";
-import { OPCUA_ORGAN_STATES } from "spinal-model-opcua";
+import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 import { ITreeOption } from "../interfaces/ITreeOption";
+import { getServerUrl, getVariablesList } from "../utils/Functions";
+
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
-
 
 export class OPCUAService extends EventEmitter {
 	private client?: OPCUAClient;
@@ -23,26 +24,29 @@ export class OPCUAService extends EventEmitter {
 	private endpointUrl: string = "";
 	private monitoredItemsListData: any[] = [];
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
+	private _discoverModel: SpinalOPCUADiscoverModel;
+	public isVariable = OPCUAService.isVariable;
 
-	public constructor() {
+	public constructor(modelOrUrl: SpinalOPCUADiscoverModel | string) {
 		super();
+		if (typeof modelOrUrl === "string")
+			this.endpointUrl = modelOrUrl;
+		else {
+			const server = modelOrUrl.network.get();
+			this.endpointUrl = getServerUrl(server);
+			this._discoverModel = modelOrUrl;
+		}
 	}
 
-	public async initialize(endpointUrl: string) {
-		// public async initialize(endpointUrl: string, securityMode: MessageSecurityMode, securityPolicy: SecurityPolicy) {
+	public async initialize() {
 		const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
 
-		this.endpointUrl = endpointUrl;
 		this.client = OPCUAClient.create({
 			endpointMustExist: false,
 			securityMode,
 			securityPolicy,
-			// certificateFile,
 			defaultSecureTokenLifetime: 30 * 1000,
 			requestedSessionTimeout: 30 * 1000,
-			// clientCertificateManager,
-			// applicationName,
-			// applicationUri,
 			keepSessionAlive: true,
 			transportTimeout: 60 * 1000,
 			connectionStrategy: {
@@ -74,17 +78,13 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	public async connect(endpointUrl: string, userIdentity?: UserIdentityInfo) {
+	public async connect(userIdentity?: UserIdentityInfo) {
 		try {
 			this.userIdentity = userIdentity || { type: UserTokenType.Anonymous };
-			// console.log("connecting to", endpointUrl);
-			await this.client.connect(endpointUrl);
+			await this.client.connect(this.endpointUrl);
 			await this._createSession();
-			// console.log("connected to ....", endpointUrl);
 			await this.createSubscription();
 		} catch (error) {
-			console.log(" Cannot connect", error.toString());
-			this.emit("connectionError", error);
 			throw error;
 		}
 	}
@@ -106,13 +106,12 @@ export class OPCUAService extends EventEmitter {
 
 	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
 
-		// if (options.useBroadCast) throw new Error("throw error to simulate unicast"); //throw error to simulate unicast
 
 		let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
 
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
-		while (queue.length) {
+		while (queue.length && this._discoverModel.state.get() === OPCUA_ORGAN_STATES.discovering) {
 
 			let discoverState = null;
 			let _error = null;
@@ -389,7 +388,7 @@ export class OPCUAService extends EventEmitter {
 		let tree, variables, queue, nodesObj, browseMode;
 
 		try {
-			if (!useLastResult) throw new Error("no last result");
+			if (!useLastResult) throw new Error("no last result"); // thrw error to force unicast browsing
 
 			const data = await discoveringStore.getProgress(this.endpointUrl);
 			const converted = await this._convertTreeToObject(data.tree);
@@ -578,9 +577,10 @@ export class OPCUAService extends EventEmitter {
 	}
 
 
-	public isVariable(node: IOPCNode): boolean {
+	public static isVariable(node: IOPCNode): boolean {
 		return node.nodeClass === NodeClass.Variable;
 	}
+
 
 	public isObject(node: IOPCNode): boolean {
 		return node.nodeClass === NodeClass.Object;

@@ -10,6 +10,7 @@ declare class SpinalDiscover extends EventEmitter {
     private _discoverNext;
     private _bindDiscoverModel;
     private _discoverDevice;
+    private askToContinueDiscovery;
     private _getOPCUATree;
     private _createNetworkTreeInGraph;
     private _getVariablesValues;

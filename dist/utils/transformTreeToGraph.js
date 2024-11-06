@@ -71,8 +71,7 @@ function _generateNodeAndRelation(node, values = {}) {
         displayName: node.displayName || "",
         browseName: node.browseName || ""
     };
-    const opcuaService = new OPCUAService_1.default();
-    if (opcuaService.isVariable(node)) {
+    if (OPCUAService_1.default.isVariable(node)) {
         const dataValue = values[node.nodeId.toString()];
         param = Object.assign(Object.assign({}, param), { typeId: "", nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, type: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, currentValue: (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) || "null", dataType: (dataValue === null || dataValue === void 0 ? void 0 : dataValue.dataType) || "", unit: "" });
         element = new spinal_model_bmsnetwork_1.SpinalBmsEndpoint(param);

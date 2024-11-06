@@ -18,6 +18,7 @@ const transformTreeToGraph_1 = require("../utils/transformTreeToGraph");
 const Functions_1 = require("../utils/Functions");
 const node_opcua_1 = require("node-opcua");
 const addNetworkToGraph_1 = require("../utils/addNetworkToGraph");
+const discoveringProcessStore_1 = require("../utils/discoveringProcessStore");
 // import * as testJSON from "./test.json";
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDiscover extends events_1.EventEmitter {
@@ -73,28 +74,56 @@ class SpinalDiscover extends events_1.EventEmitter {
     _discoverDevice(model) {
         return __awaiter(this, void 0, void 0, function* () {
             const server = model.network.get();
+            const _url = (0, Functions_1.getServerUrl)(server);
+            let useLastResult = false;
+            if (discoveringProcessStore_1.default.fileExist(_url)) {
+                console.log("inside file exist");
+                useLastResult = yield this.askToContinueDiscovery(model);
+            }
             console.log("discovering", server.name);
-            return this._getOPCUATree(server, true, true)
+            return this._getOPCUATree(model, useLastResult, true)
                 .then(({ tree, variables }) => __awaiter(this, void 0, void 0, function* () {
+                if (!tree)
+                    return;
                 yield model.setTreeDiscovered(tree);
                 console.log(server.name, "discovered !!");
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered);
-                yield writeInFile("../../tree.txt", JSON.stringify(tree));
                 return tree;
             })).catch((err) => {
-                console.log(`${server.name} discovery failed !! reason: "${err.message}"`);
+                var _a, _b;
+                error: console.log(`${(_b = (_a = model === null || model === void 0 ? void 0 : model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get()} discovery failed !! reason: "${err.message}"`);
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
             });
         });
     }
+    askToContinueDiscovery(model) {
+        return new Promise((resolve, reject) => {
+            try {
+                model.changeChoice(spinal_model_opcua_1.OPCUA_ORGAN_USER_CHOICE.noChoice);
+                let proccessId = model.askResponse.bind(() => {
+                    const res = model.askResponse.get();
+                    if (![spinal_model_opcua_1.OPCUA_ORGAN_USER_CHOICE.yes, spinal_model_opcua_1.OPCUA_ORGAN_USER_CHOICE.no].includes(res))
+                        return;
+                    const choice = model.askResponse.get() === spinal_model_opcua_1.OPCUA_ORGAN_USER_CHOICE.yes;
+                    model.ask.set(false);
+                    model.askResponse.unbind(proccessId);
+                    resolve(choice);
+                }, false);
+                model.ask.set(true);
+                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.pending);
+            }
+            catch (error) {
+                reject(error);
+            }
+        });
+    }
     // tryTree2 is used to try the second method to get the tree if the first one failed
-    _getOPCUATree(server, useLastResult, tryTree2 = true) {
+    _getOPCUATree(model, useLastResult, tryTree2 = true) {
         return __awaiter(this, void 0, void 0, function* () {
-            const endpointUrl = (0, Functions_1.getServerUrl)(server);
             const entryPointPath = process.env.OPCUA_SERVER_ENTRYPOINT;
-            const opcuaService = new OPCUAService_1.default();
-            yield opcuaService.initialize(endpointUrl);
-            yield opcuaService.connect(endpointUrl, userIdentity);
+            const opcuaService = new OPCUAService_1.default(model);
+            yield opcuaService.initialize();
+            yield opcuaService.connect(userIdentity);
             const options = { useLastResult, useBroadCast: true };
             return opcuaService.getTree(entryPointPath, options)
                 .then((result) => __awaiter(this, void 0, void 0, function* () {
@@ -105,7 +134,13 @@ class SpinalDiscover extends events_1.EventEmitter {
                 console.log("failed to use multi browsing, trying with unique browsing");
                 options.useBroadCast = false;
                 return opcuaService.getTree(entryPointPath, options);
-            })).finally(() => __awaiter(this, void 0, void 0, function* () {
+            }))
+                .catch((err) => __awaiter(this, void 0, void 0, function* () {
+                var _a, _b;
+                console.log(`${(_b = (_a = model === null || model === void 0 ? void 0 : model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get()} discovery failed !! reason: "${err.message}"`);
+                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
+            }))
+                .finally(() => __awaiter(this, void 0, void 0, function* () {
                 yield opcuaService.disconnect();
             }));
         });
@@ -116,7 +151,7 @@ class SpinalDiscover extends events_1.EventEmitter {
             const server = model.network.get();
             console.log("creating network", server.name);
             const variables = (0, Functions_1.getVariablesList)(treeToCreate);
-            const values = yield this._getVariablesValues(server, variables);
+            const values = yield this._getVariablesValues(model, variables);
             const context = yield model.getContext();
             const { network, organ } = yield (0, addNetworkToGraph_1.getOrGenNetworkNode)(model, context);
             const nodesAlreadyCreated = yield (0, transformTreeToGraph_1.getNodeAlreadyCreated)(context, network);
@@ -145,12 +180,12 @@ class SpinalDiscover extends events_1.EventEmitter {
     // 		});
     // 	});
     // }
-    _getVariablesValues(server, variables) {
+    _getVariablesValues(model, variables) {
         return __awaiter(this, void 0, void 0, function* () {
-            const endpointUrl = (0, Functions_1.getServerUrl)(server);
-            const opcuaService = new OPCUAService_1.default();
-            yield opcuaService.initialize(endpointUrl);
-            yield opcuaService.connect(endpointUrl, userIdentity);
+            // const endpointUrl = getServerUrl(server);
+            const opcuaService = new OPCUAService_1.default(model);
+            yield opcuaService.initialize();
+            yield opcuaService.connect(userIdentity);
             return opcuaService.readNodeValue(variables).then((result) => {
                 const obj = {};
                 for (let index = 0; index < result.length; index++) {
@@ -171,11 +206,13 @@ class SpinalDiscover extends events_1.EventEmitter {
     }
 }
 exports.discover = new SpinalDiscover();
-const fs = require("fs");
-const nodePath = require("path");
-function writeInFile(argPath, text) {
-    return fs.writeFileSync(nodePath.resolve(__dirname, argPath), text);
-}
+// import * as fs from "fs";
+// import * as nodePath from "path";
+// import { ITreeOption } from "../interfaces/ITreeOption";
+// import discoveringStore from "../utils/discoveringProcessStore";
+// function writeInFile(argPath, text) {
+// 	return fs.writeFileSync(nodePath.resolve(__dirname, argPath), text);
+// }
 /*
 export class SpinalDiscover {
     private bindSateProcess: any;

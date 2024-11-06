@@ -47,6 +47,10 @@ class DiscoveringStore {
             console.warn('Error writing file', error.message);
         }
     }
+    fileExist(url) {
+        const filePath = this._createFilePath(url);
+        return fs.existsSync(filePath);
+    }
     _createDirectoryIfNotExist(path) {
         try {
             if (!fs.existsSync(path))

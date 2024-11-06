@@ -14,6 +14,8 @@ class DiscoveringStore {
         return this._instance;
     }
 
+
+
     saveProgress(url: string, tree: any, queue: any, state: any) {
         const data = JSON.stringify({ url, tree, queue, state });
         // const base64 = Buffer.from(data).toString('base64');
@@ -50,6 +52,11 @@ class DiscoveringStore {
             console.warn('Error writing file', error.message);
         }
 
+    }
+
+    fileExist(url: string) {
+        const filePath = this._createFilePath(url);
+        return fs.existsSync(filePath);
     }
 
     private _createDirectoryIfNotExist(path) {

@@ -185,9 +185,9 @@ class SpinalMonitoring {
                 if (!Array.isArray(variablesIds))
                     variablesIds = [variablesIds];
                 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
-                const opcuaService = new OPCUAService_1.default();
-                yield opcuaService.initialize(endpointUrl);
-                yield opcuaService.connect(endpointUrl, userIdentity);
+                const opcuaService = new OPCUAService_1.default(endpointUrl);
+                yield opcuaService.initialize();
+                yield opcuaService.connect(userIdentity);
                 return opcuaService.readNodeValue(variablesIds).then((result) => __awaiter(this, void 0, void 0, function* () {
                     const obj = {};
                     for (let index = 0; index < result.length; index++) {

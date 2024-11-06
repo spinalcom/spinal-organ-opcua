@@ -1,6 +1,6 @@
 import { EventEmitter } from "events";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
-import { SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES } from "spinal-model-opcua";
+import { SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, OPCUA_ORGAN_USER_CHOICE } from "spinal-model-opcua";
 import OPCUAService from "../utils/OPCUAService";
 
 import { _transformTreeToGraphRecursively, getNodeAlreadyCreated } from "../utils/transformTreeToGraph";
@@ -9,6 +9,9 @@ import { IOPCNode } from "../interfaces/OPCNode";
 
 import { UserIdentityInfo, UserTokenType } from "node-opcua";
 import { addNetworkToGraph, getOrGenNetworkNode } from "../utils/addNetworkToGraph";
+import discoveringStore from "../utils/discoveringProcessStore";
+import { ITreeOption } from "../interfaces/ITreeOption";
+
 // import * as testJSON from "./test.json";
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
@@ -72,32 +75,67 @@ class SpinalDiscover extends EventEmitter {
 
 	private async _discoverDevice(model: SpinalOPCUADiscoverModel) {
 		const server = model.network.get();
+
+		const _url = getServerUrl(server);
+		let useLastResult = false;
+
+		if (discoveringStore.fileExist(_url)) {
+			console.log("inside file exist");
+			useLastResult = await this.askToContinueDiscovery(model);
+		}
+
+
 		console.log("discovering", server.name);
 
-		return this._getOPCUATree(server, true, true)
-			.then(async ({ tree, variables }) => {
+		return this._getOPCUATree(model, useLastResult, true)
+			.then(async ({ tree, variables }: any) => {
+				if (!tree) return;
+
 				await model.setTreeDiscovered(tree);
 				console.log(server.name, "discovered !!");
 				model.changeState(OPCUA_ORGAN_STATES.discovered);
-				await writeInFile("../../tree.txt", JSON.stringify(tree));
 				return tree;
 
 			}).catch((err) => {
-				console.log(`${server.name} discovery failed !! reason: "${err.message}"`);
+				error: console.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
 				model.changeState(OPCUA_ORGAN_STATES.error);
 			});
 
 	}
 
+	private askToContinueDiscovery(model: SpinalOPCUADiscoverModel): Promise<boolean> {
+		return new Promise((resolve, reject) => {
+			try {
+
+				model.changeChoice(OPCUA_ORGAN_USER_CHOICE.noChoice);
+
+				let proccessId = model.askResponse.bind(() => {
+					const res = model.askResponse.get();
+					if (![OPCUA_ORGAN_USER_CHOICE.yes, OPCUA_ORGAN_USER_CHOICE.no].includes(res)) return;
+
+					const choice = model.askResponse.get() === OPCUA_ORGAN_USER_CHOICE.yes;
+					model.ask.set(false);
+					model.askResponse.unbind(proccessId);
+					resolve(choice);
+				}, false);
+
+				model.ask.set(true);
+				model.changeState(OPCUA_ORGAN_STATES.pending);
+			} catch (error) {
+				reject(error);
+			}
+
+		});
+	}
+
 	// tryTree2 is used to try the second method to get the tree if the first one failed
-	private async _getOPCUATree(server: any, useLastResult: boolean, tryTree2: boolean = true) {
-		const endpointUrl = getServerUrl(server);
+	private async _getOPCUATree(model: SpinalOPCUADiscoverModel, useLastResult: boolean, tryTree2: boolean = true) {
 		const entryPointPath = process.env.OPCUA_SERVER_ENTRYPOINT;
 
-		const opcuaService: OPCUAService = new OPCUAService();
+		const opcuaService: OPCUAService = new OPCUAService(model);
 
-		await opcuaService.initialize(endpointUrl);
-		await opcuaService.connect(endpointUrl, userIdentity);
+		await opcuaService.initialize();
+		await opcuaService.connect(userIdentity);
 
 		const options: ITreeOption = { useLastResult, useBroadCast: true };
 
@@ -111,7 +149,12 @@ class SpinalDiscover extends EventEmitter {
 				options.useBroadCast = false;
 				return opcuaService.getTree(entryPointPath, options);
 
-			}).finally(async () => {
+			})
+			.catch(async (err) => {
+				console.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
+				model.changeState(OPCUA_ORGAN_STATES.error);
+			})
+			.finally(async () => {
 				await opcuaService.disconnect();
 			});
 
@@ -124,7 +167,7 @@ class SpinalDiscover extends EventEmitter {
 		console.log("creating network", server.name);
 
 		const variables = getVariablesList(treeToCreate);
-		const values = await this._getVariablesValues(server, variables);
+		const values = await this._getVariablesValues(model, variables);
 
 		const context = await model.getContext();
 		const { network, organ } = await getOrGenNetworkNode(model, context);
@@ -146,8 +189,6 @@ class SpinalDiscover extends EventEmitter {
 
 	}
 
-
-
 	// private convertToBase64(tree: any) {
 	// 	return new Promise((resolve, reject) => {
 	// 		const treeString = JSON.stringify(tree);
@@ -160,12 +201,12 @@ class SpinalDiscover extends EventEmitter {
 	// 	});
 	// }
 
-	private async _getVariablesValues(server: any, variables: IOPCNode[]) {
-		const endpointUrl = getServerUrl(server);
-		const opcuaService: OPCUAService = new OPCUAService();
+	private async _getVariablesValues(model: SpinalOPCUADiscoverModel, variables: IOPCNode[]) {
+		// const endpointUrl = getServerUrl(server);
+		const opcuaService: OPCUAService = new OPCUAService(model);
 
-		await opcuaService.initialize(endpointUrl);
-		await opcuaService.connect(endpointUrl, userIdentity);
+		await opcuaService.initialize();
+		await opcuaService.connect(userIdentity);
 
 		return opcuaService.readNodeValue(variables).then((result) => {
 			const obj = {};
@@ -190,13 +231,14 @@ class SpinalDiscover extends EventEmitter {
 
 export const discover = new SpinalDiscover();
 
-import * as fs from "fs";
-import * as nodePath from "path";
-import { ITreeOption } from "../interfaces/ITreeOption";
+// import * as fs from "fs";
+// import * as nodePath from "path";
+// import { ITreeOption } from "../interfaces/ITreeOption";
+// import discoveringStore from "../utils/discoveringProcessStore";
 
-function writeInFile(argPath, text) {
-	return fs.writeFileSync(nodePath.resolve(__dirname, argPath), text);
-}
+// function writeInFile(argPath, text) {
+// 	return fs.writeFileSync(nodePath.resolve(__dirname, argPath), text);
+// }
 
 /*
 export class SpinalDiscover {

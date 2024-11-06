@@ -4,8 +4,6 @@ import { SpinalNode, SpinalContext } from "spinal-env-viewer-graph-service";
 import { IServer } from "spinal-model-opcua";
 import { SpinalOPCUAListener } from "spinal-model-opcua";
 export declare class SpinalDevice extends EventEmitter {
-    private endpointUrl;
-    private opcuaService;
     private isInit;
     private context;
     private network;
