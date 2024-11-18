@@ -13,8 +13,8 @@ class DiscoveringStore {
         }
         return this._instance;
     }
-    saveProgress(url, tree, queue, state) {
-        const data = JSON.stringify({ url, tree, queue, state });
+    saveProgress(url, nodesObj, queue, state) {
+        const data = JSON.stringify({ url, nodesObj, queue, state });
         // const base64 = Buffer.from(data).toString('base64');
         this.wiriteInFile(url, data);
     }

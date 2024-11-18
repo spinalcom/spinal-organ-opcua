@@ -80,7 +80,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 console.log("inside file exist");
                 useLastResult = yield this.askToContinueDiscovery(model);
             }
-            console.log("discovering", server.name);
+            console.log("discovering", server.name, useLastResult ? "using last result" : "starting from scratch");
             return this._getOPCUATree(model, useLastResult, true)
                 .then(({ tree, variables }) => __awaiter(this, void 0, void 0, function* () {
                 if (!tree)

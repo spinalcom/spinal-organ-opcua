@@ -116,15 +116,16 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
-            let { tree, variables, queue, nodesObj, browseMode } = yield this._getDiscoverData(entryPointPath, options.useBroadCast);
+            // let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
+            let { nodesObj, queue, browseMode } = yield this._getDiscoverData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
-            while (queue.length && this._discoverModel.state.get() === spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering) {
+            while (queue.length && [spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering, spinal_model_opcua_1.OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
                 let discoverState = null;
                 let _error = null;
                 const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
                 try {
                     discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering;
-                    const newsItems = yield this._getChildrenAndSaveAddToObj(chunked, nodesObj, variables);
+                    const newsItems = yield this._getChildrenAndAddToObj(chunked, nodesObj);
                     queue.push(...newsItems);
                     if (newsItems.length)
                         console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`);
@@ -137,10 +138,12 @@ class OPCUAService extends events_1.EventEmitter {
                 }
                 if (!_error && queue.length === 0)
                     discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered;
-                yield discoveringProcessStore_1.default.saveProgress(this.endpointUrl, tree, queue, discoverState);
+                yield discoveringProcessStore_1.default.saveProgress(this.endpointUrl, nodesObj, queue, discoverState);
                 if (_error)
                     throw _error;
             }
+            const { tree, variables } = yield this._convertObjToTree(entryPointPath, nodesObj);
+            console.log("tree", tree);
             console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
             return { tree, variables };
         });
@@ -164,7 +167,7 @@ class OPCUAService extends events_1.EventEmitter {
     // 			// const children = await this._browseNode(node);
     // 			// node.children = children;
     // 			// queue.push(...children);
-    // 			const children = await this._getChildrenAndSaveAddToObj([node], nodesObj, variables);
+    // 			const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
     // 			queue.push(...children);
     // 		} catch (error) {
     // 			discoverState = OPCUA_ORGAN_STATES.error;
@@ -190,16 +193,14 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////////////////////////
-    _getChildrenAndSaveAddToObj(nodes, nodesObj = {}, variables = []) {
+    _getChildrenAndAddToObj(nodes, nodesObj = {}) {
         return __awaiter(this, void 0, void 0, function* () {
             const children = yield this._browseNode(nodes);
             for (const child of children) {
-                const parent = nodesObj[child.parentId];
-                if (this.isVariable(child))
-                    variables.push(child.nodeId.toString());
+                // const parent = nodesObj[child.parentId];
+                // if (this.isVariable(child)) variables.push(child.nodeId.toString());
                 nodesObj[child.nodeId.toString()] = child;
-                if (parent)
-                    parent.children.push(child);
+                // if (parent) parent.children.push(child);
             }
             return children;
         });
@@ -364,26 +365,22 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _getDiscoverData(entryPointPath, useLastResult) {
         return __awaiter(this, void 0, void 0, function* () {
-            let tree, variables, queue, nodesObj, browseMode;
+            let queue, nodesObj, browseMode;
             try {
                 if (!useLastResult)
-                    throw new Error("no last result"); // thrw error to force unicast browsing
+                    throw new Error("no last result"); // throw error to force unicast browsing
                 const data = yield discoveringProcessStore_1.default.getProgress(this.endpointUrl);
-                const converted = yield this._convertTreeToObject(data.tree);
                 browseMode = "Multicast";
-                tree = data.tree;
+                nodesObj = data.nodesObj;
                 queue = data.queue;
-                variables = converted.variables;
-                nodesObj = converted.obj;
             }
             catch (error) {
                 browseMode = "Unicast";
-                tree = yield this._getEntryPoint(entryPointPath);
-                variables = [];
+                let tree = yield this._getEntryPoint(entryPointPath);
                 queue = [tree];
                 nodesObj = { [tree.nodeId.toString()]: tree };
             }
-            return { tree, variables, queue, nodesObj, browseMode };
+            return { queue, nodesObj, browseMode };
         });
     }
     _convertTreeToObject(tree) {
@@ -399,6 +396,24 @@ class OPCUAService extends events_1.EventEmitter {
                 stack.push(...node.children);
             }
             return { obj, variables };
+        });
+    }
+    _convertObjToTree(entryPointPath, obj) {
+        return __awaiter(this, void 0, void 0, function* () {
+            let tree = yield this._getEntryPoint(entryPointPath);
+            const variables = [];
+            for (const key in obj) {
+                if (Object.prototype.hasOwnProperty.call(obj, key)) {
+                    const node = obj[key];
+                    const parent = obj[node.parentId];
+                    if (this.isVariable(node))
+                        variables.push(node.nodeId.toString());
+                    if (parent)
+                        parent.children.push(node);
+                }
+            }
+            tree = obj[tree.nodeId.toString()];
+            return { tree, variables };
         });
     }
     ////////////////////////////////////////////////////////////
@@ -456,16 +471,15 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////
     _getEntryPoint(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
-            let start = {
-                displayName: "Objects",
-                nodeId: node_opcua_1.ObjectIds.ObjectsFolder,
+            let root = {
+                displayName: "Root",
+                nodeId: node_opcua_1.ObjectIds.RootFolder,
                 path: "/",
                 children: [],
             };
-            if (!entryPointPath || entryPointPath === "/") {
-                return start;
-            }
-            return this._getEntryPointWithPath(start, entryPointPath);
+            if (!entryPointPath || entryPointPath === "/")
+                entryPointPath = "Objects";
+            return this._getEntryPointWithPath(root, entryPointPath);
         });
     }
     _getEntryPointWithPath(start, entryPointPath) {

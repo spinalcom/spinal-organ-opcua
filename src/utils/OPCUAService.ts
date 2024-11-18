@@ -107,11 +107,13 @@ export class OPCUAService extends EventEmitter {
 	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
 
 
-		let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
+		// let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
+
+		let { nodesObj, queue, browseMode } = await this._getDiscoverData(entryPointPath, options.useLastResult);
 
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
-		while (queue.length && this._discoverModel.state.get() === OPCUA_ORGAN_STATES.discovering) {
+		while (queue.length && [OPCUA_ORGAN_STATES.discovering, OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
 
 			let discoverState = null;
 			let _error = null;
@@ -119,7 +121,7 @@ export class OPCUAService extends EventEmitter {
 
 			try {
 				discoverState = OPCUA_ORGAN_STATES.discovering;
-				const newsItems = await this._getChildrenAndSaveAddToObj(chunked, nodesObj, variables);
+				const newsItems = await this._getChildrenAndAddToObj(chunked, nodesObj);
 				queue.push(...newsItems);
 				if (newsItems.length) console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`);
 				console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`);
@@ -130,11 +132,15 @@ export class OPCUAService extends EventEmitter {
 			}
 
 			if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
-			await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
+
+			await discoveringStore.saveProgress(this.endpointUrl, nodesObj, queue, discoverState);
 
 			if (_error) throw _error;
 		}
 
+		const { tree, variables } = await this._convertObjToTree(entryPointPath, nodesObj);
+
+		console.log("tree", tree);
 		console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
 		return { tree, variables };
 	}
@@ -162,7 +168,7 @@ export class OPCUAService extends EventEmitter {
 	// 			// const children = await this._browseNode(node);
 	// 			// node.children = children;
 	// 			// queue.push(...children);
-	// 			const children = await this._getChildrenAndSaveAddToObj([node], nodesObj, variables);
+	// 			const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
 	// 			queue.push(...children);
 	// 		} catch (error) {
 	// 			discoverState = OPCUA_ORGAN_STATES.error;
@@ -193,15 +199,15 @@ export class OPCUAService extends EventEmitter {
 
 	///////////////////////////////////////////////////////////////////////////
 
-	public async _getChildrenAndSaveAddToObj(nodes: IOPCNode[], nodesObj: { [key: string]: IOPCNode } = {}, variables: string[] = []) {
+	public async _getChildrenAndAddToObj(nodes: IOPCNode[], nodesObj: { [key: string]: IOPCNode } = {}) {
 
 		const children = await this._browseNode(nodes);
 
 		for (const child of children) {
-			const parent = nodesObj[child.parentId];
-			if (this.isVariable(child)) variables.push(child.nodeId.toString());
+			// const parent = nodesObj[child.parentId];
+			// if (this.isVariable(child)) variables.push(child.nodeId.toString());
 			nodesObj[child.nodeId.toString()] = child;
-			if (parent) parent.children.push(child);
+			// if (parent) parent.children.push(child);
 		}
 
 		return children;
@@ -385,29 +391,25 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async _getDiscoverData(entryPointPath: string, useLastResult: boolean) {
-		let tree, variables, queue, nodesObj, browseMode;
+		let queue, nodesObj, browseMode;
 
 		try {
-			if (!useLastResult) throw new Error("no last result"); // thrw error to force unicast browsing
+			if (!useLastResult) throw new Error("no last result"); // throw error to force unicast browsing
 
 			const data = await discoveringStore.getProgress(this.endpointUrl);
-			const converted = await this._convertTreeToObject(data.tree);
 
 			browseMode = "Multicast";
-			tree = data.tree;
+			nodesObj = data.nodesObj;
 			queue = data.queue;
-			variables = converted.variables;
-			nodesObj = converted.obj;
 
 		} catch (error) {
 			browseMode = "Unicast";
-			tree = await this._getEntryPoint(entryPointPath);
-			variables = [];
+			let tree = await this._getEntryPoint(entryPointPath);
 			queue = [tree];
 			nodesObj = { [tree.nodeId.toString()]: tree };
 		}
 
-		return { tree, variables, queue, nodesObj, browseMode };
+		return { queue, nodesObj, browseMode };
 	}
 
 	private async _convertTreeToObject(tree: IOPCNode) {
@@ -426,6 +428,23 @@ export class OPCUAService extends EventEmitter {
 		return { obj, variables };
 	}
 
+	private async _convertObjToTree(entryPointPath: string, obj: { [key: string]: IOPCNode }): Promise<{ tree: IOPCNode, variables: string[] }> {
+		let tree = await this._getEntryPoint(entryPointPath);
+		const variables = [];
+
+		for (const key in obj) {
+			if (Object.prototype.hasOwnProperty.call(obj, key)) {
+				const node = obj[key];
+				const parent = obj[node.parentId];
+				if (this.isVariable(node)) variables.push(node.nodeId.toString());
+
+				if (parent) parent.children.push(node);
+			}
+		}
+
+		tree = obj[tree.nodeId.toString()];
+		return { tree, variables }
+	}
 	////////////////////////////////////////////////////////////
 	//							Client			 			  //
 	////////////////////////////////////////////////////////////
@@ -494,18 +513,16 @@ export class OPCUAService extends EventEmitter {
 	///////////////////////////////////////////////////////
 
 	private async _getEntryPoint(entryPointPath?: string): Promise<IOPCNode> {
-		let start: any = {
-			displayName: "Objects",
-			nodeId: ObjectIds.ObjectsFolder,
+		let root: any = {
+			displayName: "Root",
+			nodeId: ObjectIds.RootFolder,
 			path: "/",
 			children: [],
 		};
 
-		if (!entryPointPath || entryPointPath === "/") {
-			return start;
-		}
+		if (!entryPointPath || entryPointPath === "/") entryPointPath = "Objects";
 
-		return this._getEntryPointWithPath(start, entryPointPath);
+		return this._getEntryPointWithPath(root, entryPointPath);
 	}
 
 	private async _getEntryPointWithPath(start: any, entryPointPath?: string): Promise<IOPCNode> {

@@ -16,8 +16,8 @@ class DiscoveringStore {
 
 
 
-    saveProgress(url: string, tree: any, queue: any, state: any) {
-        const data = JSON.stringify({ url, tree, queue, state });
+    saveProgress(url: string, nodesObj: { [key: string]: any }, queue: any, state: any) {
+        const data = JSON.stringify({ url, nodesObj, queue, state });
         // const base64 = Buffer.from(data).toString('base64');
         this.wiriteInFile(url, data);
     }

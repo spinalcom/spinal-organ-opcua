@@ -3,7 +3,9 @@ declare class DiscoveringStore {
     private discoveringFolder;
     private constructor();
     static getInstance(): DiscoveringStore;
-    saveProgress(url: string, tree: any, queue: any, state: any): void;
+    saveProgress(url: string, nodesObj: {
+        [key: string]: any;
+    }, queue: any, state: any): void;
     getProgress(url: string): any;
     deleteProgress(url: string): void;
     wiriteInFile(url: string, data: string): void;

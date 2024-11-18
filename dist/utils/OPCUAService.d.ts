@@ -25,9 +25,9 @@ export declare class OPCUAService extends EventEmitter {
         variables: string[];
     }>;
     browseNodeRec(node: any): Promise<IOPCNode[]>;
-    _getChildrenAndSaveAddToObj(nodes: IOPCNode[], nodesObj?: {
+    _getChildrenAndAddToObj(nodes: IOPCNode[], nodesObj?: {
         [key: string]: IOPCNode;
-    }, variables?: string[]): Promise<IOPCNode[]>;
+    }): Promise<IOPCNode[]>;
     extractBrowsePath(nodeId: NodeId): Promise<string>;
     readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{
         dataType: string;
@@ -41,6 +41,7 @@ export declare class OPCUAService extends EventEmitter {
     private _getNodeParent;
     private _getDiscoverData;
     private _convertTreeToObject;
+    private _convertObjToTree;
     private _createSession;
     private _listenClientEvents;
     private _listenSessionEvent;

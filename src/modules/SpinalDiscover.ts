@@ -85,7 +85,7 @@ class SpinalDiscover extends EventEmitter {
 		}
 
 
-		console.log("discovering", server.name);
+		console.log("discovering", server.name, useLastResult ? "using last result" : "starting from scratch");
 
 		return this._getOPCUATree(model, useLastResult, true)
 			.then(async ({ tree, variables }: any) => {
