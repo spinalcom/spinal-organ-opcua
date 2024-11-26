@@ -2,6 +2,9 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
+const nodePath = require("path");
+const dotenv_1 = require("dotenv");
+(0, dotenv_1.config)({ path: nodePath.resolve(__dirname, "../../.env"), override: true });
 function getConfig() {
     return {
         name: process.env.ORGAN_NAME || "EDIT_ME",
@@ -11,6 +14,7 @@ function getConfig() {
         host: process.env.HOST || "EDIT_ME",
         port: process.env.PORT || "EDIT_ME",
         path: process.env.ORGAN_FOLDER_PATH || "EDIT_ME",
+        entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || ""
     };
 }
 exports.getConfig = getConfig;

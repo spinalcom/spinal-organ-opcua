@@ -19,6 +19,7 @@ const Functions_1 = require("../utils/Functions");
 const node_opcua_1 = require("node-opcua");
 const addNetworkToGraph_1 = require("../utils/addNetworkToGraph");
 const discoveringProcessStore_1 = require("../utils/discoveringProcessStore");
+const utils_1 = require("../utils/utils");
 // import * as testJSON from "./test.json";
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDiscover extends events_1.EventEmitter {
@@ -120,7 +121,7 @@ class SpinalDiscover extends events_1.EventEmitter {
     // tryTree2 is used to try the second method to get the tree if the first one failed
     _getOPCUATree(model, useLastResult, tryTree2 = true) {
         return __awaiter(this, void 0, void 0, function* () {
-            const entryPointPath = process.env.OPCUA_SERVER_ENTRYPOINT;
+            const { entryPointPath } = (0, utils_1.getConfig)();
             const opcuaService = new OPCUAService_1.default(model);
             yield opcuaService.initialize();
             yield opcuaService.connect(userIdentity);
@@ -147,7 +148,9 @@ class SpinalDiscover extends events_1.EventEmitter {
     }
     _createNetworkTreeInGraph(model) {
         return __awaiter(this, void 0, void 0, function* () {
-            const treeToCreate = yield model.getTreeToCreate();
+            const { protocol, host, port, userId, password, path, name } = (0, utils_1.getConfig)();
+            const hubPath = `${protocol}://${host}:${port}`;
+            const treeToCreate = yield model.getTreeToCreate(hubPath);
             const server = model.network.get();
             console.log("creating network", server.name);
             const variables = (0, Functions_1.getVariablesList)(treeToCreate);

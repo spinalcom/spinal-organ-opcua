@@ -1,16 +1,15 @@
-import { config as dotenvConfig } from "dotenv";
-import * as nodePath from "path";
+// import { config as dotenvConfig } from "dotenv";
 import { spinalCore } from "spinal-core-connectorjs_type";
 import * as pm2 from "pm2";
+import * as nodepath from "path";
 import { getConfig } from "./utils/utils";
 import { connectionErrorCallback, CreateOrganConfigFile, GetPm2Instance, SpinalDiscoverCallback, SpinalListnerCallback, SpinalPilotCallback } from "./utils/Functions";
-import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot} from "spinal-model-opcua";
-
+import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 
 import * as fs from "fs";
-import * as nodepath from "path";
 
-dotenvConfig({ path: nodePath.resolve(__dirname, "../.env"), override: true });
+// dotenvConfig({ path: nodepath.resolve(__dirname, "../.env"), override: true });
+
 
 const { protocol, host, port, userId, password, path, name } = getConfig();
 const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
@@ -67,7 +66,7 @@ const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA
 
 	loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel: SpinalOPCUAListener) => {
 		SpinalListnerCallback(spinalListenerModel, organModel);
-	},	connectionErrorCallback);
+	}, connectionErrorCallback);
 
 	loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel: SpinalOPCUAPilot) => {
 		SpinalPilotCallback(spinalPilotModel, organModel);
@@ -82,7 +81,7 @@ const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA
 	// 	connectionErrorCallback
 	// );
 
-	
+
 };
 
 const loadTypeInSpinalCore = (connect, type, callback, errorCallback) => {

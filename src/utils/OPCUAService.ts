@@ -140,7 +140,6 @@ export class OPCUAService extends EventEmitter {
 
 		const { tree, variables } = await this._convertObjToTree(entryPointPath, nodesObj);
 
-		console.log("tree", tree);
 		console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
 		return { tree, variables };
 	}

@@ -10,24 +10,27 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNetwork = void 0;
-const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
+const utils_1 = require("./utils/utils");
+const discoveringProcessStore_1 = require("./utils/discoveringProcessStore");
 const { spinalCore } = require("spinal-core-connectorjs_type");
 const { SpinalBmsNetwork } = require("spinal-model-bmsnetwork");
 const { SpinalNode, SPINAL_RELATION_PTR_LST_TYPE, SpinalContext, SpinalGraph } = require("spinal-model-graph");
 const { SpinalOPCUADiscoverModel } = require("spinal-model-opcua");
 function getNetwork(connect) {
     return new Promise((resolve, reject) => {
-        const path = "/__users__/admin/Mission/Digital twin Mission";
+        const path = "/__users__/admin/Digital twin";
         spinalCore.load(connect, path, (graph) => __awaiter(this, void 0, void 0, function* () {
-            const contextName = "test organ opcua";
-            const organName = "spinal-organ-opcua";
-            const networkName = "Reseau 1";
-            const deviceName = "Device 1";
+            const contextName = "OPCUA network";
+            const organName = "spinal-organ-opcua-dev";
             const context = yield getContext(graph, contextName);
             const organ = yield getOrgan(context, organName);
-            const network = yield getOrCreateNetwork(graph, context, organ, networkName);
-            const device = yield getOrCreateDevice(context, network, deviceName);
-            return resolve({ graph, context, organ, network, device });
+            const network = {
+                ip: "172.29.32.47",
+                port: "26543",
+                name: "Network 1",
+                endpoint: "",
+            };
+            return resolve({ graph, context, organ, network });
         }), () => {
             console.log("hello");
         });
@@ -46,35 +49,19 @@ function getOrgan(context, organName) {
         return children.find((el) => el.getName().get() === organName);
     });
 }
-function getOrCreateNetwork(graph, context, organ, networkName) {
+(function () {
     return __awaiter(this, void 0, void 0, function* () {
-        const children = yield organ.getChildren();
-        const found = children.find((el) => el.getName().get() === networkName);
-        if (found)
-            return found;
-        // const service = new NetworkService(false);
-        // await service.init(graph, { contextName: context.getName().get(), contextType: "Network", networkType: SpinalBmsNetwork.nodeTypeName, networkName}, false)
-        const res = new SpinalBmsNetwork(networkName, "network");
-        const node = new SpinalNode(networkName, SpinalBmsNetwork.nodeTypeName, res);
-        return organ.addChildInContext(node, SpinalBmsNetwork.relationName, SPINAL_RELATION_PTR_LST_TYPE, context);
+        const { protocol, host, port, userId, password, path, name } = (0, utils_1.getConfig)();
+        const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
+        const connect = spinalCore.connect(url);
+        const { graph, context, organ, network } = yield getNetwork(connect);
+        const spinalOPCUADiscoverModel = new SpinalOPCUADiscoverModel(graph, context, organ, network);
+        const excelPath = `opc.tcp://172.29.32.47:26543`;
+        const excelData = yield discoveringProcessStore_1.default.getProgress(excelPath);
+        spinalOPCUADiscoverModel.addToGraph();
+        yield spinalOPCUADiscoverModel.setTreeDiscovered(excelData);
+        const tree = yield spinalOPCUADiscoverModel.getTreeDiscovered();
+        console.log(tree);
     });
-}
-function getOrCreateDevice(context, network, deviceName) {
-    return __awaiter(this, void 0, void 0, function* () {
-        const children = yield network.getChildren();
-        const found = children.find((el) => el.getName().get() === deviceName);
-        if (found)
-            return found;
-        const res = new spinal_model_bmsnetwork_1.SpinalBmsDevice({
-            id: "mon test",
-            name: deviceName,
-            type: spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName,
-            path: "",
-            address: "",
-            nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName,
-        });
-        const node = new SpinalNode(deviceName, spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName, res);
-        return network.addChildInContext(node, spinal_model_bmsnetwork_1.SpinalBmsDevice.relationName, SPINAL_RELATION_PTR_LST_TYPE, context);
-    });
-}
+}());
 //# sourceMappingURL=test.js.map

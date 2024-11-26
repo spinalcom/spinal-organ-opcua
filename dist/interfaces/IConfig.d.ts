@@ -6,4 +6,5 @@ export interface IConfig {
     host: string;
     port: string;
     path: string;
+    entryPointPath: string;
 }

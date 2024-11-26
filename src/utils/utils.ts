@@ -2,6 +2,12 @@ import { IOPCNode } from "../interfaces/OPCNode";
 import { IConfig } from "../interfaces/IConfig";
 import { BrowseDescription, BrowseDirection, DataType, ReferenceTypeIds, ResultMask } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
+import * as nodePath from "path";
+import { config as dotenvConfig } from "dotenv";
+
+
+dotenvConfig({ path: nodePath.resolve(__dirname, "../../.env"), override: true });
+
 
 export function getConfig(): IConfig {
 	return {
@@ -12,6 +18,7 @@ export function getConfig(): IConfig {
 		host: process.env.HOST || "EDIT_ME",
 		port: process.env.PORT || "EDIT_ME",
 		path: process.env.ORGAN_FOLDER_PATH || "EDIT_ME",
+		entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || ""
 	};
 }
 

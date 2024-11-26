@@ -9,15 +9,14 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-const dotenv_1 = require("dotenv");
-const nodePath = require("path");
+// import { config as dotenvConfig } from "dotenv";
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
 const pm2 = require("pm2");
+const nodepath = require("path");
 const utils_1 = require("./utils/utils");
 const Functions_1 = require("./utils/Functions");
 const fs = require("fs");
-const nodepath = require("path");
-(0, dotenv_1.config)({ path: nodePath.resolve(__dirname, "../.env"), override: true });
+// dotenvConfig({ path: nodepath.resolve(__dirname, "../.env"), override: true });
 const { protocol, host, port, userId, password, path, name } = (0, utils_1.getConfig)();
 const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
 const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);

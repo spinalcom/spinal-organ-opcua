@@ -11,6 +11,7 @@ import { UserIdentityInfo, UserTokenType } from "node-opcua";
 import { addNetworkToGraph, getOrGenNetworkNode } from "../utils/addNetworkToGraph";
 import discoveringStore from "../utils/discoveringProcessStore";
 import { ITreeOption } from "../interfaces/ITreeOption";
+import { getConfig } from "../utils/utils";
 
 // import * as testJSON from "./test.json";
 
@@ -130,7 +131,7 @@ class SpinalDiscover extends EventEmitter {
 
 	// tryTree2 is used to try the second method to get the tree if the first one failed
 	private async _getOPCUATree(model: SpinalOPCUADiscoverModel, useLastResult: boolean, tryTree2: boolean = true) {
-		const entryPointPath = process.env.OPCUA_SERVER_ENTRYPOINT;
+		const { entryPointPath } = getConfig();
 
 		const opcuaService: OPCUAService = new OPCUAService(model);
 
@@ -161,7 +162,9 @@ class SpinalDiscover extends EventEmitter {
 	}
 
 	private async _createNetworkTreeInGraph(model: SpinalOPCUADiscoverModel) {
-		const treeToCreate = await model.getTreeToCreate();
+		const { protocol, host, port, userId, password, path, name } = getConfig();
+		const hubPath = `${protocol}://${host}:${port}`;
+		const treeToCreate = await model.getTreeToCreate(hubPath);
 		const server = model.network.get();
 
 		console.log("creating network", server.name);

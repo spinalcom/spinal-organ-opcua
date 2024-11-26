@@ -143,7 +143,6 @@ class OPCUAService extends events_1.EventEmitter {
                     throw _error;
             }
             const { tree, variables } = yield this._convertObjToTree(entryPointPath, nodesObj);
-            console.log("tree", tree);
             console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
             return { tree, variables };
         });
