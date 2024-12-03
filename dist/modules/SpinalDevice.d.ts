@@ -24,7 +24,7 @@ export declare class SpinalDevice extends EventEmitter {
             dataType: string;
             value: any;
         };
-    }): Promise<boolean[]>;
+    }, cov?: boolean): Promise<boolean[]>;
     stopMonitoring(): void;
     startMonitoring(): void;
     restartMonitoring(): void;

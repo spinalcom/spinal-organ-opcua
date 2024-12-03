@@ -8,6 +8,7 @@ declare class SpinalMonitoring {
     private spinalDevices;
     private idNetworkToSpinalDevice;
     private spinalNetworkUtils;
+    private covItemToMonitoring;
     constructor();
     addToMonitoringList(spinalListenerModel: SpinalOPCUAListener): Promise<void>;
     init(): void;
@@ -17,11 +18,13 @@ declare class SpinalMonitoring {
     private _bindData;
     private _addToMaps;
     private _removeFromMaps;
+    private _stopCovItems;
     private waitFct;
     private _getOPCValues;
     private _getVariablesValues;
     private _classifyByDevice;
     private _updateProfile;
+    private monitorWithCov;
 }
 declare const spinalMonitoring: SpinalMonitoring;
 export default spinalMonitoring;

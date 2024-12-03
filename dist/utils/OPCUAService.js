@@ -69,16 +69,17 @@ class OPCUAService extends events_1.EventEmitter {
     }
     createSubscription() {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.session)
-                throw new Error("Invalid Session");
+            if (!this.session) {
+                yield this._createSession();
+            }
             try {
                 const parameters = {
-                    requestedPublishingInterval: 1000,
+                    requestedPublishingInterval: 500,
                     requestedLifetimeCount: 10,
                     requestedMaxKeepAliveCount: 5,
                     maxNotificationsPerPublish: 10,
                     publishingEnabled: true,
-                    priority: 10,
+                    priority: 1
                 };
                 this.subscription = yield this.session.createSubscription2(parameters);
             }
@@ -228,8 +229,7 @@ class OPCUAService extends events_1.EventEmitter {
     readNodeValue(node) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!this.session) {
-                console.log("no session");
-                return null;
+                this._createSession();
             }
             node = Array.isArray(node) ? node : [node];
             const nodesChunk = lodash.chunk(node, 500);
@@ -246,8 +246,7 @@ class OPCUAService extends events_1.EventEmitter {
     writeNode(node, value) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!this.session) {
-                console.log("no session");
-                return;
+                yield this._createSession();
             }
             const { dataType, arrayDimension, valueRank } = yield this._getNodesDetails(node);
             if (dataType) {
@@ -270,20 +269,29 @@ class OPCUAService extends events_1.EventEmitter {
     }
     monitorItem(nodeIds, callback) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.subscription)
-                return;
+            if (!this.subscription) {
+                yield this.createSubscription();
+            }
+            ;
             nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
             const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: node_opcua_1.AttributeIds.Value }));
-            const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, node_opcua_1.TimestampsToReturn.Both);
+            // const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, TimestampsToReturn.Both);
+            const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, { samplingInterval: 10, discardOldest: true, queueSize: 1 }, node_opcua_1.TimestampsToReturn.Both);
             for (const monitoredItem of monitoredItemGroup.monitoredItems) {
-                monitoredItem.on("changed", (dataValue) => {
-                    const value = this._formatDataValue(dataValue);
-                    callback(monitoredItem.itemToMonitor.nodeId.toString(), (value === null || value === void 0 ? void 0 : value.value) || "null");
-                });
+                this._listenMonitoredItemEvents(monitoredItem, callback);
             }
         });
     }
     ///////////////////////////////////////////////////////////////////////////
+    _listenMonitoredItemEvents(monitoredItem, callback) {
+        monitoredItem.on("changed", (dataValue) => {
+            const value = this._formatDataValue(dataValue);
+            callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
+        });
+        monitoredItem.on("err", (err) => {
+            console.log(`[Error - COV] - ${monitoredItem.itemToMonitor.nodeId.toString()} : ${err}`);
+        });
+    }
     _browseNode(node) {
         node = Array.isArray(node) ? node : [node];
         const nodeToBrowse = node.reduce((list, n) => {
@@ -477,12 +485,16 @@ class OPCUAService extends events_1.EventEmitter {
                 children: [],
             };
             if (!entryPointPath || entryPointPath === "/")
-                entryPointPath = "Objects";
+                entryPointPath = "/Objects";
+            if (!entryPointPath.startsWith("/"))
+                entryPointPath = "/" + entryPointPath;
             return this._getEntryPointWithPath(root, entryPointPath);
         });
     }
     _getEntryPointWithPath(start, entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
+            if (!entryPointPath.startsWith("/Objects"))
+                entryPointPath = "/Objects" + entryPointPath;
             const paths = entryPointPath.split("/").filter((el) => el !== "");
             let error;
             let node = start;
@@ -518,15 +530,16 @@ class OPCUAService extends events_1.EventEmitter {
         };
     }
     _formatDataValue(dataValue) {
-        if (dataValue.statusCode == node_opcua_1.StatusCodes.Good) {
-            if (dataValue.value.value) {
-                const obj = { dataType: node_opcua_1.DataType[dataValue.value.dataType], value: undefined };
-                switch (dataValue.value.arrayType) {
+        var _a, _b, _c, _d, _e;
+        if ((dataValue === null || dataValue === void 0 ? void 0 : dataValue.statusCode) == node_opcua_1.StatusCodes.Good) {
+            if ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) {
+                const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
+                switch ((_c = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _c === void 0 ? void 0 : _c.arrayType) {
                     case node_opcua_1.VariantArrayType.Scalar:
-                        obj.value = dataValue.value.value;
+                        obj.value = (_d = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _d === void 0 ? void 0 : _d.value;
                         break;
                     case node_opcua_1.VariantArrayType.Array:
-                        obj.value = dataValue.value.value.join(",");
+                        obj.value = (_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value.join(",");
                         break;
                     default:
                         obj.value = null;

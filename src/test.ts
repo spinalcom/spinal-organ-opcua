@@ -1,6 +1,7 @@
 import { SpinalBmsDevice } from "spinal-model-bmsnetwork";
 import { getConfig } from "./utils/utils";
 import discoveringStore from "./utils/discoveringProcessStore";
+import OPCUAService from "./utils/OPCUAService";
 
 const { spinalCore } = require("spinal-core-connectorjs_type");
 const { SpinalBmsNetwork } = require("spinal-model-bmsnetwork");
@@ -13,17 +14,17 @@ export function getNetwork(connect): Promise<{ organ: any; context: any; network
 
 		spinalCore.load(connect, path, async (graph) => {
 
-			const contextName = "OPCUA network";
+			const contextName = "test opcua";
 			const organName = "spinal-organ-opcua-dev";
 
 			const context = await getContext(graph, contextName);
 			const organ = await getOrgan(context, organName);
 
 			const network = {
-				ip: "172.29.32.47",
-				port: "26543",
-				name: "Network 1",
-				endpoint: "",
+				ip: "spinalcom",
+				port: "5011",
+				name: "Server Local",
+				endpoint: "/IcoFwxServer",
 			}
 
 			return resolve({ graph, context, organ, network });
@@ -52,16 +53,29 @@ async function getOrgan(context, organName) {
 	const connect: spinal.FileSystem = spinalCore.connect(url);
 
 	const { graph, context, organ, network } = await getNetwork(connect);
-	const spinalOPCUADiscoverModel = new SpinalOPCUADiscoverModel(graph, context, organ, network);
+	// const spinalOPCUADiscoverModel = new SpinalOPCUADiscoverModel(graph, context, organ, network);
 
-	const excelPath = `opc.tcp://172.29.32.47:26543`;
-	const excelData = await discoveringStore.getProgress(excelPath);
+	// const excelPath = `opc.tcp://172.29.32.47:26543`;
+	// const excelData = await discoveringStore.getProgress(excelPath);
 
-	spinalOPCUADiscoverModel.addToGraph();
+	// spinalOPCUADiscoverModel.addToGraph();
 
-	await spinalOPCUADiscoverModel.setTreeDiscovered(excelData);
+	// await spinalOPCUADiscoverModel.setTreeDiscovered(excelData);
 
-	const tree = await spinalOPCUADiscoverModel.getTreeDiscovered();
-	console.log(tree);
+	// const tree = await spinalOPCUADiscoverModel.getTreeDiscovered();
+	// console.log(tree);
+
+
+	//////////////		 	COV		 //////////////
+
+	const ex_path = `opc.tcp://spinalcom:5011/IcoFwxServer`;
+	const nodeId = "ns=1;s=ac:Metiers/CVC/Test pilotage";
+	const opcuaService = new OPCUAService(ex_path);
+	await opcuaService.initialize();
+	await opcuaService.connect();
+
+	opcuaService.monitorItem([nodeId], (id, dataValue) => {
+		console.log(`Node id: ${id} value: ${dataValue}`);
+	});
 
 }())

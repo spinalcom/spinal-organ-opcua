@@ -68,11 +68,11 @@ export class SpinalDevice extends EventEmitter {
 		return this._convertNodesToObj();
 	}
 
-	public async updateEndpoints(values: { [key: string]: { dataType: string; value: any } }) {
+	public async updateEndpoints(values: { [key: string]: { dataType: string; value: any } }, cov: boolean = false) {
 		const promises = Object.keys(values).map((id) => {
 			const value = values[id]?.value || null;
 			const node = this.endpoints[id];
-			if (node) return this._updateEndpoint(node, value);
+			if (node) return this._updateEndpoint(node, value, cov);
 			return;
 		});
 
@@ -101,7 +101,7 @@ export class SpinalDevice extends EventEmitter {
 	//						PRIVATES METHODS
 	/////////////////////////////////////////////////////////////////////////
 
-	private async _updateEndpoint(endpointNode: SpinalNode, value: any) {
+	private async _updateEndpoint(endpointNode: SpinalNode, value: any, cov: boolean = false) {
 		try {
 
 			if (value === null) value = "null";
@@ -113,7 +113,7 @@ export class SpinalDevice extends EventEmitter {
 
 			element.mod_attr("currentValue", value);
 
-			console.log(`[${this.deviceInfo.name}] - ${endpointNode.getName().get()} changed value to`, value);
+			if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.getName().get()} changed value to`, value);
 
 			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
 				const spinalServiceTimeseries = new SpinalServiceTimeseries();

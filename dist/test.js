@@ -11,7 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNetwork = void 0;
 const utils_1 = require("./utils/utils");
-const discoveringProcessStore_1 = require("./utils/discoveringProcessStore");
+const OPCUAService_1 = require("./utils/OPCUAService");
 const { spinalCore } = require("spinal-core-connectorjs_type");
 const { SpinalBmsNetwork } = require("spinal-model-bmsnetwork");
 const { SpinalNode, SPINAL_RELATION_PTR_LST_TYPE, SpinalContext, SpinalGraph } = require("spinal-model-graph");
@@ -20,15 +20,15 @@ function getNetwork(connect) {
     return new Promise((resolve, reject) => {
         const path = "/__users__/admin/Digital twin";
         spinalCore.load(connect, path, (graph) => __awaiter(this, void 0, void 0, function* () {
-            const contextName = "OPCUA network";
+            const contextName = "test opcua";
             const organName = "spinal-organ-opcua-dev";
             const context = yield getContext(graph, contextName);
             const organ = yield getOrgan(context, organName);
             const network = {
-                ip: "172.29.32.47",
-                port: "26543",
-                name: "Network 1",
-                endpoint: "",
+                ip: "spinalcom",
+                port: "5011",
+                name: "Server Local",
+                endpoint: "/IcoFwxServer",
             };
             return resolve({ graph, context, organ, network });
         }), () => {
@@ -55,13 +55,22 @@ function getOrgan(context, organName) {
         const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
         const connect = spinalCore.connect(url);
         const { graph, context, organ, network } = yield getNetwork(connect);
-        const spinalOPCUADiscoverModel = new SpinalOPCUADiscoverModel(graph, context, organ, network);
-        const excelPath = `opc.tcp://172.29.32.47:26543`;
-        const excelData = yield discoveringProcessStore_1.default.getProgress(excelPath);
-        spinalOPCUADiscoverModel.addToGraph();
-        yield spinalOPCUADiscoverModel.setTreeDiscovered(excelData);
-        const tree = yield spinalOPCUADiscoverModel.getTreeDiscovered();
-        console.log(tree);
+        // const spinalOPCUADiscoverModel = new SpinalOPCUADiscoverModel(graph, context, organ, network);
+        // const excelPath = `opc.tcp://172.29.32.47:26543`;
+        // const excelData = await discoveringStore.getProgress(excelPath);
+        // spinalOPCUADiscoverModel.addToGraph();
+        // await spinalOPCUADiscoverModel.setTreeDiscovered(excelData);
+        // const tree = await spinalOPCUADiscoverModel.getTreeDiscovered();
+        // console.log(tree);
+        //////////////		 	COV		 //////////////
+        const ex_path = `opc.tcp://spinalcom:5011/IcoFwxServer`;
+        const nodeId = "ns=1;s=ac:Metiers/CVC/Test pilotage";
+        const opcuaService = new OPCUAService_1.default(ex_path);
+        yield opcuaService.initialize();
+        yield opcuaService.connect();
+        opcuaService.monitorItem([nodeId], (id, dataValue) => {
+            console.log(`Node id: ${id} value: ${dataValue}`);
+        });
     });
 }());
 //# sourceMappingURL=test.js.map

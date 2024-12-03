@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { UserIdentityInfo, NodeId, DataValue } from "node-opcua";
+import { UserIdentityInfo, NodeId, DataValue, ClientMonitoredItemBase } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { SpinalOPCUADiscoverModel } from "spinal-model-opcua";
@@ -34,7 +34,11 @@ export declare class OPCUAService extends EventEmitter {
         value: any;
     }[]>;
     writeNode(node: IOPCNode, value: any): Promise<any>;
-    monitorItem(nodeIds: string | string[], callback: (id: string, data: DataValue) => any): Promise<void>;
+    monitorItem(nodeIds: string | string[], callback: (id: string, data: {
+        value: any;
+        dataType: string;
+    }, monitorItem: ClientMonitoredItemBase) => any): Promise<void>;
+    private _listenMonitoredItemEvents;
     private _browseNode;
     private _browseUsingBrowseDescription;
     private _getNodesDetails;

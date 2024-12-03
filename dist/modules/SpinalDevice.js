@@ -61,14 +61,14 @@ class SpinalDevice extends events_1.EventEmitter {
             return this._convertNodesToObj();
         });
     }
-    updateEndpoints(values) {
+    updateEndpoints(values, cov = false) {
         return __awaiter(this, void 0, void 0, function* () {
             const promises = Object.keys(values).map((id) => {
                 var _a;
                 const value = ((_a = values[id]) === null || _a === void 0 ? void 0 : _a.value) || null;
                 const node = this.endpoints[id];
                 if (node)
-                    return this._updateEndpoint(node, value);
+                    return this._updateEndpoint(node, value, cov);
                 return;
             });
             return Promise.all(promises);
@@ -89,7 +89,7 @@ class SpinalDevice extends events_1.EventEmitter {
     /////////////////////////////////////////////////////////////////////////
     //						PRIVATES METHODS
     /////////////////////////////////////////////////////////////////////////
-    _updateEndpoint(endpointNode, value) {
+    _updateEndpoint(endpointNode, value, cov = false) {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
@@ -100,7 +100,8 @@ class SpinalDevice extends events_1.EventEmitter {
                 if (!element)
                     return false;
                 element.mod_attr("currentValue", value);
-                console.log(`[${this.deviceInfo.name}] - ${endpointNode.getName().get()} changed value to`, value);
+                if (!cov)
+                    console.log(`[${this.deviceInfo.name}] - ${endpointNode.getName().get()} changed value to`, value);
                 if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
                     const spinalServiceTimeseries = new spinal_model_timeseries_1.SpinalServiceTimeseries();
                     spinal_env_viewer_graph_service_1.SpinalGraphService._addNode(endpointNode);

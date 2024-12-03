@@ -1,4 +1,4 @@
-import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace } from "node-opcua";
+import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace, MonitoredItem, ClientMonitoredItemBase } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
@@ -60,16 +60,18 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	public async createSubscription() {
-		if (!this.session) throw new Error("Invalid Session");
+		if (!this.session) {
+			await this._createSession();
+		}
 
 		try {
 			const parameters = {
-				requestedPublishingInterval: 1000,
+				requestedPublishingInterval: 500,
 				requestedLifetimeCount: 10,
 				requestedMaxKeepAliveCount: 5,
 				maxNotificationsPerPublish: 10,
 				publishingEnabled: true,
-				priority: 10,
+				priority: 1
 			};
 
 			this.subscription = await this.session.createSubscription2(parameters);
@@ -238,8 +240,7 @@ export class OPCUAService extends EventEmitter {
 
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{ dataType: string; value: any }[]> {
 		if (!this.session) {
-			console.log("no session");
-			return null;
+			this._createSession();
 		}
 
 		node = Array.isArray(node) ? node : [node];
@@ -258,8 +259,7 @@ export class OPCUAService extends EventEmitter {
 
 	public async writeNode(node: IOPCNode, value: any): Promise<any> {
 		if (!this.session) {
-			console.log("no session");
-			return;
+			await this._createSession();
 		}
 
 		const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
@@ -284,23 +284,37 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	public async monitorItem(nodeIds: string | string[], callback: (id: string, data: DataValue) => any): Promise<void> {
-		if (!this.subscription) return;
+	public async monitorItem(nodeIds: string | string[], callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any): Promise<void> {
+		if (!this.subscription) {
+			await this.createSubscription();
+		};
 
 		nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
 
 		const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: AttributeIds.Value }));
 
-		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, TimestampsToReturn.Both);
+		// const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, TimestampsToReturn.Both);
+		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 10, discardOldest: true, queueSize: 1 }, TimestampsToReturn.Both);
+
 		for (const monitoredItem of monitoredItemGroup.monitoredItems) {
-			monitoredItem.on("changed", (dataValue: DataValue) => {
-				const value = this._formatDataValue(dataValue);
-				callback(monitoredItem.itemToMonitor.nodeId.toString(), value?.value || "null");
-			});
+			this._listenMonitoredItemEvents(monitoredItem, callback);
 		}
 	}
 
 	///////////////////////////////////////////////////////////////////////////
+
+
+	private _listenMonitoredItemEvents(monitoredItem: ClientMonitoredItemBase, callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any) {
+		monitoredItem.on("changed", (dataValue: DataValue) => {
+			const value = this._formatDataValue(dataValue);
+			callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
+		});
+
+		monitoredItem.on("err", (err) => {
+			console.log(`[Error - COV] - ${monitoredItem.itemToMonitor.nodeId.toString()} : ${err}`);
+		});
+
+	}
 
 	private _browseNode(node: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
 		node = Array.isArray(node) ? node : [node];
@@ -519,12 +533,15 @@ export class OPCUAService extends EventEmitter {
 			children: [],
 		};
 
-		if (!entryPointPath || entryPointPath === "/") entryPointPath = "Objects";
+		if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
+		if (!entryPointPath.startsWith("/")) entryPointPath = "/" + entryPointPath;
 
 		return this._getEntryPointWithPath(root, entryPointPath);
 	}
 
 	private async _getEntryPointWithPath(start: any, entryPointPath?: string): Promise<IOPCNode> {
+		if (!entryPointPath.startsWith("/Objects")) entryPointPath = "/Objects" + entryPointPath;
+
 		const paths = entryPointPath.split("/").filter((el) => el !== "");
 		let error;
 		let node = start;
@@ -565,16 +582,17 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private _formatDataValue(dataValue: DataValue): { value: any; dataType: string } {
-		if (dataValue.statusCode == StatusCodes.Good) {
-			if (dataValue.value.value) {
-				const obj = { dataType: DataType[dataValue.value.dataType], value: undefined };
 
-				switch (dataValue.value.arrayType) {
+		if (dataValue?.statusCode == StatusCodes.Good) {
+			if (dataValue?.value?.value) {
+				const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
+
+				switch (dataValue?.value?.arrayType) {
 					case VariantArrayType.Scalar:
-						obj.value = dataValue.value.value;
+						obj.value = dataValue?.value?.value;
 						break;
 					case VariantArrayType.Array:
-						obj.value = dataValue.value.value.join(",");
+						obj.value = dataValue?.value?.value.join(",");
 						break;
 					default:
 						obj.value = null;
