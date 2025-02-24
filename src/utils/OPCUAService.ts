@@ -9,6 +9,7 @@ import discoveringStore from "./discoveringProcessStore";
 import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 import { ITreeOption } from "../interfaces/ITreeOption";
 import { getServerUrl, getVariablesList } from "../utils/Functions";
+import { NAMES_TO_IGNORE } from "./constants";
 
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
@@ -334,7 +335,8 @@ export class OPCUAService extends EventEmitter {
 			const parentId = (descriptions[index] as any)?.nodeId?.toString();
 			for (const ref of el.references) {
 				const refName = ref.displayName.text || ref.browseName?.toString();
-				if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") continue; // skip server and hidden nodes
+				if (!refName || refName.startsWith(".") || NAMES_TO_IGNORE.includes(refName.toLowerCase()))
+					continue; // skip unwanted nodes
 
 				const formatted = this._formatReference(ref, "", parentId);
 				children.push(formatted);
