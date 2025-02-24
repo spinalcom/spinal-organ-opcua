@@ -6,9 +6,9 @@ import { NodeClass } from "node-opcua";
 import OPCUAService from "./OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
 
-export async function _transformTreeToGraphRecursively(ip: string, context: SpinalContext, tree: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0) {
+export async function _transformTreeToGraphRecursively(server: { ip: string, port: number }, context: SpinalContext, tree: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0) {
 
-	const { node, relation, alreadyExist } = await getNodeAndRelation(tree, nodesAlreadyCreated, values, depth, ip);
+	const { node, relation, alreadyExist } = await getNodeAndRelation(tree, nodesAlreadyCreated, values, depth, server);
 
 	const { children, attributes } = _formatTree(tree);
 	if (attributes && attributes.length > 0) await _createNodeAttributes(node, attributes, values);
@@ -18,7 +18,7 @@ export async function _transformTreeToGraphRecursively(ip: string, context: Spin
 	}
 
 	const promises = (children || []).map(async (el) => {
-		const childNodeInfo = await _transformTreeToGraphRecursively(ip, context, el, nodesAlreadyCreated, node, values, depth + 1);
+		const childNodeInfo = await _transformTreeToGraphRecursively(server, context, el, nodesAlreadyCreated, node, values, depth + 1);
 		return childNodeInfo;
 	});
 
@@ -27,12 +27,12 @@ export async function _transformTreeToGraphRecursively(ip: string, context: Spin
 	});
 }
 
-export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, ip: string): Promise<{ [key: string]: SpinalNode }> {
+export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, serverInfo: { ip: string, port: number }): Promise<{ [key: string]: SpinalNode }> {
 	const obj = {};
 	const devices = await network.getChildrenInContext(context);
 
 	// cette condition par du principe que chaque gateway a un device unique (si ce n'est pas le cas, il faudra changer la condition)
-	const device = devices.find((el) => el.info.address?.get() === ip);
+	const device = devices.find((el) => el.info.address?.get() === serverInfo.ip && el.info.port?.get() === serverInfo.port);
 	if (!device) return obj;
 
 	return device.findInContext(context, (node) => {
@@ -43,11 +43,11 @@ export async function getNodeAlreadyCreated(context: SpinalContext, network: Spi
 	})
 }
 
-async function getNodeAndRelation(node: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, values: { [key: string]: any } = {}, depth: number = 0, ip?: string): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
+async function getNodeAndRelation(node: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, values: { [key: string]: any } = {}, depth: number = 0, server?: { ip: string, port: number }): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
 	let spinalNode: SpinalNode = nodesAlreadyCreated[node.nodeId.toString()];
 
 	if (!spinalNode) {
-		if (depth == 0) return _generateDevice(node, ip);
+		if (depth == 0) return _generateDevice(node, server);
 		return _generateNodeAndRelation(node, values);
 	}
 
@@ -101,14 +101,15 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }
 
-function _generateDevice(node: IOPCNode, address: string) {
+function _generateDevice(node: IOPCNode, server: { ip: string, port: number }) {
 	let param = {
 		id: node.nodeId.toString(),
 		name: node.displayName,
 		type: SpinalBmsDevice.nodeTypeName,
 		path: node.path,
 		nodeTypeName: SpinalBmsDevice.nodeTypeName,
-		address,
+		address: server?.ip,
+		port: server?.port,
 		displayName: node?.displayName,
 		browseName: node?.browseName
 	};

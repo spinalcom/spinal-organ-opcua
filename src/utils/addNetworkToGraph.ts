@@ -20,7 +20,7 @@ export async function getOrGenNetworkNode(model: any, context: SpinalContext) {
 	const organElement = await model.getOrgan();
 	const organ = await getOrganNode(organElement, context.getId().get());
 	const server = model.network.get();
-	delete server.ip;
+	// delete server.ip;
 
 	const children = await organ.getChildrenInContext(context);
 	let network = children.find((child) => child.getName().get() === server.name);
@@ -30,7 +30,7 @@ export async function getOrGenNetworkNode(model: any, context: SpinalContext) {
 		network = new SpinalNode(server.name, SpinalBmsNetwork.nodeTypeName, element);
 	}
 
-	network.info.mod_attr("serverInfo", server);
+	// network.info.mod_attr("serverInfo", server);
 	return { network, organ, context };
 }
 

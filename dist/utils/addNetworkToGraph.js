@@ -31,14 +31,14 @@ function getOrGenNetworkNode(model, context) {
         const organElement = yield model.getOrgan();
         const organ = yield getOrganNode(organElement, context.getId().get());
         const server = model.network.get();
-        delete server.ip;
+        // delete server.ip;
         const children = yield organ.getChildrenInContext(context);
         let network = children.find((child) => child.getName().get() === server.name);
         if (!network) {
             const element = new spinal_model_bmsnetwork_1.SpinalBmsNetwork(server.name, spinal_model_bmsnetwork_1.SpinalBmsNetwork.nodeTypeName);
             network = new spinal_env_viewer_graph_service_1.SpinalNode(server.name, spinal_model_bmsnetwork_1.SpinalBmsNetwork.nodeTypeName, element);
         }
-        network.info.mod_attr("serverInfo", server);
+        // network.info.mod_attr("serverInfo", server);
         return { network, organ, context };
     });
 }
