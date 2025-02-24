@@ -6,9 +6,9 @@ import { NodeClass } from "node-opcua";
 import OPCUAService from "./OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
 
-export async function _transformTreeToGraphRecursively(context: SpinalContext, tree: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0) {
+export async function _transformTreeToGraphRecursively(ip: string, context: SpinalContext, tree: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0) {
 
-	const { node, relation, alreadyExist } = await getNodeAndRelation(tree, nodesAlreadyCreated, values, depth);
+	const { node, relation, alreadyExist } = await getNodeAndRelation(tree, nodesAlreadyCreated, values, depth, ip);
 
 	const { children, attributes } = _formatTree(tree);
 	if (attributes && attributes.length > 0) await _createNodeAttributes(node, attributes, values);
@@ -18,7 +18,7 @@ export async function _transformTreeToGraphRecursively(context: SpinalContext, t
 	}
 
 	const promises = (children || []).map(async (el) => {
-		const childNodeInfo = await _transformTreeToGraphRecursively(context, el, nodesAlreadyCreated, node, values, depth + 1);
+		const childNodeInfo = await _transformTreeToGraphRecursively(ip, context, el, nodesAlreadyCreated, node, values, depth + 1);
 		return childNodeInfo;
 	});
 
@@ -27,22 +27,27 @@ export async function _transformTreeToGraphRecursively(context: SpinalContext, t
 	});
 }
 
-export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode): Promise<{ [key: string]: SpinalNode }> {
+export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, ip: string): Promise<{ [key: string]: SpinalNode }> {
 	const obj = {};
+	const devices = await network.getChildrenInContext(context);
 
-	return network.findInContext(context, (node) => {
+	// cette condition par du principe que chaque gateway a un device unique (si ce n'est pas le cas, il faudra changer la condition)
+	const device = devices.find((el) => el.info.address?.get() === ip);
+	if (!device) return obj;
+
+	return device.findInContext(context, (node) => {
 		if (node.info?.idNetwork?.get()) obj[node.info.idNetwork.get()] = node;
 		return true;
-	}).then((result) => {
+	}).then(() => {
 		return obj;
 	})
 }
 
-async function getNodeAndRelation(node: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, values: { [key: string]: any } = {}, depth: number = 0): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
+async function getNodeAndRelation(node: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, values: { [key: string]: any } = {}, depth: number = 0, ip?: string): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
 	let spinalNode: SpinalNode = nodesAlreadyCreated[node.nodeId.toString()];
 
 	if (!spinalNode) {
-		if (depth == 0) return _generateDevice(node);
+		if (depth == 0) return _generateDevice(node, ip);
 		return _generateNodeAndRelation(node, values);
 	}
 
@@ -87,23 +92,23 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 
 	const spinalNode = new SpinalNode(param.name, param.type, element);
 	spinalNode.info.add_attr({
-		idNetwork: param.id,
-		displayName: param.displayName || "",
-		browseName: param.browseName || "",
-		path: param.path
+		idNetwork: element.id,
+		displayName: element.displayName || "",
+		browseName: element.browseName || "",
+		path: element.path
 	});
 
 	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }
 
-function _generateDevice(node: IOPCNode) {
+function _generateDevice(node: IOPCNode, address: string) {
 	let param = {
 		id: node.nodeId.toString(),
 		name: node.displayName,
 		type: SpinalBmsDevice.nodeTypeName,
 		path: node.path,
 		nodeTypeName: SpinalBmsDevice.nodeTypeName,
-		address: "",
+		address,
 		displayName: node?.displayName,
 		browseName: node?.browseName
 	};
@@ -112,10 +117,11 @@ function _generateDevice(node: IOPCNode) {
 	let element = new SpinalBmsDevice(param as any);
 	const spinalNode = new SpinalNode(param.name, param.type, element);
 	spinalNode.info.add_attr({
-		idNetwork: param.id,
-		displayName: param.displayName || "",
-		browseName: param.browseName || "",
-		path: param.path
+		idNetwork: element.id,
+		displayName: element.displayName || "",
+		browseName: element.browseName || "",
+		path: element.path,
+		address: element.address
 	});
 
 	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };

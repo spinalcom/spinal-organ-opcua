@@ -15,9 +15,9 @@ const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
 const spinal_env_viewer_plugin_documentation_service_1 = require("spinal-env-viewer-plugin-documentation-service");
 const node_opcua_1 = require("node-opcua");
 const OPCUAService_1 = require("./OPCUAService");
-function _transformTreeToGraphRecursively(context, tree, nodesAlreadyCreated, parent, values = {}, depth = 0) {
+function _transformTreeToGraphRecursively(ip, context, tree, nodesAlreadyCreated, parent, values = {}, depth = 0) {
     return __awaiter(this, void 0, void 0, function* () {
-        const { node, relation, alreadyExist } = yield getNodeAndRelation(tree, nodesAlreadyCreated, values, depth);
+        const { node, relation, alreadyExist } = yield getNodeAndRelation(tree, nodesAlreadyCreated, values, depth, ip);
         const { children, attributes } = _formatTree(tree);
         if (attributes && attributes.length > 0)
             yield _createNodeAttributes(node, attributes, values);
@@ -25,7 +25,7 @@ function _transformTreeToGraphRecursively(context, tree, nodesAlreadyCreated, pa
             yield parent.addChildInContext(node, relation, spinal_env_viewer_graph_service_1.SPINAL_RELATION_PTR_LST_TYPE, context);
         }
         const promises = (children || []).map((el) => __awaiter(this, void 0, void 0, function* () {
-            const childNodeInfo = yield _transformTreeToGraphRecursively(context, el, nodesAlreadyCreated, node, values, depth + 1);
+            const childNodeInfo = yield _transformTreeToGraphRecursively(ip, context, el, nodesAlreadyCreated, node, values, depth + 1);
             return childNodeInfo;
         }));
         return Promise.all(promises).then((result) => {
@@ -34,26 +34,31 @@ function _transformTreeToGraphRecursively(context, tree, nodesAlreadyCreated, pa
     });
 }
 exports._transformTreeToGraphRecursively = _transformTreeToGraphRecursively;
-function getNodeAlreadyCreated(context, network) {
+function getNodeAlreadyCreated(context, network, ip) {
     return __awaiter(this, void 0, void 0, function* () {
         const obj = {};
-        return network.findInContext(context, (node) => {
+        const devices = yield network.getChildrenInContext(context);
+        // cette condition par du principe que chaque gateway a un device unique (si ce n'est pas le cas, il faudra changer la condition)
+        const device = devices.find((el) => { var _a; return ((_a = el.info.address) === null || _a === void 0 ? void 0 : _a.get()) === ip; });
+        if (!device)
+            return obj;
+        return device.findInContext(context, (node) => {
             var _a, _b;
             if ((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.idNetwork) === null || _b === void 0 ? void 0 : _b.get())
                 obj[node.info.idNetwork.get()] = node;
             return true;
-        }).then((result) => {
+        }).then(() => {
             return obj;
         });
     });
 }
 exports.getNodeAlreadyCreated = getNodeAlreadyCreated;
-function getNodeAndRelation(node, nodesAlreadyCreated, values = {}, depth = 0) {
+function getNodeAndRelation(node, nodesAlreadyCreated, values = {}, depth = 0, ip) {
     return __awaiter(this, void 0, void 0, function* () {
         let spinalNode = nodesAlreadyCreated[node.nodeId.toString()];
         if (!spinalNode) {
             if (depth == 0)
-                return _generateDevice(node);
+                return _generateDevice(node, ip);
             return _generateNodeAndRelation(node, values);
         }
         const relation = _getNodeRelationName(spinalNode.getType().get());
@@ -82,31 +87,32 @@ function _generateNodeAndRelation(node, values = {}) {
     }
     const spinalNode = new spinal_env_viewer_graph_service_1.SpinalNode(param.name, param.type, element);
     spinalNode.info.add_attr({
-        idNetwork: param.id,
-        displayName: param.displayName || "",
-        browseName: param.browseName || "",
-        path: param.path
+        idNetwork: element.id,
+        displayName: element.displayName || "",
+        browseName: element.browseName || "",
+        path: element.path
     });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }
-function _generateDevice(node) {
+function _generateDevice(node, address) {
     let param = {
         id: node.nodeId.toString(),
         name: node.displayName,
         type: spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName,
         path: node.path,
         nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName,
-        address: "",
+        address,
         displayName: node === null || node === void 0 ? void 0 : node.displayName,
         browseName: node === null || node === void 0 ? void 0 : node.browseName
     };
     let element = new spinal_model_bmsnetwork_1.SpinalBmsDevice(param);
     const spinalNode = new spinal_env_viewer_graph_service_1.SpinalNode(param.name, param.type, element);
     spinalNode.info.add_attr({
-        idNetwork: param.id,
-        displayName: param.displayName || "",
-        browseName: param.browseName || "",
-        path: param.path
+        idNetwork: element.id,
+        displayName: element.displayName || "",
+        browseName: element.browseName || "",
+        path: element.path,
+        address: element.address
     });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }

@@ -31,6 +31,7 @@ function getOrGenNetworkNode(model, context) {
         const organElement = yield model.getOrgan();
         const organ = yield getOrganNode(organElement, context.getId().get());
         const server = model.network.get();
+        delete server.ip;
         const children = yield organ.getChildrenInContext(context);
         let network = children.find((child) => child.getName().get() === server.name);
         if (!network) {

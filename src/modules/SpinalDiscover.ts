@@ -175,9 +175,11 @@ class SpinalDiscover extends EventEmitter {
 		const context = await model.getContext();
 		const { network, organ } = await getOrGenNetworkNode(model, context);
 
-		const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network);
 
-		const promises = (treeToCreate.children || []).map((tree) => _transformTreeToGraphRecursively(context, tree, nodesAlreadyCreated, undefined, values));
+		const ip = server.ip;
+		const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, ip);
+
+		const promises = (treeToCreate.children || []).map((tree) => _transformTreeToGraphRecursively(ip, context, tree, nodesAlreadyCreated, undefined, values));
 		return Promise.all(promises)
 			.then(async (nodes) => {
 				const r = await addNetworkToGraph(model, nodes, context, network, organ);
