@@ -43,7 +43,7 @@ function makeCertificate() {
                 outputFile: certificateFile,
                 subject: `/CN=${applicationName}/O=Sterfive;/L=France`,
                 dns: [],
-                // ip: [],
+                // address: [],
                 startDate: new Date(),
                 validity: 365 * 10,
             });

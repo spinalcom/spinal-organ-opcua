@@ -15,6 +15,10 @@ const { protocol, host, port, userId, password, path, name } = getConfig();
 const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
 const connect: spinal.FileSystem = spinalCore.connect(url);
 
+
+
+
+
 CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) => {
 	organModel.restart.bind(() => {
 		GetPm2Instance(name).then(async (app: any) => {
@@ -25,7 +29,7 @@ CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) =
 
 				// const { context, network, device } = await getNetwork(connect);
 
-				// const server = { ip: "10.10.0.11", port: "26543", name: "Device 1" };
+				// const server = { address: "10.10.0.11", port: "26543", name: "Device 1" };
 				// const spinalDevice = new SpinalDevice(server, context, network, device);
 				// await spinalDevice.init();
 				// console.log("initialized");

@@ -27,7 +27,7 @@ const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);
             if (!restart) {
                 listenLoadType(connect, organModel);
                 // const { context, network, device } = await getNetwork(connect);
-                // const server = { ip: "10.10.0.11", port: "26543", name: "Device 1" };
+                // const server = { address: "10.10.0.11", port: "26543", name: "Device 1" };
                 // const spinalDevice = new SpinalDevice(server, context, network, device);
                 // await spinalDevice.init();
                 // console.log("initialized");

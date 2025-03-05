@@ -32,11 +32,12 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getServerUrl = exports.SpinalPilotCallback = exports.getVariablesList = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.GetPm2Instance = exports.CreateOrganConfigFile = exports.connectionErrorCallback = exports.WaitModelReady = void 0;
+exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.GetPm2Instance = exports.CreateOrganConfigFile = exports.connectionErrorCallback = exports.WaitModelReady = void 0;
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
 const SpinalDiscover_1 = require("../modules/SpinalDiscover");
 const node_opcua_1 = require("node-opcua");
+const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
 const SpinalMonitoring_1 = require("../modules/SpinalMonitoring");
 const SpinalPilot_1 = require("../modules/SpinalPilot");
 // import { SpinalDevice } from "../modules/SpinalDevice";
@@ -139,34 +140,62 @@ function findFileInDirectory(directory, fileName) {
 // 		return spinalBacnetValueModel.remToNode();
 // 	}
 // };
+function checkOrgan(spinalOrgan, organId) {
+    var _a;
+    return __awaiter(this, void 0, void 0, function* () {
+        try {
+            if (!organId)
+                return false;
+            yield (0, exports.WaitModelReady)();
+            let spinalDisoverModelOrgan = yield spinalOrgan.getOrgan();
+            if (spinalDisoverModelOrgan instanceof spinal_env_viewer_graph_service_1.SpinalNode) {
+                spinalDisoverModelOrgan = yield spinalDisoverModelOrgan.getElement(true);
+            }
+            return !!(organId === ((_a = spinalDisoverModelOrgan.id) === null || _a === void 0 ? void 0 : _a.get()));
+        }
+        catch (error) {
+            return false;
+        }
+    });
+}
 const SpinalListnerCallback = (spinalListenerModel, organModel) => __awaiter(void 0, void 0, void 0, function* () {
-    var _a, _b;
-    yield (0, exports.WaitModelReady)();
-    const organNode = yield spinalListenerModel.getOrgan();
-    const spinalDisoverModelOrgan = yield organNode.getElement(true);
-    if (((_a = organModel.id) === null || _a === void 0 ? void 0 : _a.get()) === ((_b = spinalDisoverModelOrgan.id) === null || _b === void 0 ? void 0 : _b.get())) {
+    var _a;
+    const itsForme = yield checkOrgan(spinalListenerModel, (_a = organModel.id) === null || _a === void 0 ? void 0 : _a.get());
+    if (itsForme)
         SpinalMonitoring_1.spinalMonitoring.addToMonitoringList(spinalListenerModel);
-    }
 });
 exports.SpinalListnerCallback = SpinalListnerCallback;
 const SpinalDiscoverCallback = (spinalDisoverModel, organModel) => __awaiter(void 0, void 0, void 0, function* () {
-    var _c, _d, _e;
-    yield (0, exports.WaitModelReady)();
-    const spinalDisoverModelOrgan = yield spinalDisoverModel.getOrgan();
-    if (((_c = organModel.id) === null || _c === void 0 ? void 0 : _c.get()) === ((_d = spinalDisoverModelOrgan === null || spinalDisoverModelOrgan === void 0 ? void 0 : spinalDisoverModelOrgan.id) === null || _d === void 0 ? void 0 : _d.get())) {
-        const minute = 2 * (60 * 1000);
-        const time = Date.now();
-        const creation = ((_e = spinalDisoverModel.creation) === null || _e === void 0 ? void 0 : _e.get()) || 0;
-        const state = spinalDisoverModel.state.get();
-        // Check if model is not timeout.
-        if (time - creation >= minute || [spinal_model_opcua_1.OPCUA_ORGAN_STATES.created, spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled].includes(state)) {
-            spinalDisoverModel.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.timeout);
-            return spinalDisoverModel.removeFromGraph();
+    var _b, _c;
+    try {
+        const itsForme = yield checkOrgan(spinalDisoverModel, (_b = organModel.id) === null || _b === void 0 ? void 0 : _b.get());
+        if (itsForme) {
+            const minute = 2 * (60 * 1000);
+            const time = Date.now();
+            const creation = ((_c = spinalDisoverModel.creation) === null || _c === void 0 ? void 0 : _c.get()) || 0;
+            const state = spinalDisoverModel.state.get();
+            // Check if model is not timeout.
+            if (time - creation >= minute || [spinal_model_opcua_1.OPCUA_ORGAN_STATES.created, spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled].includes(state))
+                throw "Time out !";
+            SpinalDiscover_1.discover.addToQueue(spinalDisoverModel);
         }
-        SpinalDiscover_1.discover.addToQueue(spinalDisoverModel);
+    }
+    catch (error) {
+        spinalDisoverModel.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.timeout);
+        return spinalDisoverModel.removeFromGraph();
     }
 });
 exports.SpinalDiscoverCallback = SpinalDiscoverCallback;
+const SpinalPilotCallback = (spinalPilotModel, organModel) => __awaiter(void 0, void 0, void 0, function* () {
+    var _d;
+    try {
+        const itsForme = yield checkOrgan(spinalPilotModel, (_d = organModel.id) === null || _d === void 0 ? void 0 : _d.get());
+        if (itsForme)
+            SpinalPilot_1.spinalPilot.addToPilotList(spinalPilotModel);
+    }
+    catch (error) { }
+});
+exports.SpinalPilotCallback = SpinalPilotCallback;
 function getVariablesList(tree) {
     const variables = [];
     addToObj(tree);
@@ -181,23 +210,13 @@ function getVariablesList(tree) {
     }
 }
 exports.getVariablesList = getVariablesList;
-const SpinalPilotCallback = (spinalPilotModel, organModel) => __awaiter(void 0, void 0, void 0, function* () {
-    var _f;
-    yield (0, exports.WaitModelReady)();
-    const organNode = yield spinalPilotModel.getOrgan();
-    const organ = yield organNode.getElement(true);
-    if ((organ === null || organ === void 0 ? void 0 : organ.id.get()) === ((_f = organModel.id) === null || _f === void 0 ? void 0 : _f.get())) {
-        SpinalPilot_1.spinalPilot.addToPilotList(spinalPilotModel);
-    }
-});
-exports.SpinalPilotCallback = SpinalPilotCallback;
 function getServerUrl(serverInfo) {
     let endpoint = serverInfo.endpoint || "";
     if (endpoint.substring(0, 1) !== "/")
         endpoint = `/${endpoint}`;
     if (endpoint.substring(endpoint.length - 1) === "/")
         endpoint = endpoint.substring(0, endpoint.length - 1);
-    return `opc.tcp://${serverInfo.ip}:${serverInfo.port}${endpoint}`;
+    return `opc.tcp://${serverInfo.address}:${serverInfo.port}${endpoint}`;
 }
 exports.getServerUrl = getServerUrl;
 //# sourceMappingURL=Functions.js.map

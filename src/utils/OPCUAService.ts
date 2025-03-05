@@ -116,7 +116,8 @@ export class OPCUAService extends EventEmitter {
 
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
-		while (queue.length && [OPCUA_ORGAN_STATES.discovering, OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
+		// while (queue.length && [OPCUA_ORGAN_STATES.discovering, OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
+		while (queue.length) {
 
 			let discoverState = null;
 			let _error = null;
@@ -480,7 +481,7 @@ export class OPCUAService extends EventEmitter {
 
 	private _listenClientEvents(): void {
 		this.client.on("backoff", (number, delay) => {
-			if (number === 3) return this.client.disconnect();
+			if (number === 1) return this.client.disconnect();
 			console.log(`connection failed, retrying attempt ${number + 1}`)
 		});
 

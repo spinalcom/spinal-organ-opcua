@@ -94,6 +94,7 @@ export const GetPm2Instance = (organName: string) => {
 	});
 };
 
+
 function findFileInDirectory(directory: spinal.Directory, fileName: string): Promise<SpinalOrganOPCUA | void> {
 	return new Promise((resolve, reject) => {
 		for (let index = 0; index < directory.length; index++) {
@@ -141,40 +142,63 @@ function findFileInDirectory(directory: spinal.Directory, fileName: string): Pro
 // 	}
 // };
 
-export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA): Promise<void> => {
-	await WaitModelReady();
-	const organNode: SpinalNode = await spinalListenerModel.getOrgan();
-	const spinalDisoverModelOrgan = await organNode.getElement(true);
+async function checkOrgan(spinalOrgan: SpinalOPCUAListener | SpinalOPCUADiscoverModel | SpinalOPCUAPilot, organId: string): Promise<boolean> {
+	try {
 
-	if (organModel.id?.get() === spinalDisoverModelOrgan.id?.get()) {
-		spinalMonitoring.addToMonitoringList(spinalListenerModel);
+		if (!organId) return false;
+
+		await WaitModelReady();
+		let spinalDisoverModelOrgan: SpinalNode = await spinalOrgan.getOrgan();
+
+		if (spinalDisoverModelOrgan instanceof SpinalNode) {
+			spinalDisoverModelOrgan = await spinalDisoverModelOrgan.getElement(true);
+		}
+
+		return !!(organId === spinalDisoverModelOrgan.id?.get())
+	} catch (error) {
+		return false;
 	}
 
+}
 
+export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA): Promise<void> => {
+	const itsForme = await checkOrgan(spinalListenerModel, organModel.id?.get());
+	if (itsForme) spinalMonitoring.addToMonitoringList(spinalListenerModel);
 };
 
 export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA): Promise<void | boolean> => {
-	await WaitModelReady();
 
-	const spinalDisoverModelOrgan = await spinalDisoverModel.getOrgan();
+	try {
+		const itsForme = await checkOrgan(spinalDisoverModel, organModel.id?.get());
 
-	if (organModel.id?.get() === spinalDisoverModelOrgan?.id?.get()) {
-		const minute = 2 * (60 * 1000);
-		const time = Date.now();
-		const creation = spinalDisoverModel.creation?.get() || 0;
+		if (itsForme) {
+			const minute = 2 * (60 * 1000);
+			const time = Date.now();
+			const creation = spinalDisoverModel.creation?.get() || 0;
 
-		const state = spinalDisoverModel.state.get();
+			const state = spinalDisoverModel.state.get();
 
+			// Check if model is not timeout.
+			if (time - creation >= minute || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state))
+				throw "Time out !"
 
-
-		// Check if model is not timeout.
-		if (time - creation >= minute || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state)) {
-			spinalDisoverModel.changeState(OPCUA_ORGAN_STATES.timeout);
-			return spinalDisoverModel.removeFromGraph();
+			discover.addToQueue(spinalDisoverModel);
 		}
-
-		discover.addToQueue(spinalDisoverModel);
+	} catch (error) {
+		spinalDisoverModel.changeState(OPCUA_ORGAN_STATES.timeout);
+		return spinalDisoverModel.removeFromGraph();
 	}
+
+};
+
+export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA): Promise<void> => {
+	try {
+		const itsForme = await checkOrgan(spinalPilotModel, organModel.id?.get());
+
+		if (itsForme) spinalPilot.addToPilotList(spinalPilotModel);
+
+	} catch (error) { }
+
 };
 
 export function getVariablesList(tree: IOPCNode): IOPCNode[] {
@@ -196,15 +220,7 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 }
 
 
-export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA): Promise<void> => {
-	await WaitModelReady();
-	const organNode: SpinalNode = await spinalPilotModel.getOrgan();
-	const organ = await organNode.getElement(true);
 
-	if (organ?.id.get() === organModel.id?.get()) {
-		spinalPilot.addToPilotList(spinalPilotModel);
-	}
-};
 
 
 export function getServerUrl(serverInfo: any): string {
@@ -213,5 +229,5 @@ export function getServerUrl(serverInfo: any): string {
 	if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
 	if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
 
-	return `opc.tcp://${serverInfo.ip}:${serverInfo.port}${endpoint}`;
+	return `opc.tcp://${serverInfo.address}:${serverInfo.port}${endpoint}`;
 }

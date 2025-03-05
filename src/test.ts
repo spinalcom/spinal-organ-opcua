@@ -21,7 +21,7 @@ export function getNetwork(connect): Promise<{ organ: any; context: any; network
 			const organ = await getOrgan(context, organName);
 
 			const network = {
-				ip: "spinalcom",
+				address: "spinalcom",
 				port: "5011",
 				name: "Server Local",
 				endpoint: "/IcoFwxServer",

@@ -25,7 +25,7 @@ function getNetwork(connect) {
             const context = yield getContext(graph, contextName);
             const organ = yield getOrgan(context, organName);
             const network = {
-                ip: "spinalcom",
+                address: "spinalcom",
                 port: "5011",
                 name: "Server Local",
                 endpoint: "/IcoFwxServer",

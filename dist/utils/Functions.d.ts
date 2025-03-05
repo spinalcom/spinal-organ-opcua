@@ -6,6 +6,6 @@ export declare const CreateOrganConfigFile: (spinalConnection: any, path: string
 export declare const GetPm2Instance: (organName: string) => Promise<unknown>;
 export declare const SpinalListnerCallback: (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA) => Promise<void>;
 export declare const SpinalDiscoverCallback: (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA) => Promise<void | boolean>;
-export declare function getVariablesList(tree: IOPCNode): IOPCNode[];
 export declare const SpinalPilotCallback: (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA) => Promise<void>;
+export declare function getVariablesList(tree: IOPCNode): IOPCNode[];
 export declare function getServerUrl(serverInfo: any): string;

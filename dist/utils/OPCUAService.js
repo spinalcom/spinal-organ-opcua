@@ -18,6 +18,7 @@ const make_certificate_1 = require("../utils/make_certificate");
 const discoveringProcessStore_1 = require("./discoveringProcessStore");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
 const Functions_1 = require("../utils/Functions");
+const constants_1 = require("./constants");
 const securityMode = node_opcua_1.MessageSecurityMode["None"];
 const securityPolicy = node_opcua_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
@@ -120,7 +121,8 @@ class OPCUAService extends events_1.EventEmitter {
             // let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
             let { nodesObj, queue, browseMode } = yield this._getDiscoverData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
-            while (queue.length && [spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering, spinal_model_opcua_1.OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
+            // while (queue.length && [OPCUA_ORGAN_STATES.discovering, OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
+            while (queue.length) {
                 let discoverState = null;
                 let _error = null;
                 const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
@@ -309,8 +311,8 @@ class OPCUAService extends events_1.EventEmitter {
                 const parentId = (_b = (_a = descriptions[index]) === null || _a === void 0 ? void 0 : _a.nodeId) === null || _b === void 0 ? void 0 : _b.toString();
                 for (const ref of el.references) {
                     const refName = ref.displayName.text || ((_c = ref.browseName) === null || _c === void 0 ? void 0 : _c.toString());
-                    if (!refName || refName.toLowerCase() === "server" || refName[0] === ".")
-                        continue; // skip server and hidden nodes
+                    if (!refName || refName.startsWith(".") || constants_1.NAMES_TO_IGNORE.includes(refName.toLowerCase()))
+                        continue; // skip unwanted nodes
                     const formatted = this._formatReference(ref, "", parentId);
                     children.push(formatted);
                 }
@@ -443,7 +445,7 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _listenClientEvents() {
         this.client.on("backoff", (number, delay) => {
-            if (number === 3)
+            if (number === 1)
                 return this.client.disconnect();
             console.log(`connection failed, retrying attempt ${number + 1}`);
         });

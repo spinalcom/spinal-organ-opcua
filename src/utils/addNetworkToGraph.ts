@@ -2,32 +2,44 @@ import { SpinalNode, SPINAL_RELATION_PTR_LST_TYPE, SpinalContext } from "spinal-
 import { SpinalBmsNetwork } from "spinal-model-bmsnetwork";
 import { SpinalOrganOPCUA } from "spinal-model-opcua";
 
-export async function addNetworkToGraph(model: any, nodes: { node: SpinalNode; relation: string; attributes: any }[], context: SpinalContext, network: SpinalNode, organ: SpinalNode) {
+export async function addNetworkToGraph(nodes: { node: SpinalNode; relation: string; attributes: any }[], context: SpinalContext, network: SpinalNode, organ: SpinalNode) {
 
-	const promises = nodes.map(({ node, relation }) => {
-		return network.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => { });
+	const result = [];
+
+	for (const { node, relation } of nodes) {
+		const n = await network.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => { });
+		result.push(n);
+	}
+
+	return organ.addChildInContext(network, SpinalBmsNetwork.relationName, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => {
+		return network;
 	});
 
-	return Promise.all(promises).then(async (net) => {
-		return organ.addChildInContext(network, SpinalBmsNetwork.relationName, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => {
-			return network;
-		});
-	});
+	// const promises = nodes.map(({ node, relation }) => {
+	// 	return network.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => { });
+	// });
+
+	// return Promise.all(promises).then(async (net) => {
+	// 	return organ.addChildInContext(network, SpinalBmsNetwork.relationName, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => {
+	// 		return network;
+	// 	});
+	// });
 }
 
 export async function getOrGenNetworkNode(model: any, context: SpinalContext) {
 	context = context || (await model.getContext());
 	const organElement = await model.getOrgan();
 	const organ = await getOrganNode(organElement, context.getId().get());
-	const server = model.network.get();
-	// delete server.ip;
+	const serverName = model.network.name.get();
+	// delete server.address;
 
 	const children = await organ.getChildrenInContext(context);
-	let network = children.find((child) => child.getName().get() === server.name);
+	let network = children.find((child) => child.getName().get() === serverName);
 
 	if (!network) {
-		const element = new SpinalBmsNetwork(server.name, SpinalBmsNetwork.nodeTypeName);
-		network = new SpinalNode(server.name, SpinalBmsNetwork.nodeTypeName, element);
+		const element = new SpinalBmsNetwork(serverName, SpinalBmsNetwork.nodeTypeName);
+		const networkNode = new SpinalNode(serverName, SpinalBmsNetwork.nodeTypeName, element);
+		network = await organ.addChildInContext(networkNode, SpinalBmsNetwork.relationName, SPINAL_RELATION_PTR_LST_TYPE, context);
 	}
 
 	// network.info.mod_attr("serverInfo", server);

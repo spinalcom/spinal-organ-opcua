@@ -11,15 +11,15 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.discover = void 0;
 const events_1 = require("events");
-const SpinalQueuing_1 = require("../utils/SpinalQueuing");
+const node_opcua_1 = require("node-opcua");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
-const OPCUAService_1 = require("../utils/OPCUAService");
 const transformTreeToGraph_1 = require("../utils/transformTreeToGraph");
 const Functions_1 = require("../utils/Functions");
-const node_opcua_1 = require("node-opcua");
 const addNetworkToGraph_1 = require("../utils/addNetworkToGraph");
+const OPCUAService_1 = require("../utils/OPCUAService");
 const discoveringProcessStore_1 = require("../utils/discoveringProcessStore");
 const utils_1 = require("../utils/utils");
+const SpinalQueuing_1 = require("../utils/SpinalQueuing");
 // import * as testJSON from "./test.json";
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDiscover extends events_1.EventEmitter {
@@ -61,7 +61,7 @@ class SpinalDiscover extends events_1.EventEmitter {
             const state = model.state.get();
             switch (state) {
                 case spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering:
-                    yield this._discoverDevice(model);
+                    yield this._discoverDevices(model);
                     break;
                 case spinal_model_opcua_1.OPCUA_ORGAN_STATES.readyToCreate:
                     this._createNetworkTreeInGraph(model);
@@ -72,29 +72,60 @@ class SpinalDiscover extends events_1.EventEmitter {
             }
         }));
     }
-    _discoverDevice(model) {
+    _discoverDevices(model) {
+        var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
-            const server = model.network.get();
+            try {
+                const servers = model.network.gateways;
+                let index = 0;
+                const discovered = [];
+                while (index < servers.length) {
+                    try {
+                        const tree = yield this._discoverDevice(servers[index], model);
+                        discovered.push(...tree.children);
+                    }
+                    catch (err) {
+                    }
+                    index++;
+                }
+                if (discovered.length === 0)
+                    throw "No Device found";
+                yield model.setTreeDiscovered({ nodeId: "root", displayName: "Root", children: discovered });
+                console.log((_b = (_a = model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get(), "discovered !!");
+                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered);
+                return discovered;
+            }
+            catch (error) {
+                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
+            }
+        });
+    }
+    _discoverDevice(gateway, model) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const server = gateway.get();
             const _url = (0, Functions_1.getServerUrl)(server);
             let useLastResult = false;
             if (discoveringProcessStore_1.default.fileExist(_url)) {
-                console.log("inside file exist");
-                useLastResult = yield this.askToContinueDiscovery(model);
+                // 	console.log("inside file exist");
+                // 	useLastResult = await this.askToContinueDiscovery(model);
+                useLastResult = true;
             }
-            console.log("discovering", server.name, useLastResult ? "using last result" : "starting from scratch");
-            return this._getOPCUATree(model, useLastResult, true)
-                .then(({ tree, variables }) => __awaiter(this, void 0, void 0, function* () {
-                if (!tree)
-                    return;
-                yield model.setTreeDiscovered(tree);
-                console.log(server.name, "discovered !!");
-                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered);
-                return tree;
-            })).catch((err) => {
-                var _a, _b;
-                error: console.log(`${(_b = (_a = model === null || model === void 0 ? void 0 : model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get()} discovery failed !! reason: "${err.message}"`);
-                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
-            });
+            console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
+            const { tree } = yield this._getOPCUATree(server, useLastResult, true);
+            if (!tree)
+                return;
+            return tree;
+            // return this._getOPCUATree(model, useLastResult, true)
+            // 	.then(async ({ tree }: any) => {
+            // 		if (!tree) return;
+            // 		await model.setTreeDiscovered(tree);
+            // 		console.log(server.name, "discovered !!");
+            // 		model.changeState(OPCUA_ORGAN_STATES.discovered);
+            // 		return tree;
+            // 	}).catch((err) => {
+            // 		error: console.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
+            // 		model.changeState(OPCUA_ORGAN_STATES.error);
+            // 	});
         });
     }
     askToContinueDiscovery(model) {
@@ -119,27 +150,39 @@ class SpinalDiscover extends events_1.EventEmitter {
         });
     }
     // tryTree2 is used to try the second method to get the tree if the first one failed
-    _getOPCUATree(model, useLastResult, tryTree2 = true) {
+    // private async _getOPCUATree(model: SpinalOPCUADiscoverModel, useLastResult: boolean, tryTree2: boolean = true) {
+    _getOPCUATree(server, useLastResult, tryTree2 = true) {
         return __awaiter(this, void 0, void 0, function* () {
             const { entryPointPath } = (0, utils_1.getConfig)();
-            const opcuaService = new OPCUAService_1.default(model);
+            const url = (0, Functions_1.getServerUrl)(server);
+            const opcuaService = new OPCUAService_1.default(url);
             yield opcuaService.initialize();
             yield opcuaService.connect(userIdentity);
             const options = { useLastResult, useBroadCast: true };
+            let err;
             return opcuaService.getTree(entryPointPath, options)
                 .then((result) => __awaiter(this, void 0, void 0, function* () {
+                result.tree.children.map((el) => {
+                    el.server = server;
+                    return el;
+                });
                 return result;
             })).catch((err) => __awaiter(this, void 0, void 0, function* () {
                 if (!tryTree2)
                     throw err;
-                console.log("failed to use multi browsing, trying with unique browsing");
+                console.log(`[${server.address}] - failed to use multi browsing, trying with unique browsing`);
                 options.useBroadCast = false;
-                return opcuaService.getTree(entryPointPath, options);
+                const result = yield opcuaService.getTree(entryPointPath, options);
+                result.tree.children.map((el) => {
+                    el.server = server;
+                    return el;
+                });
+                return result;
             }))
                 .catch((err) => __awaiter(this, void 0, void 0, function* () {
-                var _a, _b;
-                console.log(`${(_b = (_a = model === null || model === void 0 ? void 0 : model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get()} discovery failed !! reason: "${err.message}"`);
-                model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
+                console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
+                throw err;
+                // model.changeState(OPCUA_ORGAN_STATES.error);
             }))
                 .finally(() => __awaiter(this, void 0, void 0, function* () {
                 yield opcuaService.disconnect();
@@ -147,31 +190,91 @@ class SpinalDiscover extends events_1.EventEmitter {
         });
     }
     _createNetworkTreeInGraph(model) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
-            const { protocol, host, port, userId, password, path, name } = (0, utils_1.getConfig)();
-            const hubPath = `${protocol}://${host}:${port}`;
-            const treeToCreate = yield model.getTreeToCreate(hubPath);
-            const server = model.network.get();
-            console.log("creating network", server.name);
-            const variables = (0, Functions_1.getVariablesList)(treeToCreate);
-            const values = yield this._getVariablesValues(model, variables);
-            const context = yield model.getContext();
-            const { network, organ } = yield (0, addNetworkToGraph_1.getOrGenNetworkNode)(model, context);
-            const nodesAlreadyCreated = yield (0, transformTreeToGraph_1.getNodeAlreadyCreated)(context, network, { ip: server.ip, port: server.port });
-            const promises = (treeToCreate.children || []).map((tree) => (0, transformTreeToGraph_1._transformTreeToGraphRecursively)(server, context, tree, nodesAlreadyCreated, undefined, values));
-            return Promise.all(promises)
-                .then((nodes) => __awaiter(this, void 0, void 0, function* () {
-                const r = yield (0, addNetworkToGraph_1.addNetworkToGraph)(model, nodes, context, network, organ);
-                return r;
-            })).then(() => {
+            try {
+                console.log("creating networkTree");
+                const { protocol, host, port } = (0, utils_1.getConfig)();
+                const hubPath = `${protocol}://${host}:${port}`;
+                const treeToCreate = yield model.getTreeToCreate(hubPath);
+                const context = yield model.getContext();
+                const { network, organ } = yield (0, addNetworkToGraph_1.getOrGenNetworkNode)(model, context);
+                const dataObject = yield this._getDataByGateway(treeToCreate.children, context, network);
+                // const promises = treeToCreate.children.map((el: IOPCNode) => {
+                // 	const gatewayData = dataObject[el.server?.address];
+                // 	if (!gatewayData) return;
+                // 	return _transformTreeToGraphRecursively(context, el, gatewayData.nodesAlreadyCreated, network, gatewayData.values);
+                // })
+                for (const el of treeToCreate.children) {
+                    const gatewayData = dataObject[(_a = el.server) === null || _a === void 0 ? void 0 : _a.address];
+                    if (!gatewayData)
+                        continue;
+                    yield (0, transformTreeToGraph_1._transformTreeToGraphRecursively)(context, el, gatewayData.nodesAlreadyCreated, network, gatewayData.values);
+                }
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.created);
                 console.log("network", network.getName().get(), "created !!");
-            }).catch((err) => {
+                // return Promise.all(promises).then(() => {
+                // 	model.changeState(OPCUA_ORGAN_STATES.created);
+                // 	console.log("network", network.getName().get(), "created !!");
+                // }).catch(() => {
+                // 	model.changeState(OPCUA_ORGAN_STATES.error);
+                // 	console.log(network.getName().get(), "creation failed !");
+                // });
+                // // const promises = data.map(d => _transformTreeToGraphRecursively(d.server, context, d.node, d.nodesAlreadyCreated, undefined, d.values));
+                // // return Promise.all(promises).then(async (nodes) => {
+                // // 	// const r = await addNetworkToGraph(nodes, context, network, organ);
+                // // 	// return r;
+                // // }).then(() => {
+                // // 	model.changeState(OPCUA_ORGAN_STATES.created);
+                // // 	console.log("network", network.getName().get(), "created !!");
+                // // }).catch((err) => {
+                // // 	model.changeState(OPCUA_ORGAN_STATES.error);
+                // // 	console.log(network.getName().get(), "creation failed !");
+                // // });
+                // // const values = await this._getVariablesValues(model, variables);
+                // // const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, { address: server.address, port: server.port });
+                // // const promises = (treeToCreate.children || []).map((tree) => _transformTreeToGraphRecursively(server, context, tree, nodesAlreadyCreated, undefined, values));
+                // // return Promise.all(promises)
+                // // 	.then(async (nodes) => {
+                // // 		const r = await addNetworkToGraph(model, nodes, context, network, organ);
+                // // 		return r;
+                // // 	}).then(() => {
+                // // 		model.changeState(OPCUA_ORGAN_STATES.created);
+                // // 		console.log("network", network.getName().get(), "created !!");
+                // // 	}).catch((err) => {
+                // // 		model.changeState(OPCUA_ORGAN_STATES.error);
+                // // 		console.log(network.getName().get(), "creation failed !")
+                // // 	});
+            }
+            catch (error) {
+                console.error(error);
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
-                console.log(network.getName().get(), "creation failed !");
-            });
+            }
         });
     }
+    _getDataByGateway(nodes, context, network) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const obj = {};
+            for (const node of nodes) {
+                const variables = (0, Functions_1.getVariablesList)(node);
+                const url = (0, Functions_1.getServerUrl)(node.server);
+                const nodesAlreadyCreated = yield (0, transformTreeToGraph_1.getNodeAlreadyCreated)(context, network, node.server);
+                const values = yield this._getVariablesValues(url, variables);
+                obj[node.server.address] = { variables, values, node, nodesAlreadyCreated };
+            }
+            return obj;
+            // const promises = nodes.map(async (el) => {
+            // 	const variables = getVariablesList(el);
+            // 	const url = getServerUrl(el.server);
+            // 	const values = await this._getVariablesValues(url, variables);
+            // 	const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, el.server);
+            // 	return { variables, values, nodesAlreadyCreated, server: el.server, node: el };
+            // })
+            // return Promise.all(promises);
+        });
+    }
+    // private _formatGateway() {
+    // }
     // private convertToBase64(tree: any) {
     // 	return new Promise((resolve, reject) => {
     // 		const treeString = JSON.stringify(tree);
@@ -183,10 +286,10 @@ class SpinalDiscover extends events_1.EventEmitter {
     // 		});
     // 	});
     // }
-    _getVariablesValues(model, variables) {
+    _getVariablesValues(url, variables) {
         return __awaiter(this, void 0, void 0, function* () {
             // const endpointUrl = getServerUrl(server);
-            const opcuaService = new OPCUAService_1.default(model);
+            const opcuaService = new OPCUAService_1.default(url);
             yield opcuaService.initialize();
             yield opcuaService.connect(userIdentity);
             return opcuaService.readNodeValue(variables).then((result) => {
