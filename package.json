@@ -15,6 +15,7 @@
 	"license": "ISC",
 	"dependencies": {
 		"@datastructures-js/priority-queue": "^5.1.1",
+		"axios-retry": "^4.5.0",
 		"big-json": "^3.1.0",
 		"dotenv": "^16.0.1",
 		"json5": "^2.2.0",
