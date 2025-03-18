@@ -15,7 +15,7 @@ export declare class OPCUAService extends EventEmitter {
     private clientAlarms;
     private _discoverModel;
     isVariable: typeof OPCUAService.isVariable;
-    constructor(modelOrUrl: SpinalOPCUADiscoverModel | string);
+    constructor(url: string, model?: SpinalOPCUADiscoverModel);
     initialize(): Promise<void>;
     createSubscription(): Promise<void>;
     connect(userIdentity?: UserIdentityInfo): Promise<void>;

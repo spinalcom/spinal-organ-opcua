@@ -8,12 +8,11 @@ import { ITreeOption } from "../interfaces/ITreeOption";
 
 import { _transformTreeToGraphRecursively, getNodeAlreadyCreated } from "../utils/transformTreeToGraph";
 import { getServerUrl, getVariablesList } from "../utils/Functions";
-import { addNetworkToGraph, getOrGenNetworkNode } from "../utils/addNetworkToGraph";
+import { getOrGenNetworkNode } from "../utils/addNetworkToGraph";
 import OPCUAService from "../utils/OPCUAService";
 import discoveringStore from "../utils/discoveringProcessStore";
 import { getConfig } from "../utils/utils";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
-import { url } from "inspector";
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 
 // import * as testJSON from "./test.json";
@@ -87,9 +86,13 @@ class SpinalDiscover extends EventEmitter {
 				try {
 					const tree = await this._discoverDevice(servers[index], model);
 					discovered.push(...tree.children);
+					const count = model.progress.finished.get();
+					model.progress.finished.set(count + 1);
 				} catch (err) {
-
+					const count = model.progress.failed.get();
+					model.progress.failed.set(count + 1);
 				}
+
 				index++;
 			}
 
@@ -120,7 +123,7 @@ class SpinalDiscover extends EventEmitter {
 
 
 		console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
-		const { tree } = await this._getOPCUATree(server, useLastResult, true);
+		const { tree } = await this._getOPCUATree(server, useLastResult, model, true);
 		if (!tree) return;
 
 
@@ -169,14 +172,11 @@ class SpinalDiscover extends EventEmitter {
 
 	// tryTree2 is used to try the second method to get the tree if the first one failed
 	// private async _getOPCUATree(model: SpinalOPCUADiscoverModel, useLastResult: boolean, tryTree2: boolean = true) {
-	private async _getOPCUATree(server: IServer, useLastResult: boolean, tryTree2: boolean = true) {
+	private async _getOPCUATree(server: IServer, useLastResult: boolean, model: SpinalOPCUADiscoverModel, tryTree2: boolean = true) {
 		const { entryPointPath } = getConfig();
 		const url = getServerUrl(server);
 
-		const opcuaService: OPCUAService = new OPCUAService(url);
-
-		await opcuaService.initialize();
-		await opcuaService.connect(userIdentity);
+		const opcuaService: OPCUAService = new OPCUAService(url, model);
 
 		const options: ITreeOption = { useLastResult, useBroadCast: true };
 		let err;
@@ -188,21 +188,22 @@ class SpinalDiscover extends EventEmitter {
 				})
 
 				return result;
-			}).catch(async (err) => {
-				if (!tryTree2) throw err;
-
-				console.log(`[${server.address}] - failed to use multi browsing, trying with unique browsing`);
-				options.useBroadCast = false;
-				const result = await opcuaService.getTree(entryPointPath, options);
-
-				result.tree.children.map((el) => {
-					el.server = server;
-					return el;
-				})
-
-				return result;
-
 			})
+			// .catch(async (err) => {
+			// 	if (!tryTree2) throw err;
+
+			// 	console.log(`[${server.address}] - failed to use multi browsing, trying with unique browsing`);
+			// 	options.useBroadCast = false;
+			// 	const result = await opcuaService.getTree(entryPointPath, options);
+
+			// 	result.tree.children.map((el) => {
+			// 		el.server = server;
+			// 		return el;
+			// 	})
+
+			// 	return result;
+
+			// })
 			.catch(async (err) => {
 				console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
 				throw err;
@@ -334,9 +335,6 @@ class SpinalDiscover extends EventEmitter {
 	private async _getVariablesValues(url: string, variables: IOPCNode[]) {
 		// const endpointUrl = getServerUrl(server);
 		const opcuaService: OPCUAService = new OPCUAService(url);
-
-		await opcuaService.initialize();
-		await opcuaService.connect(userIdentity);
 
 		return opcuaService.readNodeValue(variables).then((result) => {
 			const obj = {};

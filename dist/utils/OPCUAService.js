@@ -17,13 +17,12 @@ const utils_1 = require("./utils");
 const make_certificate_1 = require("../utils/make_certificate");
 const discoveringProcessStore_1 = require("./discoveringProcessStore");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
-const Functions_1 = require("../utils/Functions");
 const constants_1 = require("./constants");
 const securityMode = node_opcua_1.MessageSecurityMode["None"];
 const securityPolicy = node_opcua_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class OPCUAService extends events_1.EventEmitter {
-    constructor(modelOrUrl) {
+    constructor(url, model) {
         super();
         this.userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
         this.verbose = false;
@@ -40,13 +39,15 @@ class OPCUAService extends events_1.EventEmitter {
                 console.log("OpcUa: restartConnection", error);
             }
         });
-        if (typeof modelOrUrl === "string")
-            this.endpointUrl = modelOrUrl;
-        else {
-            const server = modelOrUrl.network.get();
-            this.endpointUrl = (0, Functions_1.getServerUrl)(server);
-            this._discoverModel = modelOrUrl;
-        }
+        this.endpointUrl = url;
+        this._discoverModel = model;
+        // if (typeof modelOrUrl === "string")
+        // 	this.endpointUrl = modelOrUrl;
+        // else {
+        // 	const server = modelOrUrl.network.get();
+        // 	this.endpointUrl = getServerUrl(server);
+        // 	this._discoverModel = modelOrUrl;
+        // }
     }
     initialize() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -117,12 +118,19 @@ class OPCUAService extends events_1.EventEmitter {
     //					May have timeout error if the tree is too big		 //
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
+            yield this.initialize();
+            yield this.connect(userIdentity);
             // let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
             let { nodesObj, queue, browseMode } = yield this._getDiscoverData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
-            // while (queue.length && [OPCUA_ORGAN_STATES.discovering, OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
             while (queue.length) {
+                // if the discovering process is interrupted by user, stop the process
+                if (this._discoverModel && ((_a = this._discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) !== spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering) {
+                    console.log("Discovering process interrupted by user");
+                    break;
+                }
                 let discoverState = null;
                 let _error = null;
                 const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
@@ -230,6 +238,8 @@ class OPCUAService extends events_1.EventEmitter {
     }
     readNodeValue(node) {
         return __awaiter(this, void 0, void 0, function* () {
+            yield this.initialize();
+            yield this.connect(userIdentity);
             if (!this.session) {
                 this._createSession();
             }
@@ -242,6 +252,7 @@ class OPCUAService extends events_1.EventEmitter {
                 return list;
             }), Promise.resolve([]));
             const dataValues = yield _promise;
+            yield this.disconnect();
             return dataValues.map((dataValue) => this._formatDataValue(dataValue));
         });
     }

@@ -26,17 +26,20 @@ export class OPCUAService extends EventEmitter {
 	private monitoredItemsListData: any[] = [];
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
 	private _discoverModel: SpinalOPCUADiscoverModel;
+
 	public isVariable = OPCUAService.isVariable;
 
-	public constructor(modelOrUrl: SpinalOPCUADiscoverModel | string) {
+	public constructor(url: string, model?: SpinalOPCUADiscoverModel) {
 		super();
-		if (typeof modelOrUrl === "string")
-			this.endpointUrl = modelOrUrl;
-		else {
-			const server = modelOrUrl.network.get();
-			this.endpointUrl = getServerUrl(server);
-			this._discoverModel = modelOrUrl;
-		}
+		this.endpointUrl = url;
+		this._discoverModel = model;
+		// if (typeof modelOrUrl === "string")
+		// 	this.endpointUrl = modelOrUrl;
+		// else {
+		// 	const server = modelOrUrl.network.get();
+		// 	this.endpointUrl = getServerUrl(server);
+		// 	this._discoverModel = modelOrUrl;
+		// }
 	}
 
 	public async initialize() {
@@ -110,14 +113,20 @@ export class OPCUAService extends EventEmitter {
 	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
 
 
+		await this.initialize();
+		await this.connect(userIdentity);
 		// let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
 
 		let { nodesObj, queue, browseMode } = await this._getDiscoverData(entryPointPath, options.useLastResult);
-
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
-		// while (queue.length && [OPCUA_ORGAN_STATES.discovering, OPCUA_ORGAN_STATES.pending].includes(this._discoverModel.state.get())) {
 		while (queue.length) {
+
+			// if the discovering process is interrupted by user, stop the process
+			if (this._discoverModel && this._discoverModel.state?.get() !== OPCUA_ORGAN_STATES.discovering) {
+				console.log("Discovering process interrupted by user");
+				break;
+			}
 
 			let discoverState = null;
 			let _error = null;
@@ -241,6 +250,9 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{ dataType: string; value: any }[]> {
+		await this.initialize();
+		await this.connect(userIdentity);
+
 		if (!this.session) {
 			this._createSession();
 		}
@@ -256,7 +268,10 @@ export class OPCUAService extends EventEmitter {
 		}, Promise.resolve([]));
 
 		const dataValues = await _promise;
+		await this.disconnect();
+
 		return dataValues.map((dataValue) => this._formatDataValue(dataValue));
+
 	}
 
 	public async writeNode(node: IOPCNode, value: any): Promise<any> {
@@ -420,6 +435,7 @@ export class OPCUAService extends EventEmitter {
 
 		} catch (error) {
 			browseMode = "Unicast";
+
 			let tree = await this._getEntryPoint(entryPointPath);
 			queue = [tree];
 			nodesObj = { [tree.nodeId.toString()]: tree };

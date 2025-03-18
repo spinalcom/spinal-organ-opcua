@@ -83,8 +83,12 @@ class SpinalDiscover extends events_1.EventEmitter {
                     try {
                         const tree = yield this._discoverDevice(servers[index], model);
                         discovered.push(...tree.children);
+                        const count = model.progress.finished.get();
+                        model.progress.finished.set(count + 1);
                     }
                     catch (err) {
+                        const count = model.progress.failed.get();
+                        model.progress.failed.set(count + 1);
                     }
                     index++;
                 }
@@ -111,7 +115,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 useLastResult = true;
             }
             console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
-            const { tree } = yield this._getOPCUATree(server, useLastResult, true);
+            const { tree } = yield this._getOPCUATree(server, useLastResult, model, true);
             if (!tree)
                 return;
             return tree;
@@ -151,13 +155,11 @@ class SpinalDiscover extends events_1.EventEmitter {
     }
     // tryTree2 is used to try the second method to get the tree if the first one failed
     // private async _getOPCUATree(model: SpinalOPCUADiscoverModel, useLastResult: boolean, tryTree2: boolean = true) {
-    _getOPCUATree(server, useLastResult, tryTree2 = true) {
+    _getOPCUATree(server, useLastResult, model, tryTree2 = true) {
         return __awaiter(this, void 0, void 0, function* () {
             const { entryPointPath } = (0, utils_1.getConfig)();
             const url = (0, Functions_1.getServerUrl)(server);
-            const opcuaService = new OPCUAService_1.default(url);
-            yield opcuaService.initialize();
-            yield opcuaService.connect(userIdentity);
+            const opcuaService = new OPCUAService_1.default(url, model);
             const options = { useLastResult, useBroadCast: true };
             let err;
             return opcuaService.getTree(entryPointPath, options)
@@ -167,18 +169,18 @@ class SpinalDiscover extends events_1.EventEmitter {
                     return el;
                 });
                 return result;
-            })).catch((err) => __awaiter(this, void 0, void 0, function* () {
-                if (!tryTree2)
-                    throw err;
-                console.log(`[${server.address}] - failed to use multi browsing, trying with unique browsing`);
-                options.useBroadCast = false;
-                const result = yield opcuaService.getTree(entryPointPath, options);
-                result.tree.children.map((el) => {
-                    el.server = server;
-                    return el;
-                });
-                return result;
             }))
+                // .catch(async (err) => {
+                // 	if (!tryTree2) throw err;
+                // 	console.log(`[${server.address}] - failed to use multi browsing, trying with unique browsing`);
+                // 	options.useBroadCast = false;
+                // 	const result = await opcuaService.getTree(entryPointPath, options);
+                // 	result.tree.children.map((el) => {
+                // 		el.server = server;
+                // 		return el;
+                // 	})
+                // 	return result;
+                // })
                 .catch((err) => __awaiter(this, void 0, void 0, function* () {
                 console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
                 throw err;
@@ -290,8 +292,6 @@ class SpinalDiscover extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             // const endpointUrl = getServerUrl(server);
             const opcuaService = new OPCUAService_1.default(url);
-            yield opcuaService.initialize();
-            yield opcuaService.connect(userIdentity);
             return opcuaService.readNodeValue(variables).then((result) => {
                 const obj = {};
                 for (let index = 0; index < result.length; index++) {
