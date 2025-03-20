@@ -25,7 +25,7 @@
 		"pm2": "^4.5.6",
 		"spinal-env-viewer-graph-service": "git+https://github.com/spinalcom/Spinal-Graph-Service.git",
 		"spinal-model-bmsnetwork": "git+https://github.com/spinalcom/spinal-model-bmsnetwork.git#bacnet",
-		"spinal-model-opcua": "git+https://github.com/spinalcom//spinal-model-opcua#dev",
+		"spinal-model-opcua": "git+https://github.com/spinalcom//spinal-model-opcua",
 		"spinal-model-timeseries": "git+https://github.com/spinalcom/spinal-model-timeseries.git",
 		"spinal-models-documentation": "git+https://github.com/spinalcom/spinal-models-documentation.git",
 		"three": "^0.143.0",
