@@ -1,9 +1,10 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
+exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
 const nodePath = require("path");
 const dotenv_1 = require("dotenv");
+const spinal_model_opcua_1 = require("spinal-model-opcua");
 (0, dotenv_1.config)({ path: nodePath.resolve(__dirname, "../../.env"), override: true });
 function getConfig() {
     return {
@@ -95,4 +96,9 @@ function coerceStringToDataType(dataType, arrayType, VariantArrayType, data) {
     }
 }
 exports.coerceStringToDataType = coerceStringToDataType;
+function discoverIsCancelled(_discoverModel) {
+    var _a;
+    return !_discoverModel || ((_a = _discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) !== spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering;
+}
+exports.discoverIsCancelled = discoverIsCancelled;
 //# sourceMappingURL=utils.js.map

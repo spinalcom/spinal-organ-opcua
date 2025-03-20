@@ -4,6 +4,7 @@ import { BrowseDescription, BrowseDirection, DataType, ReferenceTypeIds, ResultM
 import { SpinalNode } from "spinal-env-viewer-graph-service";
 import * as nodePath from "path";
 import { config as dotenvConfig } from "dotenv";
+import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 
 
 dotenvConfig({ path: nodePath.resolve(__dirname, "../../.env"), override: true });
@@ -98,4 +99,8 @@ export function coerceStringToDataType(dataType, arrayType, VariantArrayType, da
 	} else {
 		return data.map((d: any) => c(d));
 	}
+}
+
+export function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): boolean {
+	return !_discoverModel || _discoverModel.state?.get() !== OPCUA_ORGAN_STATES.discovering;
 }

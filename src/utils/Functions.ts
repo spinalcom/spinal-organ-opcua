@@ -177,10 +177,10 @@ export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADisc
 			const creation = spinalDisoverModel.creation?.get() || 0;
 
 			const state = spinalDisoverModel.state.get();
+			const timeout = time - creation >= minute;
 
 			// Check if model is not timeout.
-			if (time - creation >= minute || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state))
-				throw "Time out !"
+			if (timeout || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state)) throw "Time out !"
 
 			discover.addToQueue(spinalDisoverModel);
 		}

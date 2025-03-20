@@ -2,7 +2,7 @@ import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, 
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
-import { coerceStringToDataType, convertToBrowseDescription } from "./utils";
+import { coerceStringToDataType, convertToBrowseDescription, discoverIsCancelled } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
 import discoveringStore from "./discoveringProcessStore";
@@ -120,13 +120,7 @@ export class OPCUAService extends EventEmitter {
 		let { nodesObj, queue, browseMode } = await this._getDiscoverData(entryPointPath, options.useLastResult);
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
-		while (queue.length) {
-
-			// if the discovering process is interrupted by user, stop the process
-			if (this._discoverModel && this._discoverModel.state?.get() !== OPCUA_ORGAN_STATES.discovering) {
-				console.log("Discovering process interrupted by user");
-				break;
-			}
+		while (queue.length && !discoverIsCancelled(this._discoverModel)) {
 
 			let discoverState = null;
 			let _error = null;
@@ -151,8 +145,11 @@ export class OPCUAService extends EventEmitter {
 			if (_error) throw _error;
 		}
 
-		const { tree, variables } = await this._convertObjToTree(entryPointPath, nodesObj);
 
+		// if the discovering process is interrupted by user, stop the process
+		if (discoverIsCancelled(this._discoverModel)) return;
+
+		const { tree, variables } = await this._convertObjToTree(entryPointPath, nodesObj);
 		console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
 		return { tree, variables };
 	}

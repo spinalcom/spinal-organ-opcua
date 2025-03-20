@@ -11,7 +11,7 @@ import { getServerUrl, getVariablesList } from "../utils/Functions";
 import { getOrGenNetworkNode } from "../utils/addNetworkToGraph";
 import OPCUAService from "../utils/OPCUAService";
 import discoveringStore from "../utils/discoveringProcessStore";
-import { getConfig } from "../utils/utils";
+import { discoverIsCancelled, getConfig } from "../utils/utils";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 
@@ -82,7 +82,7 @@ class SpinalDiscover extends EventEmitter {
 			let index = 0
 			const discovered = [];
 
-			while (index < servers.length) {
+			while (index < servers.length && !discoverIsCancelled(model)) {
 				try {
 					const tree = await this._discoverDevice(servers[index], model);
 					discovered.push(...tree.children);
@@ -95,6 +95,8 @@ class SpinalDiscover extends EventEmitter {
 
 				index++;
 			}
+
+			if (discoverIsCancelled(model)) return;
 
 			if (discovered.length === 0) throw "No Device found";
 

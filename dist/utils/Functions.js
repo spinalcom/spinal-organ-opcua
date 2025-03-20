@@ -174,8 +174,9 @@ const SpinalDiscoverCallback = (spinalDisoverModel, organModel) => __awaiter(voi
             const time = Date.now();
             const creation = ((_c = spinalDisoverModel.creation) === null || _c === void 0 ? void 0 : _c.get()) || 0;
             const state = spinalDisoverModel.state.get();
+            const timeout = time - creation >= minute;
             // Check if model is not timeout.
-            if (time - creation >= minute || [spinal_model_opcua_1.OPCUA_ORGAN_STATES.created, spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled].includes(state))
+            if (timeout || [spinal_model_opcua_1.OPCUA_ORGAN_STATES.created, spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled].includes(state))
                 throw "Time out !";
             SpinalDiscover_1.discover.addToQueue(spinalDisoverModel);
         }

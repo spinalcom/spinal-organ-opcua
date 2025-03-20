@@ -118,19 +118,13 @@ class OPCUAService extends events_1.EventEmitter {
     //					May have timeout error if the tree is too big		 //
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
-        var _a;
         return __awaiter(this, void 0, void 0, function* () {
             yield this.initialize();
             yield this.connect(userIdentity);
             // let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
             let { nodesObj, queue, browseMode } = yield this._getDiscoverData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
-            while (queue.length) {
-                // if the discovering process is interrupted by user, stop the process
-                if (this._discoverModel && ((_a = this._discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) !== spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering) {
-                    console.log("Discovering process interrupted by user");
-                    break;
-                }
+            while (queue.length && !(0, utils_1.discoverIsCancelled)(this._discoverModel)) {
                 let discoverState = null;
                 let _error = null;
                 const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
@@ -153,6 +147,9 @@ class OPCUAService extends events_1.EventEmitter {
                 if (_error)
                     throw _error;
             }
+            // if the discovering process is interrupted by user, stop the process
+            if ((0, utils_1.discoverIsCancelled)(this._discoverModel))
+                return;
             const { tree, variables } = yield this._convertObjToTree(entryPointPath, nodesObj);
             console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
             return { tree, variables };

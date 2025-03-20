@@ -79,7 +79,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 const servers = model.network.gateways;
                 let index = 0;
                 const discovered = [];
-                while (index < servers.length) {
+                while (index < servers.length && !(0, utils_1.discoverIsCancelled)(model)) {
                     try {
                         const tree = yield this._discoverDevice(servers[index], model);
                         discovered.push(...tree.children);
@@ -92,6 +92,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                     }
                     index++;
                 }
+                if ((0, utils_1.discoverIsCancelled)(model))
+                    return;
                 if (discovered.length === 0)
                     throw "No Device found";
                 yield model.setTreeDiscovered({ nodeId: "root", displayName: "Root", children: discovered });
