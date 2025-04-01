@@ -512,7 +512,10 @@ class OPCUAService extends events_1.EventEmitter {
             while (paths.length && !error) {
                 const path = paths.shift();
                 const children = yield this._browseNode(node);
-                let found = children.find((el) => el.displayName.toLocaleLowerCase() === path.toLocaleLowerCase());
+                let found = children.find((el) => {
+                    const names = [el.displayName.toLocaleLowerCase(), el.browseName.toLocaleLowerCase()];
+                    return names.includes(path.toLocaleLowerCase());
+                });
                 if (!found) {
                     error = `No node found with entry point : ${entryPointPath}`;
                     break;
