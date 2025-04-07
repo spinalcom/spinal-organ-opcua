@@ -40,7 +40,7 @@ CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) =
 				// spinalDevice.launchTestFunction();
 
 				// console.log("end");
-				// return;
+				return;
 			}
 
 			if (app) {

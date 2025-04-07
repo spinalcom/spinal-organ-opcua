@@ -33,7 +33,7 @@ export async function getNodeAlreadyCreated(context: SpinalContext, network: Spi
 
 	// cette condition par du principe que chaque gateway a un device unique (si ce n'est pas le cas, il faudra changer la condition)
 
-	const device = devices.find((el) => el.info.server?.address?.get() === serverInfo.address && el.info.server?.port?.get() === serverInfo.port);
+	const device = devices.find((el) => el.info.server?.address?.get() == serverInfo.address && el.info.server?.port?.get() == serverInfo.port);
 	if (!device) return obj;
 
 	return device.findInContext(context, (node) => {

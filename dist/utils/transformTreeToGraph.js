@@ -39,7 +39,7 @@ function getNodeAlreadyCreated(context, network, serverInfo) {
         const obj = {};
         const devices = yield network.getChildrenInContext(context);
         // cette condition par du principe que chaque gateway a un device unique (si ce n'est pas le cas, il faudra changer la condition)
-        const device = devices.find((el) => { var _a, _b, _c, _d; return ((_b = (_a = el.info.server) === null || _a === void 0 ? void 0 : _a.address) === null || _b === void 0 ? void 0 : _b.get()) === serverInfo.address && ((_d = (_c = el.info.server) === null || _c === void 0 ? void 0 : _c.port) === null || _d === void 0 ? void 0 : _d.get()) === serverInfo.port; });
+        const device = devices.find((el) => { var _a, _b, _c, _d; return ((_b = (_a = el.info.server) === null || _a === void 0 ? void 0 : _a.address) === null || _b === void 0 ? void 0 : _b.get()) == serverInfo.address && ((_d = (_c = el.info.server) === null || _c === void 0 ? void 0 : _c.port) === null || _d === void 0 ? void 0 : _d.get()) == serverInfo.port; });
         if (!device)
             return obj;
         return device.findInContext(context, (node) => {

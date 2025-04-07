@@ -36,7 +36,7 @@ const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);
                 // await spinalDevice.createTreeInGraph(tree);
                 // spinalDevice.launchTestFunction();
                 // console.log("end");
-                // return;
+                return;
             }
             if (app) {
                 console.log("restart organ", app.pm_id);
