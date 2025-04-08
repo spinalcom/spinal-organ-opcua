@@ -289,10 +289,10 @@ class SpinalMonitoring {
     }
 
     private async monitorWithCov(url: string, spinalDevice: SpinalDevice, nodes: any[]) {
-        const names = {};
+        // const names = {};
 
         const ids = nodes.map((el) => {
-            names[el.idNetwork] = el.name;
+            // names[el.idNetwork] = el.name;
             return el.idNetwork
         });
 
@@ -305,7 +305,7 @@ class SpinalMonitoring {
 
             const value = ["string", "number"].includes(dataValue?.value) ? dataValue?.value : null;
 
-            console.log(`[COV] - ${names[id] || id} has changed to ${value}`);
+            console.log(`[COV] - ${id} has changed to ${value}`);
 
             const temp_id = `${spinalDevice.deviceInfo.id}_${id}`;
 
