@@ -621,6 +621,7 @@ export class OPCUAService extends EventEmitter {
 				return obj;
 			}
 		}
+
 		return null;
 	}
 

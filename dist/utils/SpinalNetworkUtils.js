@@ -26,13 +26,15 @@ class SpinalNetworkUtils extends stream_1.EventEmitter {
         return this.instance;
     }
     initSpinalListenerModel(spinalListenerModel) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
             const { context, device, profile, network } = yield spinalListenerModel.getAllData();
-            const serverinfo = network.info.serverInfo.get();
-            const spinalDevice = new SpinalDevice_1.SpinalDevice(serverinfo, context, network, device, spinalListenerModel);
+            const serverinfo = ((_a = device.info.server) === null || _a === void 0 ? void 0 : _a.get()) || {};
+            const profileData = yield this.initProfile(profile, device.getId().get());
+            const spinalDevice = new SpinalDevice_1.SpinalDevice(serverinfo, context, network, device, spinalListenerModel, profileData);
             yield spinalDevice.init();
-            const deviceId = spinalDevice.deviceInfo.id;
-            return { context, spinalDevice, profile: yield this.initProfile(profile, deviceId), spinalModel: spinalListenerModel, network };
+            // const deviceId = spinalDevice.deviceInfo.id;
+            return spinalDevice;
         });
     }
     initProfile(profile, deviceId) {

@@ -4,6 +4,7 @@ import { SpinalOPCUAListener } from "spinal-model-opcua";
 import { SpinalDevice } from "../modules/SpinalDevice";
 import { EventEmitter } from "stream";
 import { Process } from "spinal-core-connectorjs_type";
+import { IServer } from "spinal-model-opcua";
 export interface IProfile {
     modificationDate: number;
     node: SpinalNode;
@@ -20,6 +21,7 @@ export interface IDeviceInfo {
     profile: IProfile;
     spinalModel: SpinalOPCUAListener;
     network: SpinalNode;
+    serverinfo: IServer;
 }
 export declare class SpinalNetworkUtils extends EventEmitter {
     static instance: SpinalNetworkUtils;
@@ -28,7 +30,7 @@ export declare class SpinalNetworkUtils extends EventEmitter {
     profileBinded: Map<string, Process>;
     private constructor();
     static getInstance(): SpinalNetworkUtils;
-    initSpinalListenerModel(spinalListenerModel: SpinalOPCUAListener): Promise<IDeviceInfo>;
+    initSpinalListenerModel(spinalListenerModel: SpinalOPCUAListener): Promise<SpinalDevice>;
     initProfile(profile: SpinalNode, deviceId: string): Promise<IProfile>;
     private _bindProfile;
 }

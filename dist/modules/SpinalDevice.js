@@ -43,16 +43,18 @@ const securityMode = node_opcua_client_1.MessageSecurityMode["None"];
 const securityPolicy = node_opcua_client_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDevice extends events_1.EventEmitter {
-    constructor(server, context, network, device, spinalListenerModel) {
+    constructor(server, context, network, device, spinalListenerModel, profile) {
         super();
         this.isInit = false;
         this.nodes = {};
         this.endpoints = {};
+        this.server = server;
         this.context = context;
         this.network = network;
         this.device = device;
         this.deviceInfo = device.info.get();
         this.spinalListenerModel = spinalListenerModel;
+        this.profile = profile;
     }
     init() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -100,6 +102,7 @@ class SpinalDevice extends events_1.EventEmitter {
                 if (!element)
                     return false;
                 element.mod_attr("currentValue", value);
+                // avertir du changement de valeur, le log du cov est fait dans son callback
                 if (!cov)
                     console.log(`[${this.deviceInfo.name}] - ${endpointNode.getName().get()} changed value to`, value);
                 if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {

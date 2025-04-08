@@ -36,6 +36,7 @@ import { SpinalGraphService } from "spinal-env-viewer-graph-service";
 import { convertSpinalNodeToOPCNode } from "../utils/utils";
 import { getServerUrl } from "../utils/Functions";
 import { SpinalOPCUAListener } from "spinal-model-opcua";
+import { IProfile } from "../utils/SpinalNetworkUtils";
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
@@ -43,23 +44,26 @@ const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
 export class SpinalDevice extends EventEmitter {
 	private isInit: boolean = false;
-	private context: SpinalContext;
-	private network: SpinalNode;
-	private device: SpinalNode;
-	private saveTimeSeries: spinal.Bool;
+	public context: SpinalContext;
+	public network: SpinalNode;
+	public device: SpinalNode;
+	public server: IServer;
 	public deviceInfo: { name: string, type: string, id: string };
+	public spinalListenerModel: SpinalOPCUAListener;
+	public profile: IProfile;
 
 	private nodes: { [key: string]: SpinalNode } = {};
 	private endpoints: { [key: string]: SpinalNode } = {};
-	private spinalListenerModel: SpinalOPCUAListener;
 
-	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener) {
+	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener, profile: IProfile) {
 		super();
+		this.server = server;
 		this.context = context;
 		this.network = network;
 		this.device = device;
 		this.deviceInfo = device.info.get();
 		this.spinalListenerModel = spinalListenerModel;
+		this.profile = profile;
 	}
 
 
@@ -113,6 +117,7 @@ export class SpinalDevice extends EventEmitter {
 
 			element.mod_attr("currentValue", value);
 
+			// avertir du changement de valeur, le log du cov est fait dans son callback
 			if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.getName().get()} changed value to`, value);
 
 			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {

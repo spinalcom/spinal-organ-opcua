@@ -42,7 +42,8 @@ class SpinalMonitoring {
         const promises = list.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
 
         const devices = lodash.flattenDeep(await Promise.all(promises));
-        const filtered = devices.filter(el => typeof el !== "undefined");
+        // const filtered = devices.filter(el => typeof el !== "undefined");
+        const filtered = devices.filter(el => !!el);
 
         await this._bindData(filtered);
 
@@ -108,16 +109,19 @@ class SpinalMonitoring {
     }
 
 
-    private _bindData(data: IDeviceInfo[]) {
-        for (const { context, spinalDevice, profile, spinalModel, network } of data) {
+    private _bindData(data: SpinalDevice[]) {
+        for (const spinalDevice of data) {
             this.spinalDevices.set(spinalDevice.deviceInfo.id, spinalDevice);
+            const spinalModel = spinalDevice.spinalListenerModel;
+            // const network = spinalDevice.network;
+            const profile = spinalDevice.profile;
 
             spinalModel.monitored.bind(async () => {
                 const monitored = spinalModel.monitored.get();
                 const deviceInfo = spinalDevice.deviceInfo;
 
-                const serverInfo = network.info.serverInfo.get()
-                const url = getServerUrl(serverInfo);
+                // const serverInfo = network.info.serverInfo.get()
+                const url = getServerUrl(spinalDevice.server);
 
                 if (!monitored) {
                     console.log(deviceInfo.name, "is stopped");
@@ -285,21 +289,29 @@ class SpinalMonitoring {
     }
 
     private async monitorWithCov(url: string, spinalDevice: SpinalDevice, nodes: any[]) {
+        const names = {};
 
-        const ids = nodes.map((el) => el.idNetwork);
+        const ids = nodes.map((el) => {
+            names[el.idNetwork] = el.name;
+            return el.idNetwork
+        });
 
         const opcuaService: OPCUAService = new OPCUAService(url);
         await opcuaService.initialize();
         await opcuaService.connect();
 
         opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
-            console.log(`[COV] - ${id} has changed to ${dataValue?.value || null}`);
+            if (!dataValue || typeof dataValue?.value == "undefined") return;
+
+            const value = ["string", "number"].includes(dataValue?.value) ? dataValue?.value : null;
+
+            console.log(`[COV] - ${names[id] || id} has changed to ${value}`);
 
             const temp_id = `${spinalDevice.deviceInfo.id}_${id}`;
 
             if (!this.covItemToMonitoring.has(temp_id)) this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
 
-            spinalDevice.updateEndpoints({ [id]: { value: dataValue, dataType: typeof dataValue } }, true);
+            spinalDevice.updateEndpoints({ [id]: { value: value, dataType: typeof value } }, true);
         });
 
     }

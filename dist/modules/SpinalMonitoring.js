@@ -44,7 +44,8 @@ class SpinalMonitoring {
             this.queue.refresh();
             const promises = list.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
             const devices = lodash.flattenDeep(yield Promise.all(promises));
-            const filtered = devices.filter(el => typeof el !== "undefined");
+            // const filtered = devices.filter(el => typeof el !== "undefined");
+            const filtered = devices.filter(el => !!el);
             yield this._bindData(filtered);
             if (!this.isProcessing) {
                 this.isProcessing = true;
@@ -98,13 +99,16 @@ class SpinalMonitoring {
         });
     }
     _bindData(data) {
-        for (const { context, spinalDevice, profile, spinalModel, network } of data) {
+        for (const spinalDevice of data) {
             this.spinalDevices.set(spinalDevice.deviceInfo.id, spinalDevice);
+            const spinalModel = spinalDevice.spinalListenerModel;
+            // const network = spinalDevice.network;
+            const profile = spinalDevice.profile;
             spinalModel.monitored.bind(() => __awaiter(this, void 0, void 0, function* () {
                 const monitored = spinalModel.monitored.get();
                 const deviceInfo = spinalDevice.deviceInfo;
-                const serverInfo = network.info.serverInfo.get();
-                const url = (0, Functions_1.getServerUrl)(serverInfo);
+                // const serverInfo = network.info.serverInfo.get()
+                const url = (0, Functions_1.getServerUrl)(spinalDevice.server);
                 if (!monitored) {
                     console.log(deviceInfo.name, "is stopped");
                     this._removeFromMaps(deviceInfo.id, url);
@@ -246,16 +250,23 @@ class SpinalMonitoring {
     }
     monitorWithCov(url, spinalDevice, nodes) {
         return __awaiter(this, void 0, void 0, function* () {
-            const ids = nodes.map((el) => el.idNetwork);
+            const names = {};
+            const ids = nodes.map((el) => {
+                names[el.idNetwork] = el.name;
+                return el.idNetwork;
+            });
             const opcuaService = new OPCUAService_1.default(url);
             yield opcuaService.initialize();
             yield opcuaService.connect();
             opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
-                console.log(`[COV] - ${id} has changed to ${(dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) || null}`);
+                if (!dataValue || typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) == "undefined")
+                    return;
+                const value = ["string", "number"].includes(dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) ? dataValue === null || dataValue === void 0 ? void 0 : dataValue.value : null;
+                console.log(`[COV] - ${names[id] || id} has changed to ${value}`);
                 const temp_id = `${spinalDevice.deviceInfo.id}_${id}`;
                 if (!this.covItemToMonitoring.has(temp_id))
                     this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
-                spinalDevice.updateEndpoints({ [id]: { value: dataValue, dataType: typeof dataValue } }, true);
+                spinalDevice.updateEndpoints({ [id]: { value: value, dataType: typeof value } }, true);
             });
         });
     }
