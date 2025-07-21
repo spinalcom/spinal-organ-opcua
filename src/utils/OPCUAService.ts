@@ -34,11 +34,11 @@ export class OPCUAService extends EventEmitter {
 		this.endpointUrl = url;
 		this._discoverModel = model;
 		// if (typeof modelOrUrl === "string")
-		// 	this.endpointUrl = modelOrUrl;
+		//      this.endpointUrl = modelOrUrl;
 		// else {
-		// 	const server = modelOrUrl.network.get();
-		// 	this.endpointUrl = getServerUrl(server);
-		// 	this._discoverModel = modelOrUrl;
+		//      const server = modelOrUrl.network.get();
+		//      this.endpointUrl = getServerUrl(server);
+		//      this._discoverModel = modelOrUrl;
 		// }
 	}
 
@@ -106,8 +106,8 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	///////////////////////////////////////////////////////////////////////////
-	//					Exemple 1 : [getTree] - Browse several node 		 //
-	//					May have timeout error if the tree is too big		 //
+	//                                      Exemple 1 : [getTree] - Browse several node              //
+	//                                      May have timeout error if the tree is too big            //
 	///////////////////////////////////////////////////////////////////////////
 
 	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
@@ -157,42 +157,42 @@ export class OPCUAService extends EventEmitter {
 
 
 	///////////////////////////////////////////////////////////////////////////
-	//					Exemple 2 : getTree (take a lot of time)		 	 //
+	//                                      Exemple 2 : getTree (take a lot of time)                         //
 	///////////////////////////////////////////////////////////////////////////
 	// public async getTree2(entryPointPath?: string): Promise<any> {
-	// 	console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
-	// 	const tree = await this._getEntryPoint(entryPointPath);
-	// 	const queue: any[] = [tree];
-	// 	const variables = [];
-	// 	const nodesObj = { [tree.nodeId.toString()]: tree };
+	//      console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
+	//      const tree = await this._getEntryPoint(entryPointPath);
+	//      const queue: any[] = [tree];
+	//      const variables = [];
+	//      const nodesObj = { [tree.nodeId.toString()]: tree };
 
-	// 	while (queue.length) {
-	// 		const node = queue.shift();
-	// 		let _error = null;
-	// 		let discoverState = OPCUA_ORGAN_STATES.discovering;
+	//      while (queue.length) {
+	//              const node = queue.shift();
+	//              let _error = null;
+	//              let discoverState = OPCUA_ORGAN_STATES.discovering;
 
-	// 		try {
-	// 			console.log("[getTree2] browsing", node.displayName);
-	// 			// if (this.isVariable(node)) variables.push(node.nodeId.toString());
-	// 			// const children = await this._browseNode(node);
-	// 			// node.children = children;
-	// 			// queue.push(...children);
-	// 			const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
-	// 			queue.push(...children);
-	// 		} catch (error) {
-	// 			discoverState = OPCUA_ORGAN_STATES.error;
-	// 			queue.unshift(node);
-	// 			_error = error;
-	// 			console.log("error", error);
-	// 		}
+	//              try {
+	//                      console.log("[getTree2] browsing", node.displayName);
+	//                      // if (this.isVariable(node)) variables.push(node.nodeId.toString());
+	//                      // const children = await this._browseNode(node);
+	//                      // node.children = children;
+	//                      // queue.push(...children);
+	//                      const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
+	//                      queue.push(...children);
+	//              } catch (error) {
+	//                      discoverState = OPCUA_ORGAN_STATES.error;
+	//                      queue.unshift(node);
+	//                      _error = error;
+	//                      console.log("error", error);
+	//              }
 
-	// 		if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
-	// 		await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
+	//              if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
+	//              await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
 
-	// 		if (_error) throw _error;
-	// 	}
+	//              if (_error) throw _error;
+	//      }
 
-	// 	return { tree, variables };
+	//      return { tree, variables };
 	// }
 
 	public async browseNodeRec(node: any) {
@@ -265,6 +265,7 @@ export class OPCUAService extends EventEmitter {
 		}, Promise.resolve([]));
 
 		const dataValues = await _promise;
+		console.log("dataValues", dataValues)
 		await this.disconnect();
 
 		return dataValues.map((dataValue) => this._formatDataValue(dataValue));
@@ -281,7 +282,7 @@ export class OPCUAService extends EventEmitter {
 		if (dataType) {
 			try {
 				const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
-
+				console.log("Value in writeNode() => ", _value);
 				const writeValue = new WriteValue({
 					nodeId: node.nodeId,
 					attributeId: AttributeIds.Value,
@@ -310,6 +311,7 @@ export class OPCUAService extends EventEmitter {
 		// const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, TimestampsToReturn.Both);
 		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 10, discardOldest: true, queueSize: 1 }, TimestampsToReturn.Both);
 
+
 		for (const monitoredItem of monitoredItemGroup.monitoredItems) {
 			this._listenMonitoredItemEvents(monitoredItem, callback);
 		}
@@ -320,7 +322,9 @@ export class OPCUAService extends EventEmitter {
 
 	private _listenMonitoredItemEvents(monitoredItem: ClientMonitoredItemBase, callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any) {
 		monitoredItem.on("changed", (dataValue: DataValue) => {
+			console.log("inside OnChange")
 			const value = this._formatDataValue(dataValue);
+			console.log("value = ", value)
 			callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
 		});
 
@@ -360,26 +364,35 @@ export class OPCUAService extends EventEmitter {
 
 		// const references = browseResults.map((el) => el.references).flat(); // each browseResult has an array of references for each description;
 		// return references.reduce((list, ref, index) => {
-		// 	const refName = ref.displayName.text || ref.browseName?.toString();
-		// 	if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") return list; // skip server and hidden nodes
+		//      const refName = ref.displayName.text || ref.browseName?.toString();
+		//      if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") return list; // skip server and hidden nodes
 
-		// 	const parentId = (descriptions[index] as any)?.nodeId?.toString();
-		// 	const formatted = this._formatReference(ref, "", parentId);
-		// 	list.push(formatted);
-		// 	return list;
+		//      const parentId = (descriptions[index] as any)?.nodeId?.toString();
+		//      const formatted = this._formatReference(ref, "", parentId);
+		//      list.push(formatted);
+		//      return list;
 		// }, []);
 	}
 
+	private async _getDataType(nodeId: string): Promise<DataType | undefined> {
+		try {
+			const dataTypeId = resolveNodeId(nodeId);
+			const dataType = await findBasicDataType(this.session, dataTypeId);
+			return dataType;
+		} catch (error) {
+			return this.detectOPCUAValueType(nodeId);
+		}
+
+	}
+
+
 	private async _getNodesDetails(node: IOPCNode) {
-		const dataTypeIdDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.DataType });
 		const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
 		const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
 
-		const dataTypeId = dataTypeIdDataValue.value.value as NodeId;
-		const dataType = await findBasicDataType(this.session, dataTypeId);
-
 		const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
 		const valueRank = valueRankDataValue.value.value as number;
+		const dataType = await this._getDataType(node.nodeId.toString());
 
 		return { dataType, arrayDimension, valueRank };
 	}
@@ -475,7 +488,7 @@ export class OPCUAService extends EventEmitter {
 		return { tree, variables }
 	}
 	////////////////////////////////////////////////////////////
-	//							Client			 			  //
+	//                                                      Client                                            //
 	////////////////////////////////////////////////////////////
 
 	private async _createSession(client?: OPCUAClient): Promise<ClientSession> {
@@ -538,7 +551,7 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	///////////////////////////////////////////////////////
-	//					Utils							 //
+	//                                      Utils                                                    //
 	///////////////////////////////////////////////////////
 
 	private async _getEntryPoint(entryPointPath?: string): Promise<IOPCNode> {
@@ -657,6 +670,18 @@ export class OPCUAService extends EventEmitter {
 		if (!Array.isArray(node)) node = [node];
 		return this.session.read(node);
 	}
+
+
+	private async detectOPCUAValueType(nodeId: string): Promise<DataType | undefined> {
+		const resValue = await this.readNodeValue({ nodeId: coerceNodeId(nodeId) });
+		const value = resValue[0];
+		if (!value) return;
+
+		if (value.dataType) return DataType[value.dataType];
+
+		return DataType[typeof value.value];
+	}
+
 }
 
 
