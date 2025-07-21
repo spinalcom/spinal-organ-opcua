@@ -229,5 +229,6 @@ export function getServerUrl(serverInfo: any): string {
 	if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
 	if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
 
-	return `opc.tcp://${serverInfo.address}:${serverInfo.port}${endpoint}`;
+	const ip = serverInfo.address || serverInfo.ip;
+	return `opc.tcp://${ip}:${serverInfo.port}${endpoint}`;
 }

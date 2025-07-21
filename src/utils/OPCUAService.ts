@@ -615,25 +615,25 @@ export class OPCUAService extends EventEmitter {
 
 	private _formatDataValue(dataValue: DataValue): { value: any; dataType: string } {
 
-		if (dataValue?.statusCode == StatusCodes.Good) {
-			if (dataValue?.value?.value) {
-				const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
+		// if (dataValue?.statusCode == StatusCodes.Good) {
+		if (typeof dataValue?.value?.value !== "undefined") {
+			const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
 
-				switch (dataValue?.value?.arrayType) {
-					case VariantArrayType.Scalar:
-						obj.value = dataValue?.value?.value;
-						break;
-					case VariantArrayType.Array:
-						obj.value = dataValue?.value?.value.join(",");
-						break;
-					default:
-						obj.value = null;
-						break;
-				}
-
-				return obj;
+			switch (dataValue?.value?.arrayType) {
+				case VariantArrayType.Scalar:
+					obj.value = dataValue?.value?.value;
+					break;
+				case VariantArrayType.Array:
+					obj.value = dataValue?.value?.value.join(",");
+					break;
+				default:
+					obj.value = null;
+					break;
 			}
+
+			return obj;
 		}
+		// }
 
 		return null;
 	}
