@@ -28,20 +28,20 @@ function convertToBrowseDescription(node) {
             browseDirection: node_opcua_1.BrowseDirection.Forward,
             resultMask: 0x3f,
         },
-        // {
-        // 	nodeId: node.nodeId,
-        // 	referenceTypeId: ReferenceTypeIds.Aggregates,
-        // 	includeSubtypes: true,
-        // 	browseDirection: BrowseDirection.Forward,
-        // 	resultMask: 0x3f,
-        // },
-        // {
-        // 	nodeId: node.nodeId,
-        // 	referenceTypeId: ReferenceTypeIds.HasSubtype,
-        // 	includeSubtypes: true,
-        // 	browseDirection: BrowseDirection.Forward,
-        // 	resultMask: 0x3f,
-        // },
+        {
+            nodeId: node.nodeId,
+            referenceTypeId: node_opcua_1.ReferenceTypeIds.Aggregates,
+            includeSubtypes: true,
+            browseDirection: node_opcua_1.BrowseDirection.Forward,
+            resultMask: 0x3f,
+        },
+        {
+            nodeId: node.nodeId,
+            referenceTypeId: node_opcua_1.ReferenceTypeIds.HasSubtype,
+            includeSubtypes: true,
+            browseDirection: node_opcua_1.BrowseDirection.Forward,
+            resultMask: 0x3f,
+        },
     ];
 }
 exports.convertToBrowseDescription = convertToBrowseDescription;

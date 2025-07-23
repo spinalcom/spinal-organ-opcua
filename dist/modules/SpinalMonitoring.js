@@ -261,7 +261,8 @@ class SpinalMonitoring {
             opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
                 if (!dataValue || typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) == "undefined")
                     return;
-                const value = ["string", "number"].includes(dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) ? dataValue === null || dataValue === void 0 ? void 0 : dataValue.value : null;
+                console.log("dataValue = ", dataValue);
+                const value = ["string", "number", "boolean"].includes(typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value)) ? dataValue === null || dataValue === void 0 ? void 0 : dataValue.value : null;
                 console.log(`[COV] - ${id} has changed to ${value}`);
                 const temp_id = `${spinalDevice.deviceInfo.id}_${id}`;
                 if (!this.covItemToMonitoring.has(temp_id))

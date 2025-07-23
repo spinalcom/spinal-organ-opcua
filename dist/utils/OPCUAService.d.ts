@@ -41,6 +41,7 @@ export declare class OPCUAService extends EventEmitter {
     private _listenMonitoredItemEvents;
     private _browseNode;
     private _browseUsingBrowseDescription;
+    private _getDataType;
     private _getNodesDetails;
     private _getNodeParent;
     private _getDiscoverData;
@@ -59,5 +60,6 @@ export declare class OPCUAService extends EventEmitter {
     isObject(node: IOPCNode): boolean;
     private _parseValue;
     readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
+    private detectOPCUAValueType;
 }
 export default OPCUAService;

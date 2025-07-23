@@ -32,20 +32,20 @@ export function convertToBrowseDescription(node: IOPCNode) {
 			browseDirection: BrowseDirection.Forward,
 			resultMask: 0x3f,
 		},
-		// {
-		// 	nodeId: node.nodeId,
-		// 	referenceTypeId: ReferenceTypeIds.Aggregates,
-		// 	includeSubtypes: true,
-		// 	browseDirection: BrowseDirection.Forward,
-		// 	resultMask: 0x3f,
-		// },
-		// {
-		// 	nodeId: node.nodeId,
-		// 	referenceTypeId: ReferenceTypeIds.HasSubtype,
-		// 	includeSubtypes: true,
-		// 	browseDirection: BrowseDirection.Forward,
-		// 	resultMask: 0x3f,
-		// },
+		{
+			nodeId: node.nodeId,
+			referenceTypeId: ReferenceTypeIds.Aggregates,
+			includeSubtypes: true,
+			browseDirection: BrowseDirection.Forward,
+			resultMask: 0x3f,
+		},
+		{
+			nodeId: node.nodeId,
+			referenceTypeId: ReferenceTypeIds.HasSubtype,
+			includeSubtypes: true,
+			browseDirection: BrowseDirection.Forward,
+			resultMask: 0x3f,
+		},
 	];
 }
 

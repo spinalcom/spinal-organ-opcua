@@ -613,8 +613,7 @@ export class OPCUAService extends EventEmitter {
 		};
 	}
 
-	private _formatDataValue(dataValue: DataValue): { value: any; dataType: string } {
-
+	private _formatDataValue(dataValue: any): { value: any; dataType: string } {
 		// if (dataValue?.statusCode == StatusCodes.Good) {
 		if (typeof dataValue?.value?.value !== "undefined") {
 			const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
@@ -634,6 +633,7 @@ export class OPCUAService extends EventEmitter {
 			return obj;
 		}
 		// }
+		if(typeof dataValue.value!== "object") return dataValue;
 
 		return null;
 	}

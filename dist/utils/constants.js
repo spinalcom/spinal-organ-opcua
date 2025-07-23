@@ -5,7 +5,7 @@ exports.NAMES_TO_IGNORE = [
     "server",
     "locations",
     "aliases",
-    "deviceset",
+    // "deviceset",
     "networkset",
     "devicetopology",
 ];

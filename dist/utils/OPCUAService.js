@@ -42,11 +42,11 @@ class OPCUAService extends events_1.EventEmitter {
         this.endpointUrl = url;
         this._discoverModel = model;
         // if (typeof modelOrUrl === "string")
-        // 	this.endpointUrl = modelOrUrl;
+        //      this.endpointUrl = modelOrUrl;
         // else {
-        // 	const server = modelOrUrl.network.get();
-        // 	this.endpointUrl = getServerUrl(server);
-        // 	this._discoverModel = modelOrUrl;
+        //      const server = modelOrUrl.network.get();
+        //      this.endpointUrl = getServerUrl(server);
+        //      this._discoverModel = modelOrUrl;
         // }
     }
     initialize() {
@@ -114,8 +114,8 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////////////////////////
-    //					Exemple 1 : [getTree] - Browse several node 		 //
-    //					May have timeout error if the tree is too big		 //
+    //                                      Exemple 1 : [getTree] - Browse several node              //
+    //                                      May have timeout error if the tree is too big            //
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -156,37 +156,37 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////////////////////////
-    //					Exemple 2 : getTree (take a lot of time)		 	 //
+    //                                      Exemple 2 : getTree (take a lot of time)                         //
     ///////////////////////////////////////////////////////////////////////////
     // public async getTree2(entryPointPath?: string): Promise<any> {
-    // 	console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
-    // 	const tree = await this._getEntryPoint(entryPointPath);
-    // 	const queue: any[] = [tree];
-    // 	const variables = [];
-    // 	const nodesObj = { [tree.nodeId.toString()]: tree };
-    // 	while (queue.length) {
-    // 		const node = queue.shift();
-    // 		let _error = null;
-    // 		let discoverState = OPCUA_ORGAN_STATES.discovering;
-    // 		try {
-    // 			console.log("[getTree2] browsing", node.displayName);
-    // 			// if (this.isVariable(node)) variables.push(node.nodeId.toString());
-    // 			// const children = await this._browseNode(node);
-    // 			// node.children = children;
-    // 			// queue.push(...children);
-    // 			const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
-    // 			queue.push(...children);
-    // 		} catch (error) {
-    // 			discoverState = OPCUA_ORGAN_STATES.error;
-    // 			queue.unshift(node);
-    // 			_error = error;
-    // 			console.log("error", error);
-    // 		}
-    // 		if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
-    // 		await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
-    // 		if (_error) throw _error;
-    // 	}
-    // 	return { tree, variables };
+    //      console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
+    //      const tree = await this._getEntryPoint(entryPointPath);
+    //      const queue: any[] = [tree];
+    //      const variables = [];
+    //      const nodesObj = { [tree.nodeId.toString()]: tree };
+    //      while (queue.length) {
+    //              const node = queue.shift();
+    //              let _error = null;
+    //              let discoverState = OPCUA_ORGAN_STATES.discovering;
+    //              try {
+    //                      console.log("[getTree2] browsing", node.displayName);
+    //                      // if (this.isVariable(node)) variables.push(node.nodeId.toString());
+    //                      // const children = await this._browseNode(node);
+    //                      // node.children = children;
+    //                      // queue.push(...children);
+    //                      const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
+    //                      queue.push(...children);
+    //              } catch (error) {
+    //                      discoverState = OPCUA_ORGAN_STATES.error;
+    //                      queue.unshift(node);
+    //                      _error = error;
+    //                      console.log("error", error);
+    //              }
+    //              if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
+    //              await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
+    //              if (_error) throw _error;
+    //      }
+    //      return { tree, variables };
     // }
     browseNodeRec(node) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -249,6 +249,7 @@ class OPCUAService extends events_1.EventEmitter {
                 return list;
             }), Promise.resolve([]));
             const dataValues = yield _promise;
+            console.log("dataValues", dataValues);
             yield this.disconnect();
             return dataValues.map((dataValue) => this._formatDataValue(dataValue));
         });
@@ -262,6 +263,7 @@ class OPCUAService extends events_1.EventEmitter {
             if (dataType) {
                 try {
                     const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
+                    console.log("Value in writeNode() => ", _value);
                     const writeValue = new node_opcua_1.WriteValue({
                         nodeId: node.nodeId,
                         attributeId: node_opcua_1.AttributeIds.Value,
@@ -295,7 +297,9 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     _listenMonitoredItemEvents(monitoredItem, callback) {
         monitoredItem.on("changed", (dataValue) => {
+            console.log("inside OnChange");
             const value = this._formatDataValue(dataValue);
+            console.log("value = ", value);
             callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
         });
         monitoredItem.on("err", (err) => {
@@ -328,24 +332,34 @@ class OPCUAService extends events_1.EventEmitter {
             }, []);
             // const references = browseResults.map((el) => el.references).flat(); // each browseResult has an array of references for each description;
             // return references.reduce((list, ref, index) => {
-            // 	const refName = ref.displayName.text || ref.browseName?.toString();
-            // 	if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") return list; // skip server and hidden nodes
-            // 	const parentId = (descriptions[index] as any)?.nodeId?.toString();
-            // 	const formatted = this._formatReference(ref, "", parentId);
-            // 	list.push(formatted);
-            // 	return list;
+            //      const refName = ref.displayName.text || ref.browseName?.toString();
+            //      if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") return list; // skip server and hidden nodes
+            //      const parentId = (descriptions[index] as any)?.nodeId?.toString();
+            //      const formatted = this._formatReference(ref, "", parentId);
+            //      list.push(formatted);
+            //      return list;
             // }, []);
+        });
+    }
+    _getDataType(nodeId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const dataTypeId = (0, node_opcua_1.resolveNodeId)(nodeId);
+                const dataType = yield (0, node_opcua_1.findBasicDataType)(this.session, dataTypeId);
+                return dataType;
+            }
+            catch (error) {
+                return this.detectOPCUAValueType(nodeId);
+            }
         });
     }
     _getNodesDetails(node) {
         return __awaiter(this, void 0, void 0, function* () {
-            const dataTypeIdDataValue = yield this.session.read({ nodeId: node.nodeId, attributeId: node_opcua_1.AttributeIds.DataType });
             const arrayDimensionDataValue = yield this.session.read({ nodeId: node.nodeId, attributeId: node_opcua_1.AttributeIds.ArrayDimensions });
             const valueRankDataValue = yield this.session.read({ nodeId: node.nodeId, attributeId: node_opcua_1.AttributeIds.ValueRank });
-            const dataTypeId = dataTypeIdDataValue.value.value;
-            const dataType = yield (0, node_opcua_1.findBasicDataType)(this.session, dataTypeId);
             const arrayDimension = arrayDimensionDataValue.value.value;
             const valueRank = valueRankDataValue.value.value;
+            const dataType = yield this._getDataType(node.nodeId.toString());
             return { dataType, arrayDimension, valueRank };
         });
     }
@@ -434,7 +448,7 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ////////////////////////////////////////////////////////////
-    //							Client			 			  //
+    //                                                      Client                                            //
     ////////////////////////////////////////////////////////////
     _createSession(client) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -484,7 +498,7 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////
-    //					Utils							 //
+    //                                      Utils                                                    //
     ///////////////////////////////////////////////////////
     _getEntryPoint(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -544,23 +558,25 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _formatDataValue(dataValue) {
         var _a, _b, _c, _d, _e;
-        if ((dataValue === null || dataValue === void 0 ? void 0 : dataValue.statusCode) == node_opcua_1.StatusCodes.Good) {
-            if ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) {
-                const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
-                switch ((_c = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _c === void 0 ? void 0 : _c.arrayType) {
-                    case node_opcua_1.VariantArrayType.Scalar:
-                        obj.value = (_d = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _d === void 0 ? void 0 : _d.value;
-                        break;
-                    case node_opcua_1.VariantArrayType.Array:
-                        obj.value = (_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value.join(",");
-                        break;
-                    default:
-                        obj.value = null;
-                        break;
-                }
-                return obj;
+        // if (dataValue?.statusCode == StatusCodes.Good) {
+        if (typeof ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) !== "undefined") {
+            const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
+            switch ((_c = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _c === void 0 ? void 0 : _c.arrayType) {
+                case node_opcua_1.VariantArrayType.Scalar:
+                    obj.value = (_d = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _d === void 0 ? void 0 : _d.value;
+                    break;
+                case node_opcua_1.VariantArrayType.Array:
+                    obj.value = (_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value.join(",");
+                    break;
+                default:
+                    obj.value = null;
+                    break;
             }
+            return obj;
         }
+        // }
+        if (typeof dataValue.value !== "object")
+            return dataValue;
         return null;
     }
     _readBrowseName(nodeId) {
@@ -591,6 +607,17 @@ class OPCUAService extends events_1.EventEmitter {
             if (!Array.isArray(node))
                 node = [node];
             return this.session.read(node);
+        });
+    }
+    detectOPCUAValueType(nodeId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const resValue = yield this.readNodeValue({ nodeId: (0, node_opcua_1.coerceNodeId)(nodeId) });
+            const value = resValue[0];
+            if (!value)
+                return;
+            if (value.dataType)
+                return node_opcua_1.DataType[value.dataType];
+            return node_opcua_1.DataType[typeof value.value];
         });
     }
 }
