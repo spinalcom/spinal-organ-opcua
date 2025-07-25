@@ -313,7 +313,7 @@ export class OPCUAService extends EventEmitter {
 			filter: new DataChangeFilter({
 				trigger: DataChangeTrigger.StatusValueTimestamp,
 				deadbandType: DeadbandType.Absolute,
-				deadbandValue: 0.5
+				deadbandValue: 1.0
 			}),
 			discardOldest: true,
 			queueSize: 1

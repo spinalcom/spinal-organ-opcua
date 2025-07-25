@@ -292,7 +292,7 @@ class OPCUAService extends events_1.EventEmitter {
                 filter: new node_opcua_1.DataChangeFilter({
                     trigger: node_opcua_1.DataChangeTrigger.StatusValueTimestamp,
                     deadbandType: node_opcua_1.DeadbandType.Absolute,
-                    deadbandValue: 0.5
+                    deadbandValue: 1.0
                 }),
                 discardOldest: true,
                 queueSize: 1
