@@ -76,12 +76,12 @@ class OPCUAService extends events_1.EventEmitter {
             }
             try {
                 const parameters = {
-                    requestedPublishingInterval: 500,
-                    requestedLifetimeCount: 10,
+                    requestedPublishingInterval: 10 * 1000,
+                    requestedLifetimeCount: 100,
                     requestedMaxKeepAliveCount: 5,
                     maxNotificationsPerPublish: 10,
                     publishingEnabled: true,
-                    priority: 1
+                    priority: 1 // Donne une priorité à la subscription
                 };
                 this.subscription = yield this.session.createSubscription2(parameters);
             }
@@ -287,8 +287,17 @@ class OPCUAService extends events_1.EventEmitter {
             ;
             nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
             const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: node_opcua_1.AttributeIds.Value }));
-            // const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, TimestampsToReturn.Both);
-            const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, { samplingInterval: 10, discardOldest: true, queueSize: 1 }, node_opcua_1.TimestampsToReturn.Both);
+            const parameters = {
+                samplingInterval: 3 * 1000,
+                filter: new node_opcua_1.DataChangeFilter({
+                    trigger: node_opcua_1.DataChangeTrigger.StatusValueTimestamp,
+                    deadbandType: node_opcua_1.DeadbandType.Absolute,
+                    deadbandValue: 0.5
+                }),
+                discardOldest: true,
+                queueSize: 1
+            };
+            const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, parameters, node_opcua_1.TimestampsToReturn.Both);
             for (const monitoredItem of monitoredItemGroup.monitoredItems) {
                 this._listenMonitoredItemEvents(monitoredItem, callback);
             }

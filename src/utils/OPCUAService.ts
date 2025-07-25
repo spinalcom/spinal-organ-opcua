@@ -1,4 +1,4 @@
-import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace, MonitoredItem, ClientMonitoredItemBase } from "node-opcua";
+import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace, MonitoredItem, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, DeadbandType } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
@@ -70,12 +70,12 @@ export class OPCUAService extends EventEmitter {
 
 		try {
 			const parameters = {
-				requestedPublishingInterval: 500,
-				requestedLifetimeCount: 10,
-				requestedMaxKeepAliveCount: 5,
-				maxNotificationsPerPublish: 10,
-				publishingEnabled: true,
-				priority: 1
+				requestedPublishingInterval: 10 * 1000, // interval auquel on veut recevoir les notifications
+				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée 
+				requestedMaxKeepAliveCount: 5, // Nombre de notification avant que le serveur envoie un keep alive
+				maxNotificationsPerPublish: 10, // Nombre de valueur (DataChange) maximum par notification
+				publishingEnabled: true, // Activer ou desactiver l'envoi de notification
+				priority: 1 // Donne une priorité à la subscription
 			};
 
 			this.subscription = await this.session.createSubscription2(parameters);
@@ -308,9 +308,18 @@ export class OPCUAService extends EventEmitter {
 
 		const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: AttributeIds.Value }));
 
-		// const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 30 * 1000, discardOldest: true, queueSize: 1000 }, TimestampsToReturn.Both);
-		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, { samplingInterval: 10, discardOldest: true, queueSize: 1 }, TimestampsToReturn.Both);
+		const parameters = {
+			samplingInterval: 3 * 1000, // 10 seconds
+			filter: new DataChangeFilter({
+				trigger: DataChangeTrigger.StatusValueTimestamp,
+				deadbandType: DeadbandType.Absolute,
+				deadbandValue: 0.5
+			}),
+			discardOldest: true,
+			queueSize: 1
+		}
 
+		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, parameters, TimestampsToReturn.Both);
 
 		for (const monitoredItem of monitoredItemGroup.monitoredItems) {
 			this._listenMonitoredItemEvents(monitoredItem, callback);
@@ -633,7 +642,7 @@ export class OPCUAService extends EventEmitter {
 			return obj;
 		}
 		// }
-		if(typeof dataValue.value!== "object") return dataValue;
+		if (typeof dataValue.value !== "object") return dataValue;
 
 		return null;
 	}
