@@ -172,6 +172,8 @@ function _formatTree(tree: IOPCNode) {
 function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values: { [key: string]: any } = {}) {
 	const categoryName: string = "OPC Attributes";
 
+	//[TODO] use createOrUpdateAttrsAndCategories
+
 	return serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
 		const promises = [];
 		const formatted = attributes.map((el) => ({ name: el.displayName, value: values[el.nodeId.toString()]?.value || "" }));

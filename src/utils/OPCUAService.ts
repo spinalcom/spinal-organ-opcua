@@ -2,13 +2,12 @@ import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, 
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
-import { coerceStringToDataType, convertToBrowseDescription, discoverIsCancelled } from "./utils";
+import { coerceStringToDataType, convertToBrowseDescription, discoverIsCancelled, normalizePath } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
 import discoveringStore from "./discoveringProcessStore";
 import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 import { ITreeOption } from "../interfaces/ITreeOption";
-import { getServerUrl, getVariablesList } from "../utils/Functions";
 import { NAMES_TO_IGNORE } from "./constants";
 
 
@@ -106,8 +105,8 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	///////////////////////////////////////////////////////////////////////////
-	//                                      Exemple 1 : [getTree] - Browse several node              //
-	//                                      May have timeout error if the tree is too big            //
+	//              Exemple 1 : [getTree] - Browse several node              //
+	//              May have timeout error if the tree is too big            //
 	///////////////////////////////////////////////////////////////////////////
 
 	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
@@ -115,34 +114,40 @@ export class OPCUAService extends EventEmitter {
 
 		await this.initialize();
 		await this.connect(userIdentity);
-		// let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
 
+		// get the queue and nodesObj from the last discover or create a new one
 		let { nodesObj, queue, browseMode } = await this._getDiscoverData(entryPointPath, options.useLastResult);
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
+
 
 		while (queue.length && !discoverIsCancelled(this._discoverModel)) {
 
 			let discoverState = null;
 			let _error = null;
+
+			// chunk the queue to avoid timeout errors
 			const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
 
 			try {
-				discoverState = OPCUA_ORGAN_STATES.discovering;
+				discoverState = OPCUA_ORGAN_STATES.discovering; // set the state to discovering
+
 				const newsItems = await this._getChildrenAndAddToObj(chunked, nodesObj);
 				queue.push(...newsItems);
-				if (newsItems.length) console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`);
-				console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`);
+
+				if (newsItems.length) console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
+				console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
+
 			} catch (error) {
-				queue.unshift(...chunked);
+				queue.unshift(...chunked); // if an error occurs, put the nodes back in the queue
 				_error = error;
-				discoverState = OPCUA_ORGAN_STATES.error;
+				discoverState = OPCUA_ORGAN_STATES.error; // set the state to error
 			}
 
-			if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
+			if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered; // if the queue is empty, set the state to discovered
 
-			await discoveringStore.saveProgress(this.endpointUrl, nodesObj, queue, discoverState);
+			await discoveringStore.saveProgress(this.endpointUrl, nodesObj, queue, discoverState); // save the progress in the store
 
-			if (_error) throw _error;
+			if (_error) throw _error; // if an error occurs, throw it to stop the process
 		}
 
 
@@ -209,14 +214,16 @@ export class OPCUAService extends EventEmitter {
 	///////////////////////////////////////////////////////////////////////////
 
 	public async _getChildrenAndAddToObj(nodes: IOPCNode[], nodesObj: { [key: string]: IOPCNode } = {}) {
-
 		const children = await this._browseNode(nodes);
 
 		for (const child of children) {
-			// const parent = nodesObj[child.parentId];
-			// if (this.isVariable(child)) variables.push(child.nodeId.toString());
+			const parent = nodesObj[child.parentId];
+
+			// create the path based on the parent node
+			const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
+
+			child.path = normalizePath(path);
 			nodesObj[child.nodeId.toString()] = child;
-			// if (parent) parent.children.push(child);
 		}
 
 		return children;
@@ -345,11 +352,14 @@ export class OPCUAService extends EventEmitter {
 
 	private _browseNode(node: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
 		node = Array.isArray(node) ? node : [node];
-		const nodeToBrowse = node.reduce((list, n) => {
-			const configs = convertToBrowseDescription(n);
-			list.push(...configs);
-			return list;
-		}, []);
+
+		// const nodeToBrowse = node.reduce((list, n) => {
+		// 	const configs = convertToBrowseDescription(n);
+		// 	list.push(...configs);
+		// 	return list;
+		// }, []);
+
+		const nodeToBrowse = node.map((n) => convertToBrowseDescription(n)).flat();
 
 		return this._browseUsingBrowseDescription(nodeToBrowse);
 	}
@@ -357,9 +367,10 @@ export class OPCUAService extends EventEmitter {
 	private async _browseUsingBrowseDescription(descriptions: BrowseDescriptionLike[]): Promise<IOPCNode[]> {
 		const browseResults = await this.session.browse(descriptions);
 
-		return browseResults.reduce((children: IOPCNode[], el: BrowseResult, index: number) => {
+		return browseResults.reduce((children: IOPCNode[], browseResult: BrowseResult, index: number) => {
 			const parentId = (descriptions[index] as any)?.nodeId?.toString();
-			for (const ref of el.references) {
+
+			for (const ref of browseResult.references) {
 				const refName = ref.displayName.text || ref.browseName?.toString();
 				if (!refName || refName.startsWith(".") || NAMES_TO_IGNORE.includes(refName.toLowerCase()))
 					continue; // skip unwanted nodes
@@ -443,18 +454,20 @@ export class OPCUAService extends EventEmitter {
 	private async _getDiscoverData(entryPointPath: string, useLastResult: boolean) {
 		let queue, nodesObj, browseMode;
 
+
 		try {
 			if (!useLastResult) throw new Error("no last result"); // throw error to force unicast browsing
 
+			browseMode = "Multicast";
 			const data = await discoveringStore.getProgress(this.endpointUrl);
 
-			browseMode = "Multicast";
 			nodesObj = data.nodesObj;
 			queue = data.queue;
 
 		} catch (error) {
-			browseMode = "Unicast";
+			// if no last result or error in file reading, use unicast browsing
 
+			browseMode = "unicast";
 			let tree = await this._getEntryPoint(entryPointPath);
 			queue = [tree];
 			nodesObj = { [tree.nodeId.toString()]: tree };
@@ -578,45 +591,64 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async _getEntryPointWithPath(start: any, entryPointPath?: string): Promise<IOPCNode> {
-		if (!entryPointPath.startsWith("/Objects")) entryPointPath = "/Objects" + entryPointPath;
 
-		const paths = entryPointPath.split("/").filter((el) => el !== "");
-		let error;
-		let node = start;
-		let lastNode;
+		try {
+			if (!entryPointPath.startsWith("/Objects")) entryPointPath = "/Objects" + entryPointPath;
+			const browsePaths = makeBrowsePath("RootFolder", entryPointPath);
+			const nodesFound = await this.session.translateBrowsePath(browsePaths);
 
-		while (paths.length && !error) {
-			const path = paths.shift();
-			const children = await this._browseNode(node);
-			let found = children.find((el) => {
-				const names = [el.displayName.toLocaleLowerCase(), el.browseName.toLocaleLowerCase()];
-				return names.includes(path.toLocaleLowerCase());
-			});
+			return {
+				// put rest of the properties
+				path: "/RootFolder" + entryPointPath,
+			} as IOPCNode;
 
-			if (!found) {
-				error = `No node found with entry point : ${entryPointPath}`;
-				break;
-			}
-
-			node = found;
-			if (paths.length === 0) lastNode = node;
+		} catch (error) {
+			throw `No node found with entry point : ${entryPointPath}`;
 		}
 
-		if (error) throw new Error(error);
 
-		return { ...lastNode, children: [], path: `/${paths.join("/")}` };
+
+
+		// const paths = entryPointPath.split("/").filter((el) => el !== "");
+		// let error;
+		// let node = start;
+		// let lastNode;
+
+		// while (paths.length && !error) {
+		// 	const path = paths.shift();
+		// 	const children = await this._browseNode(node);
+		// 	let found = children.find((el) => {
+		// 		const names = [el.displayName.toLocaleLowerCase(), el.browseName.toLocaleLowerCase()];
+		// 		return names.includes(path.toLocaleLowerCase());
+		// 	});
+
+		// 	if (!found) {
+		// 		error = `No node found with entry point : ${entryPointPath}`;
+		// 		break;
+		// 	}
+
+		// 	node = found;
+		// 	node
+		// 	if (paths.length === 0) lastNode = node;
+		// }
+
+		// if (error) throw new Error(error);
+
+		// return { ...lastNode, children: [], path: `/${paths.join("/")}` };
 	}
 
-	private _formatReference(reference: ReferenceDescription, path: string, parentId?: string): IOPCNode {
+	private _formatReference(reference: ReferenceDescription, parentPath: string, parentId?: string): IOPCNode {
 		const name = reference.displayName.text || reference.browseName.toString();
-		path = path.endsWith("/") ? path : `${path}/`;
+		const browseName = reference.browseName?.toString();
+
+		parentPath = parentPath.endsWith("/") ? parentPath : `${parentPath}/`;
 
 		return {
 			displayName: name,
-			browseName: reference.browseName.toString(),
+			browseName,
 			nodeId: reference.nodeId,
 			nodeClass: reference.nodeClass as number,
-			path: path + name,
+			path: parentPath + browseName,
 			children: [],
 			parentId
 		};

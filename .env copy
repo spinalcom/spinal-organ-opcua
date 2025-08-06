@@ -1,0 +1,9 @@
+ORGAN_NAME="name"                               # the connector config name
+USER_ID="XXX"                                   # hub user id
+PASSWORD="*******"                              # hub user password
+PROTOCOL="http"                                 # protocol used to connect to the hub
+HOST="127.0.0.1"                                # hub host
+PORT=8080                                       # hub port
+ORGAN_FOLDER_PATH="/__users__/admin/organs"     # the path to store/retrieve the connector config file
+
+OPCUA_SERVER_ENTRYPOINT="/"                     #if empty, the server will discover the default entry point (Objects Folder) otherwise, it will use the provided path.

@@ -104,3 +104,7 @@ export function coerceStringToDataType(dataType, arrayType, VariantArrayType, da
 export function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): boolean {
 	return !_discoverModel || _discoverModel.state?.get() !== OPCUA_ORGAN_STATES.discovering;
 }
+
+export function normalizePath(path) {
+	return path.replace(/([^:]\/)\/+/g, "$1");
+}
