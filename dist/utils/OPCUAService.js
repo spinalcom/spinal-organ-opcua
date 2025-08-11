@@ -586,7 +586,7 @@ class OPCUAService extends events_1.EventEmitter {
         };
     }
     _formatDataValue(dataValue) {
-        var _a, _b, _c, _d, _e;
+        var _a, _b, _c, _d, _e, _f;
         // if (dataValue?.statusCode == StatusCodes.Good) {
         if (typeof ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) !== "undefined") {
             const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
@@ -598,7 +598,7 @@ class OPCUAService extends events_1.EventEmitter {
                     obj.value = (_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value.join(",");
                     break;
                 default:
-                    obj.value = null;
+                    obj.value = (_f = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _f === void 0 ? void 0 : _f.value;
                     break;
             }
             return obj;

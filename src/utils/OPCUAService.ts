@@ -694,7 +694,7 @@ export class OPCUAService extends EventEmitter {
 					obj.value = dataValue?.value?.value.join(",");
 					break;
 				default:
-					obj.value = null;
+					obj.value = dataValue?.value?.value;
 					break;
 			}
 
