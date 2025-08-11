@@ -106,7 +106,8 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 			typeId: "",
 			nodeTypeName: SpinalBmsEndpoint.nodeTypeName,
 			type: SpinalBmsEndpoint.nodeTypeName,
-			currentValue: dataValue?.value || "null",
+			// currentValue: dataValue?.value || "null", // may be bad if value is boolean
+			currentValue: dataValue?.value,
 			dataType: dataValue?.dataType || "",
 			unit: "",
 		};
@@ -225,6 +226,7 @@ function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values:
 
 async function _changeValueAndDataType(node: SpinalNode, data: { value: any; dataType: string }) {
 	const element = await node.getElement();
-	element.mod_attr("currentValue", data?.value || "null");
+	// element.mod_attr("currentValue", data?.value || "null"); // may be bad if value is boolean
+	element.mod_attr("currentValue", data?.value);
 	element.mod_attr("dataType", data?.dataType || "");
 }

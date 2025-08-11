@@ -587,7 +587,7 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _formatDataValue(dataValue) {
         var _a, _b, _c, _d, _e, _f;
-        // if (dataValue?.statusCode == StatusCodes.Good) {
+        // if dataValue.value is a Variant return the value of the Variant
         if (typeof ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) !== "undefined") {
             const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
             switch ((_c = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _c === void 0 ? void 0 : _c.arrayType) {
@@ -603,7 +603,7 @@ class OPCUAService extends events_1.EventEmitter {
             }
             return obj;
         }
-        // }
+        // if dataValue.value is not a Variant, return the value and dataType
         if (typeof dataValue.value !== "object")
             return dataValue;
         return null;

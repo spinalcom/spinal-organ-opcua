@@ -67,7 +67,8 @@ class SpinalDevice extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             const promises = Object.keys(values).map((id) => {
                 var _a;
-                const value = ((_a = values[id]) === null || _a === void 0 ? void 0 : _a.value) || null;
+                // const value = values[id]?.value || null; // may be bad if value is boolean
+                const value = (_a = values[id]) === null || _a === void 0 ? void 0 : _a.value;
                 const node = this.endpoints[id];
                 if (node)
                     return this._updateEndpoint(node, value, cov);
@@ -104,7 +105,7 @@ class SpinalDevice extends events_1.EventEmitter {
                 element.mod_attr("currentValue", value);
                 // avertir du changement de valeur, le log du cov est fait dans son callback
                 if (!cov)
-                    console.log(`[${this.deviceInfo.name}] - ${endpointNode.info.idNetwork.get()} changed value to`, value);
+                    console.log(`[${this.deviceInfo.name}] - ${endpointNode.info.networkId.get()} changed value to`, value);
                 if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
                     const spinalServiceTimeseries = new spinal_model_timeseries_1.SpinalServiceTimeseries();
                     spinal_env_viewer_graph_service_1.SpinalGraphService._addNode(endpointNode);

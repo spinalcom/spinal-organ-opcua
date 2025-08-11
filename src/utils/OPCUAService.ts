@@ -682,7 +682,8 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private _formatDataValue(dataValue: any): { value: any; dataType: string } {
-		// if (dataValue?.statusCode == StatusCodes.Good) {
+
+		// if dataValue.value is a Variant return the value of the Variant
 		if (typeof dataValue?.value?.value !== "undefined") {
 			const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
 
@@ -700,7 +701,8 @@ export class OPCUAService extends EventEmitter {
 
 			return obj;
 		}
-		// }
+
+		// if dataValue.value is not a Variant, return the value and dataType
 		if (typeof dataValue.value !== "object") return dataValue;
 
 		return null;

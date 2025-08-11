@@ -74,7 +74,8 @@ export class SpinalDevice extends EventEmitter {
 
 	public async updateEndpoints(values: { [key: string]: { dataType: string; value: any } }, cov: boolean = false) {
 		const promises = Object.keys(values).map((id) => {
-			const value = values[id]?.value || null;
+			// const value = values[id]?.value || null; // may be bad if value is boolean
+			const value = values[id]?.value;
 			const node = this.endpoints[id];
 			if (node) return this._updateEndpoint(node, value, cov);
 			return;
@@ -118,7 +119,7 @@ export class SpinalDevice extends EventEmitter {
 			element.mod_attr("currentValue", value);
 
 			// avertir du changement de valeur, le log du cov est fait dans son callback
-			if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.info.idNetwork.get()} changed value to`, value);
+			if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.info.networkId.get()} changed value to`, value);
 
 			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
 				const spinalServiceTimeseries = new SpinalServiceTimeseries();

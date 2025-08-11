@@ -105,7 +105,9 @@ function _generateNodeAndRelation(node, values = {}) {
     if (OPCUAService_1.default.isVariable(node)) {
         const key = node.path || node.nodeId.toString();
         const dataValue = values[key];
-        param = Object.assign(Object.assign({}, param), { typeId: "", nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, type: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, currentValue: (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) || "null", dataType: (dataValue === null || dataValue === void 0 ? void 0 : dataValue.dataType) || "", unit: "" });
+        param = Object.assign(Object.assign({}, param), { typeId: "", nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, type: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, 
+            // currentValue: dataValue?.value || "null", // may be bad if value is boolean
+            currentValue: dataValue === null || dataValue === void 0 ? void 0 : dataValue.value, dataType: (dataValue === null || dataValue === void 0 ? void 0 : dataValue.dataType) || "", unit: "" });
         element = new spinal_model_bmsnetwork_1.SpinalBmsEndpoint(param);
     }
     else {
@@ -200,7 +202,8 @@ function _createNodeAttributes(node, attributes, values = {}) {
 function _changeValueAndDataType(node, data) {
     return __awaiter(this, void 0, void 0, function* () {
         const element = yield node.getElement();
-        element.mod_attr("currentValue", (data === null || data === void 0 ? void 0 : data.value) || "null");
+        // element.mod_attr("currentValue", data?.value || "null"); // may be bad if value is boolean
+        element.mod_attr("currentValue", data === null || data === void 0 ? void 0 : data.value);
         element.mod_attr("dataType", (data === null || data === void 0 ? void 0 : data.dataType) || "");
     });
 }
