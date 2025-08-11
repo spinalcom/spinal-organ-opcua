@@ -43,9 +43,11 @@ function getNodeAlreadyCreated(context, network, serverInfo) {
         if (!device)
             return obj;
         return device.findInContext(context, (node) => {
-            var _a, _b;
-            if ((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.idNetwork) === null || _b === void 0 ? void 0 : _b.get())
-                obj[node.info.idNetwork.get()] = node;
+            var _a, _b, _c, _d;
+            // if (node.info?.idNetwork?.get()) obj[node.info.idNetwork.get()] = node;
+            const id = ((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = node.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
+            if (id)
+                obj[id] = node;
             return true;
         }).then(() => {
             return obj;
@@ -53,19 +55,33 @@ function getNodeAlreadyCreated(context, network, serverInfo) {
     });
 }
 exports.getNodeAlreadyCreated = getNodeAlreadyCreated;
-function getNodeAndRelation(node, nodesAlreadyCreated, values = {}, depth = 0) {
+function getNodeAndRelation(opcNode, nodesAlreadyCreated, values = {}, depth = 0) {
     return __awaiter(this, void 0, void 0, function* () {
-        let spinalNode = nodesAlreadyCreated[node.nodeId.toString()];
-        if (!spinalNode) {
+        const key = opcNode.path || opcNode.nodeId.toString();
+        let spinalNode = nodesAlreadyCreated[key];
+        if (!spinalNode) { // If the node does not exist, create it
             if (depth == 0)
-                return _generateDevice(node);
-            return _generateNodeAndRelation(node, values);
+                return _generateDevice(opcNode);
+            return _generateNodeAndRelation(opcNode, values);
+        }
+        else {
+            _updateNodeInfo(spinalNode, opcNode);
         }
         const relation = _getNodeRelationName(spinalNode.getType().get());
-        const data = values[node.nodeId.toString()];
+        const data = values[key];
         yield _changeValueAndDataType(spinalNode, data);
         return { node: spinalNode, relation, alreadyExist: true };
     });
+}
+function _updateNodeInfo(spinalNode, opcNode) {
+    spinalNode.info.name.set(opcNode.displayName || opcNode.browseName);
+    spinalNode.info.idNetwork.set(opcNode.nodeId.toString());
+    spinalNode.info.path.set(opcNode.path || "");
+    if (spinalNode.info.displayName)
+        spinalNode.info.displayName.set(opcNode.displayName || opcNode.browseName);
+    if (spinalNode.info.browseName)
+        spinalNode.info.browseName.set(opcNode.browseName || spinalNode.info.browseName);
+    return spinalNode;
 }
 function _generateNodeAndRelation(node, values = {}) {
     let element;
@@ -73,11 +89,12 @@ function _generateNodeAndRelation(node, values = {}) {
         id: node.nodeId.toString(),
         name: node.displayName,
         path: node.path,
-        displayName: node.displayName || "",
-        browseName: node.browseName || ""
+        displayName: node.displayName || node.browseName,
+        browseName: node.browseName || node.displayName
     };
     if (OPCUAService_1.default.isVariable(node)) {
-        const dataValue = values[node.nodeId.toString()];
+        const key = node.path || node.nodeId.toString();
+        const dataValue = values[key];
         param = Object.assign(Object.assign({}, param), { typeId: "", nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, type: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, currentValue: (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) || "null", dataType: (dataValue === null || dataValue === void 0 ? void 0 : dataValue.dataType) || "", unit: "" });
         element = new spinal_model_bmsnetwork_1.SpinalBmsEndpoint(param);
     }
@@ -153,9 +170,17 @@ function _formatTree(tree) {
 }
 function _createNodeAttributes(node, attributes, values = {}) {
     const categoryName = "OPC Attributes";
+    //[TODO] use createOrUpdateAttrsAndCategories
     return spinal_env_viewer_plugin_documentation_service_1.serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
         const promises = [];
-        const formatted = attributes.map((el) => { var _a; return ({ name: el.displayName, value: ((_a = values[el.nodeId.toString()]) === null || _a === void 0 ? void 0 : _a.value) || "" }); });
+        const formatted = attributes.map((el) => {
+            var _a;
+            const key = el.path || el.nodeId.toString();
+            return {
+                name: el.displayName,
+                value: ((_a = values[key]) === null || _a === void 0 ? void 0 : _a.value) || ""
+            };
+        });
         for (const { name, value } of formatted) {
             promises.push(spinal_env_viewer_plugin_documentation_service_1.serviceDocumentation.addAttributeByCategory(node, attributeCategory, name, value));
         }

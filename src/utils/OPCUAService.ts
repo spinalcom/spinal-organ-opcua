@@ -11,8 +11,6 @@ import { ITreeOption } from "../interfaces/ITreeOption";
 import { NAMES_TO_IGNORE } from "./constants";
 
 
-const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
-const securityPolicy = (SecurityPolicy as any)["None"];
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
 export class OPCUAService extends EventEmitter {
@@ -45,9 +43,9 @@ export class OPCUAService extends EventEmitter {
 		const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
 
 		this.client = OPCUAClient.create({
+			securityMode: MessageSecurityMode.None,
+			securityPolicy: SecurityPolicy.None,
 			endpointMustExist: false,
-			securityMode,
-			securityPolicy,
 			defaultSecureTokenLifetime: 30 * 1000,
 			requestedSessionTimeout: 30 * 1000,
 			keepSessionAlive: true,
@@ -55,7 +53,7 @@ export class OPCUAService extends EventEmitter {
 			connectionStrategy: {
 				maxRetry: 3,
 				initialDelay: 1000,
-				maxDelay: 10 * 1000,
+				// maxDelay: 10 * 1000,
 			},
 		});
 

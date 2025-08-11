@@ -19,3 +19,4 @@ export declare const coerceNoop: (data: any) => any;
 export declare const coerceFunc: (dataType: DataType) => (data: any) => any;
 export declare function coerceStringToDataType(dataType: any, arrayType: any, VariantArrayType: any, data: any): any;
 export declare function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): boolean;
+export declare function normalizePath(path: any): any;

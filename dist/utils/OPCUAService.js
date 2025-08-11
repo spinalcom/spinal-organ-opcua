@@ -18,8 +18,6 @@ const make_certificate_1 = require("../utils/make_certificate");
 const discoveringProcessStore_1 = require("./discoveringProcessStore");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
 const constants_1 = require("./constants");
-const securityMode = node_opcua_1.MessageSecurityMode["None"];
-const securityPolicy = node_opcua_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class OPCUAService extends events_1.EventEmitter {
     constructor(url, model) {
@@ -53,9 +51,9 @@ class OPCUAService extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             const { certificateFile, clientCertificateManager, applicationUri, applicationName } = yield make_certificate_1.default;
             this.client = node_opcua_1.OPCUAClient.create({
+                securityMode: node_opcua_1.MessageSecurityMode.None,
+                securityPolicy: node_opcua_1.SecurityPolicy.None,
                 endpointMustExist: false,
-                securityMode,
-                securityPolicy,
                 defaultSecureTokenLifetime: 30 * 1000,
                 requestedSessionTimeout: 30 * 1000,
                 keepSessionAlive: true,
@@ -63,7 +61,7 @@ class OPCUAService extends events_1.EventEmitter {
                 connectionStrategy: {
                     maxRetry: 3,
                     initialDelay: 1000,
-                    maxDelay: 10 * 1000,
+                    // maxDelay: 10 * 1000,
                 },
             });
             this._listenClientEvents();
@@ -114,38 +112,39 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////////////////////////
-    //                                      Exemple 1 : [getTree] - Browse several node              //
-    //                                      May have timeout error if the tree is too big            //
+    //              Exemple 1 : [getTree] - Browse several node              //
+    //              May have timeout error if the tree is too big            //
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.initialize();
             yield this.connect(userIdentity);
-            // let { tree, variables, queue, nodesObj, browseMode } = await this._getDiscoverData(entryPointPath, options.useBroadCast);
+            // get the queue and nodesObj from the last discover or create a new one
             let { nodesObj, queue, browseMode } = yield this._getDiscoverData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
             while (queue.length && !(0, utils_1.discoverIsCancelled)(this._discoverModel)) {
                 let discoverState = null;
                 let _error = null;
+                // chunk the queue to avoid timeout errors
                 const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
                 try {
-                    discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering;
+                    discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering; // set the state to discovering
                     const newsItems = yield this._getChildrenAndAddToObj(chunked, nodesObj);
                     queue.push(...newsItems);
                     if (newsItems.length)
-                        console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`);
-                    console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`);
+                        console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
+                    console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
                 }
                 catch (error) {
-                    queue.unshift(...chunked);
+                    queue.unshift(...chunked); // if an error occurs, put the nodes back in the queue
                     _error = error;
-                    discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.error;
+                    discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.error; // set the state to error
                 }
                 if (!_error && queue.length === 0)
-                    discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered;
-                yield discoveringProcessStore_1.default.saveProgress(this.endpointUrl, nodesObj, queue, discoverState);
+                    discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered; // if the queue is empty, set the state to discovered
+                yield discoveringProcessStore_1.default.saveProgress(this.endpointUrl, nodesObj, queue, discoverState); // save the progress in the store
                 if (_error)
-                    throw _error;
+                    throw _error; // if an error occurs, throw it to stop the process
             }
             // if the discovering process is interrupted by user, stop the process
             if ((0, utils_1.discoverIsCancelled)(this._discoverModel))
@@ -204,10 +203,11 @@ class OPCUAService extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             const children = yield this._browseNode(nodes);
             for (const child of children) {
-                // const parent = nodesObj[child.parentId];
-                // if (this.isVariable(child)) variables.push(child.nodeId.toString());
+                const parent = nodesObj[child.parentId];
+                // create the path based on the parent node
+                const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
+                child.path = (0, utils_1.normalizePath)(path);
                 nodesObj[child.nodeId.toString()] = child;
-                // if (parent) parent.children.push(child);
             }
             return children;
         });
@@ -317,20 +317,21 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _browseNode(node) {
         node = Array.isArray(node) ? node : [node];
-        const nodeToBrowse = node.reduce((list, n) => {
-            const configs = (0, utils_1.convertToBrowseDescription)(n);
-            list.push(...configs);
-            return list;
-        }, []);
+        // const nodeToBrowse = node.reduce((list, n) => {
+        // 	const configs = convertToBrowseDescription(n);
+        // 	list.push(...configs);
+        // 	return list;
+        // }, []);
+        const nodeToBrowse = node.map((n) => (0, utils_1.convertToBrowseDescription)(n)).flat();
         return this._browseUsingBrowseDescription(nodeToBrowse);
     }
     _browseUsingBrowseDescription(descriptions) {
         return __awaiter(this, void 0, void 0, function* () {
             const browseResults = yield this.session.browse(descriptions);
-            return browseResults.reduce((children, el, index) => {
+            return browseResults.reduce((children, browseResult, index) => {
                 var _a, _b, _c;
                 const parentId = (_b = (_a = descriptions[index]) === null || _a === void 0 ? void 0 : _a.nodeId) === null || _b === void 0 ? void 0 : _b.toString();
-                for (const ref of el.references) {
+                for (const ref of browseResult.references) {
                     const refName = ref.displayName.text || ((_c = ref.browseName) === null || _c === void 0 ? void 0 : _c.toString());
                     if (!refName || refName.startsWith(".") || constants_1.NAMES_TO_IGNORE.includes(refName.toLowerCase()))
                         continue; // skip unwanted nodes
@@ -409,13 +410,14 @@ class OPCUAService extends events_1.EventEmitter {
             try {
                 if (!useLastResult)
                     throw new Error("no last result"); // throw error to force unicast browsing
-                const data = yield discoveringProcessStore_1.default.getProgress(this.endpointUrl);
                 browseMode = "Multicast";
+                const data = yield discoveringProcessStore_1.default.getProgress(this.endpointUrl);
                 nodesObj = data.nodesObj;
                 queue = data.queue;
             }
             catch (error) {
-                browseMode = "Unicast";
+                // if no last result or error in file reading, use unicast browsing
+                browseMode = "unicast";
                 let tree = yield this._getEntryPoint(entryPointPath);
                 queue = [tree];
                 nodesObj = { [tree.nodeId.toString()]: tree };
@@ -526,41 +528,53 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _getEntryPointWithPath(start, entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!entryPointPath.startsWith("/Objects"))
-                entryPointPath = "/Objects" + entryPointPath;
-            const paths = entryPointPath.split("/").filter((el) => el !== "");
-            let error;
-            let node = start;
-            let lastNode;
-            while (paths.length && !error) {
-                const path = paths.shift();
-                const children = yield this._browseNode(node);
-                let found = children.find((el) => {
-                    const names = [el.displayName.toLocaleLowerCase(), el.browseName.toLocaleLowerCase()];
-                    return names.includes(path.toLocaleLowerCase());
-                });
-                if (!found) {
-                    error = `No node found with entry point : ${entryPointPath}`;
-                    break;
-                }
-                node = found;
-                if (paths.length === 0)
-                    lastNode = node;
+            try {
+                if (!entryPointPath.startsWith("/Objects"))
+                    entryPointPath = "/Objects" + entryPointPath;
+                const browsePaths = (0, node_opcua_1.makeBrowsePath)("RootFolder", entryPointPath);
+                const nodesFound = yield this.session.translateBrowsePath(browsePaths);
+                return {
+                    // put rest of the properties
+                    path: "/RootFolder" + entryPointPath,
+                };
             }
-            if (error)
-                throw new Error(error);
-            return Object.assign(Object.assign({}, lastNode), { children: [], path: `/${paths.join("/")}` });
+            catch (error) {
+                throw `No node found with entry point : ${entryPointPath}`;
+            }
+            // const paths = entryPointPath.split("/").filter((el) => el !== "");
+            // let error;
+            // let node = start;
+            // let lastNode;
+            // while (paths.length && !error) {
+            // 	const path = paths.shift();
+            // 	const children = await this._browseNode(node);
+            // 	let found = children.find((el) => {
+            // 		const names = [el.displayName.toLocaleLowerCase(), el.browseName.toLocaleLowerCase()];
+            // 		return names.includes(path.toLocaleLowerCase());
+            // 	});
+            // 	if (!found) {
+            // 		error = `No node found with entry point : ${entryPointPath}`;
+            // 		break;
+            // 	}
+            // 	node = found;
+            // 	node
+            // 	if (paths.length === 0) lastNode = node;
+            // }
+            // if (error) throw new Error(error);
+            // return { ...lastNode, children: [], path: `/${paths.join("/")}` };
         });
     }
-    _formatReference(reference, path, parentId) {
+    _formatReference(reference, parentPath, parentId) {
+        var _a;
         const name = reference.displayName.text || reference.browseName.toString();
-        path = path.endsWith("/") ? path : `${path}/`;
+        const browseName = (_a = reference.browseName) === null || _a === void 0 ? void 0 : _a.toString();
+        parentPath = parentPath.endsWith("/") ? parentPath : `${parentPath}/`;
         return {
             displayName: name,
-            browseName: reference.browseName.toString(),
+            browseName,
             nodeId: reference.nodeId,
             nodeClass: reference.nodeClass,
-            path: path + name,
+            path: parentPath + browseName,
             children: [],
             parentId
         };

@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
+exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
 const nodePath = require("path");
 const dotenv_1 = require("dotenv");
@@ -101,4 +101,8 @@ function discoverIsCancelled(_discoverModel) {
     return !_discoverModel || ((_a = _discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) !== spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering;
 }
 exports.discoverIsCancelled = discoverIsCancelled;
+function normalizePath(path) {
+    return path.replace(/([^:]\/)\/+/g, "$1");
+}
+exports.normalizePath = normalizePath;
 //# sourceMappingURL=utils.js.map
