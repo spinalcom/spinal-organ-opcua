@@ -183,21 +183,30 @@ function _formatTree(tree) {
 function _createNodeAttributes(node, attributes, values = {}) {
     const categoryName = "OPC Attributes";
     //[TODO] use createOrUpdateAttrsAndCategories
-    return spinal_env_viewer_plugin_documentation_service_1.serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
-        const promises = [];
-        const formatted = attributes.map((el) => {
-            var _a;
-            const key = el.path || el.nodeId.toString();
-            return {
-                name: el.displayName,
-                value: ((_a = values[key]) === null || _a === void 0 ? void 0 : _a.value) || ""
-            };
-        });
-        for (const { name, value } of formatted) {
-            promises.push(spinal_env_viewer_plugin_documentation_service_1.serviceDocumentation.addAttributeByCategory(node, attributeCategory, name, value));
-        }
-        return Promise.all(promises);
+    const formatted = attributes.reduce((obj, el) => {
+        var _a;
+        const key = el.path || el.nodeId.toString();
+        const value = ((_a = values[key]) === null || _a === void 0 ? void 0 : _a.value) || "";
+        obj[el.displayName] = value;
+        return obj;
+    }, {});
+    return spinal_env_viewer_plugin_documentation_service_1.serviceDocumentation.createOrUpdateAttrsAndCategories(node, categoryName, formatted).then((result) => {
+        return result;
     });
+    // return serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
+    // 	const promises = [];
+    // 	const formatted = attributes.map((el) => {
+    // 		const key = el.path || el.nodeId.toString();
+    // 		return {
+    // 			name: el.displayName,
+    // 			value: values[key]?.value || ""
+    // 		};
+    // 	});
+    // 	for (const { name, value } of formatted) {
+    // promises.push(serviceDocumentation.addAttributeByCategory(node, attributeCategory, name, value));
+    // 	}
+    // 	return Promise.all(promises);
+    // });
 }
 function _changeValueAndDataType(node, data) {
     return __awaiter(this, void 0, void 0, function* () {

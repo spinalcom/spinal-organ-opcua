@@ -47,7 +47,7 @@ export class OPCUAService extends EventEmitter {
 			securityPolicy: SecurityPolicy.None,
 			endpointMustExist: false,
 			defaultSecureTokenLifetime: 30 * 1000,
-			requestedSessionTimeout: 30 * 1000,
+			requestedSessionTimeout: 50 * 1000,
 			keepSessionAlive: true,
 			transportTimeout: 60 * 1000,
 			connectionStrategy: {
@@ -69,7 +69,7 @@ export class OPCUAService extends EventEmitter {
 			const parameters = {
 				requestedPublishingInterval: 10 * 1000, // interval auquel on veut recevoir les notifications
 				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée 
-				requestedMaxKeepAliveCount: 5, // Nombre de notification avant que le serveur envoie un keep alive
+				requestedMaxKeepAliveCount: 4, // Nombre de notification avant que le serveur envoie un keep alive
 				maxNotificationsPerPublish: 10, // Nombre de valueur (DataChange) maximum par notification
 				publishingEnabled: true, // Activer ou desactiver l'envoi de notification
 				priority: 1 // Donne une priorité à la subscription
@@ -77,7 +77,7 @@ export class OPCUAService extends EventEmitter {
 
 			this.subscription = await this.session.createSubscription2(parameters);
 		} catch (error) {
-			console.log("cannot create subscription !");
+			console.log("cannot create subscription !", error.message);
 		}
 	}
 
@@ -315,9 +315,9 @@ export class OPCUAService extends EventEmitter {
 		const parameters = {
 			samplingInterval: 3 * 1000, // 10 seconds
 			filter: new DataChangeFilter({
-				trigger: DataChangeTrigger.StatusValueTimestamp,
-				deadbandType: DeadbandType.Absolute,
-				deadbandValue: 1.0
+				trigger: DataChangeTrigger.StatusValue,
+				// deadbandType: DeadbandType.Absolute,
+				// deadbandValue: 0.5
 			}),
 			discardOldest: true,
 			queueSize: 1
@@ -335,9 +335,7 @@ export class OPCUAService extends EventEmitter {
 
 	private _listenMonitoredItemEvents(monitoredItem: ClientMonitoredItemBase, callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any) {
 		monitoredItem.on("changed", (dataValue: DataValue) => {
-			console.log("inside OnChange")
 			const value = this._formatDataValue(dataValue);
-			console.log("value = ", value)
 			callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
 		});
 
@@ -575,7 +573,7 @@ export class OPCUAService extends EventEmitter {
 			// console.log(" Warning => Session closed");
 		})
 		this.session.on("keepalive", () => {
-			console.log("session keepalive");
+			// console.log("session keepalive");
 		})
 		this.session.on("keepalive_failure", () => {
 			this._restartConnection();

@@ -205,23 +205,33 @@ function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values:
 	const categoryName: string = "OPC Attributes";
 
 	//[TODO] use createOrUpdateAttrsAndCategories
+	const formatted = attributes.reduce((obj, el) => {
+		const key = el.path || el.nodeId.toString();
+		const value = values[key]?.value || "";
+		obj[el.displayName] = value;
+		return obj;
+	}, {});
 
-	return serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
-		const promises = [];
-		const formatted = attributes.map((el) => {
-			const key = el.path || el.nodeId.toString();
-			return {
-				name: el.displayName,
-				value: values[key]?.value || ""
-			};
-		});
+	return serviceDocumentation.createOrUpdateAttrsAndCategories(node, categoryName, formatted).then((result) => {
+		return result;
+	})
 
-		for (const { name, value } of formatted) {
-			promises.push(serviceDocumentation.addAttributeByCategory(node, attributeCategory, name, value));
-		}
+	// return serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
+	// 	const promises = [];
+	// 	const formatted = attributes.map((el) => {
+	// 		const key = el.path || el.nodeId.toString();
+	// 		return {
+	// 			name: el.displayName,
+	// 			value: values[key]?.value || ""
+	// 		};
+	// 	});
 
-		return Promise.all(promises);
-	});
+	// 	for (const { name, value } of formatted) {
+	// promises.push(serviceDocumentation.addAttributeByCategory(node, attributeCategory, name, value));
+	// 	}
+
+	// 	return Promise.all(promises);
+	// });
 }
 
 async function _changeValueAndDataType(node: SpinalNode, data: { value: any; dataType: string }) {

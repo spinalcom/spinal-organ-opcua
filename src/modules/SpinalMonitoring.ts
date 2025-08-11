@@ -302,7 +302,6 @@ class SpinalMonitoring {
 
         opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
             if (!dataValue || typeof dataValue?.value == "undefined") return;
-            console.log("dataValue = ", dataValue);
             const value = ["string", "number", "boolean"].includes(typeof dataValue?.value) ? dataValue?.value : null;
 
             console.log(`[COV] - ${id} has changed to ${value}`);
