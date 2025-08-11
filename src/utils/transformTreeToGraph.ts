@@ -27,17 +27,29 @@ export async function _transformTreeToGraphRecursively(context: SpinalContext, o
 	});
 }
 
-export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, serverInfo: IOPCNode["server"]): Promise<{ [key: string]: SpinalNode }> {
-	const obj = {};
+export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, opcNode: IOPCNode): Promise<{ [key: string]: SpinalNode }> {
 	const devices = await network.getChildrenInContext(context);
 
-	// cette condition par du principe que chaque gateway a un device unique (si ce n'est pas le cas, il faudra changer la condition)
+	const serverInfo: IOPCNode["server"] = opcNode.server;
 
-	const device = devices.find((el) => el.info.server?.address?.get() == serverInfo.address && el.info.server?.port?.get() == serverInfo.port);
-	if (!device) return obj;
+	const device = devices.find((el) => {
+		const serverIsMatch = el.info.server?.address?.get() == serverInfo?.address && el.info.server?.port?.get() == serverInfo?.port;
+		if (!serverIsMatch) return false;
+		const key = el.info?.path?.get() || el.info?.idNetwork?.get();
+		return opcNode.path === key || opcNode.nodeId.toString() === key;
+	});
+
+
+	if (!device) return {}; // If no device found, return an empty object
+
+	const key = device.info?.path?.get() || device.info?.idNetwork?.get();
+	const obj = {
+		[key]: device // Use the device's path or idNetwork as the key
+	};
+
+
 
 	return device.findInContext(context, (node) => {
-		// if (node.info?.idNetwork?.get()) obj[node.info.idNetwork.get()] = node;
 		const id = node.info?.path?.get() || node.info?.idNetwork?.get();
 		if (id) obj[id] = node;
 

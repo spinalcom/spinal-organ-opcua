@@ -208,6 +208,8 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 
 	return variables;
 
+
+	// Recursively add nodes to the variables list
 	function addToObj(n: IOPCNode) {
 		if (n.nodeClass === NodeClass.Variable) {
 			variables.push(n);

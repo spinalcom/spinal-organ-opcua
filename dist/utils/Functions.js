@@ -201,6 +201,7 @@ function getVariablesList(tree) {
     const variables = [];
     addToObj(tree);
     return variables;
+    // Recursively add nodes to the variables list
     function addToObj(n) {
         if (n.nodeClass === node_opcua_1.NodeClass.Variable) {
             variables.push(n);

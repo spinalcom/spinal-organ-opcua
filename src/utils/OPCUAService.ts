@@ -270,7 +270,6 @@ export class OPCUAService extends EventEmitter {
 		}, Promise.resolve([]));
 
 		const dataValues = await _promise;
-		console.log("dataValues", dataValues)
 		await this.disconnect();
 
 		return dataValues.map((dataValue) => this._formatDataValue(dataValue));
@@ -401,6 +400,28 @@ export class OPCUAService extends EventEmitter {
 			return this.detectOPCUAValueType(nodeId);
 		}
 
+	}
+
+	private async readNodeDescription(nodeId: string, path: string = ""): Promise<IOPCNode> {
+		const attributesToRead = [
+			{ nodeId, attributeId: AttributeIds.BrowseName },
+			{ nodeId, attributeId: AttributeIds.DisplayName },
+			{ nodeId, attributeId: AttributeIds.NodeClass },
+		];
+
+		const [displayNameData, browseNameData, nodeClassData] = await this.session.read(attributesToRead);
+		const displayName = displayNameData.value.value?.text || "";
+		const browseName = browseNameData.value.value?.name || "";
+		const nodeClass = nodeClassData.value.value as NodeClass;
+
+		return {
+			displayName,
+			browseName,
+			nodeId: coerceNodeId(nodeId),
+			nodeClass,
+			children: [],
+			path,
+		};
 	}
 
 
@@ -595,10 +616,18 @@ export class OPCUAService extends EventEmitter {
 			const browsePaths = makeBrowsePath("RootFolder", entryPointPath);
 			const nodesFound = await this.session.translateBrowsePath(browsePaths);
 
-			return {
-				// put rest of the properties
-				path: "/RootFolder" + entryPointPath,
-			} as IOPCNode;
+			if (!nodesFound.targets || nodesFound.targets.length === 0) {
+				throw `No node found with entry point : ${entryPointPath}`;
+			}
+
+			const startNodeId = nodesFound.targets[0].targetId?.toString();
+			if (!startNodeId) throw `No node found with entry point : ${entryPointPath}`;
+
+			const startNode = await this.readNodeDescription(startNodeId, entryPointPath);
+
+			return startNode; // return the node with its children and path
+
+			return
 
 		} catch (error) {
 			throw `No node found with entry point : ${entryPointPath}`;
@@ -682,11 +711,9 @@ export class OPCUAService extends EventEmitter {
 		return node.value.value;
 	}
 
-
 	public static isVariable(node: IOPCNode): boolean {
 		return node.nodeClass === NodeClass.Variable;
 	}
-
 
 	public isObject(node: IOPCNode): boolean {
 		return node.nodeClass === NodeClass.Object;

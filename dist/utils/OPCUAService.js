@@ -249,7 +249,6 @@ class OPCUAService extends events_1.EventEmitter {
                 return list;
             }), Promise.resolve([]));
             const dataValues = yield _promise;
-            console.log("dataValues", dataValues);
             yield this.disconnect();
             return dataValues.map((dataValue) => this._formatDataValue(dataValue));
         });
@@ -361,6 +360,28 @@ class OPCUAService extends events_1.EventEmitter {
             catch (error) {
                 return this.detectOPCUAValueType(nodeId);
             }
+        });
+    }
+    readNodeDescription(nodeId, path = "") {
+        var _a, _b;
+        return __awaiter(this, void 0, void 0, function* () {
+            const attributesToRead = [
+                { nodeId, attributeId: node_opcua_1.AttributeIds.BrowseName },
+                { nodeId, attributeId: node_opcua_1.AttributeIds.DisplayName },
+                { nodeId, attributeId: node_opcua_1.AttributeIds.NodeClass },
+            ];
+            const [displayNameData, browseNameData, nodeClassData] = yield this.session.read(attributesToRead);
+            const displayName = ((_a = displayNameData.value.value) === null || _a === void 0 ? void 0 : _a.text) || "";
+            const browseName = ((_b = browseNameData.value.value) === null || _b === void 0 ? void 0 : _b.name) || "";
+            const nodeClass = nodeClassData.value.value;
+            return {
+                displayName,
+                browseName,
+                nodeId: (0, node_opcua_1.coerceNodeId)(nodeId),
+                nodeClass,
+                children: [],
+                path,
+            };
         });
     }
     _getNodesDetails(node) {
@@ -527,41 +548,26 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     _getEntryPointWithPath(start, entryPointPath) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 if (!entryPointPath.startsWith("/Objects"))
                     entryPointPath = "/Objects" + entryPointPath;
                 const browsePaths = (0, node_opcua_1.makeBrowsePath)("RootFolder", entryPointPath);
                 const nodesFound = yield this.session.translateBrowsePath(browsePaths);
-                return {
-                    // put rest of the properties
-                    path: "/RootFolder" + entryPointPath,
-                };
+                if (!nodesFound.targets || nodesFound.targets.length === 0) {
+                    throw `No node found with entry point : ${entryPointPath}`;
+                }
+                const startNodeId = (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
+                if (!startNodeId)
+                    throw `No node found with entry point : ${entryPointPath}`;
+                const startNode = yield this.readNodeDescription(startNodeId, entryPointPath);
+                return startNode; // return the node with its children and path
+                return;
             }
             catch (error) {
                 throw `No node found with entry point : ${entryPointPath}`;
             }
-            // const paths = entryPointPath.split("/").filter((el) => el !== "");
-            // let error;
-            // let node = start;
-            // let lastNode;
-            // while (paths.length && !error) {
-            // 	const path = paths.shift();
-            // 	const children = await this._browseNode(node);
-            // 	let found = children.find((el) => {
-            // 		const names = [el.displayName.toLocaleLowerCase(), el.browseName.toLocaleLowerCase()];
-            // 		return names.includes(path.toLocaleLowerCase());
-            // 	});
-            // 	if (!found) {
-            // 		error = `No node found with entry point : ${entryPointPath}`;
-            // 		break;
-            // 	}
-            // 	node = found;
-            // 	node
-            // 	if (paths.length === 0) lastNode = node;
-            // }
-            // if (error) throw new Error(error);
-            // return { ...lastNode, children: [], path: `/${paths.join("/")}` };
         });
     }
     _formatReference(reference, parentPath, parentId) {

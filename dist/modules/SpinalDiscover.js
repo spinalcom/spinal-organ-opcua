@@ -107,6 +107,7 @@ class SpinalDiscover extends events_1.EventEmitter {
         });
     }
     _discoverDevice(gateway, model) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
             const server = gateway.get();
             const _url = (0, Functions_1.getServerUrl)(server);
@@ -114,24 +115,13 @@ class SpinalDiscover extends events_1.EventEmitter {
             if (discoveringProcessStore_1.default.fileExist(_url)) {
                 // 	console.log("inside file exist");
                 // 	useLastResult = await this.askToContinueDiscovery(model);
-                useLastResult = (yield (model === null || model === void 0 ? void 0 : model.useLastResult.get())) || true;
+                useLastResult = (yield ((_a = model === null || model === void 0 ? void 0 : model.useLastResult) === null || _a === void 0 ? void 0 : _a.get())) || false;
             }
             console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
             const { tree } = yield this._getOPCUATree(server, useLastResult, model, true);
             if (!tree)
                 return;
             return tree;
-            // return this._getOPCUATree(model, useLastResult, true)
-            // 	.then(async ({ tree }: any) => {
-            // 		if (!tree) return;
-            // 		await model.setTreeDiscovered(tree);
-            // 		console.log(server.name, "discovered !!");
-            // 		model.changeState(OPCUA_ORGAN_STATES.discovered);
-            // 		return tree;
-            // 	}).catch((err) => {
-            // 		error: console.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
-            // 		model.changeState(OPCUA_ORGAN_STATES.error);
-            // 	});
         });
     }
     askToContinueDiscovery(model) {
@@ -209,11 +199,17 @@ class SpinalDiscover extends events_1.EventEmitter {
                 // 	if (!gatewayData) return;
                 // 	return _transformTreeToGraphRecursively(context, el, gatewayData.nodesAlreadyCreated, network, gatewayData.values);
                 // })
-                for (const el of treeToCreate.children) {
-                    const gatewayData = dataObject[(_a = el.server) === null || _a === void 0 ? void 0 : _a.address];
-                    if (!gatewayData)
+                for (const nodeTocreate of treeToCreate.children) {
+                    const gatewayData = (dataObject[(_a = nodeTocreate.server) === null || _a === void 0 ? void 0 : _a.address] || []);
+                    if (!gatewayData || gatewayData.length <= 0)
                         continue;
-                    yield (0, transformTreeToGraph_1._transformTreeToGraphRecursively)(context, el, gatewayData.nodesAlreadyCreated, network, gatewayData.values);
+                    const deviceData = gatewayData.find((el) => {
+                        const key = nodeTocreate.path || nodeTocreate.nodeId.toString();
+                        return el.node.path === key || el.node.nodeId.toString() === key;
+                    });
+                    if (!deviceData)
+                        continue;
+                    yield (0, transformTreeToGraph_1._transformTreeToGraphRecursively)(context, nodeTocreate, deviceData.nodesAlreadyCreated, network, deviceData.values);
                 }
                 yield model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.created);
                 console.log("network", network.getName().get(), "created !!");
@@ -230,9 +226,11 @@ class SpinalDiscover extends events_1.EventEmitter {
             for (const node of nodes) {
                 const variables = (0, Functions_1.getVariablesList)(node);
                 const url = (0, Functions_1.getServerUrl)(node.server);
-                const nodesAlreadyCreated = yield (0, transformTreeToGraph_1.getNodeAlreadyCreated)(context, network, node.server);
+                const nodesAlreadyCreated = yield (0, transformTreeToGraph_1.getNodeAlreadyCreated)(context, network, node);
                 const values = yield this._getVariablesValues(url, variables);
-                obj[node.server.address] = { variables, values, node, nodesAlreadyCreated };
+                if (!obj[node.server.address])
+                    obj[node.server.address] = [];
+                obj[node.server.address].push({ variables, values, node, nodesAlreadyCreated });
             }
             return obj;
             // const promises = nodes.map(async (el) => {
@@ -266,7 +264,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                 const obj = {};
                 for (let index = 0; index < result.length; index++) {
                     const element = result[index];
-                    obj[variables[index].nodeId.toString()] = element;
+                    const key = variables[index].path || variables[index].nodeId.toString();
+                    obj[key] = element;
                 }
                 opcuaService.disconnect();
                 return obj;

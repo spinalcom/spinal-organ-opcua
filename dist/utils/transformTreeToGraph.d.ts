@@ -5,6 +5,6 @@ export declare function _transformTreeToGraphRecursively(context: SpinalContext,
 }, parent?: SpinalNode, values?: {
     [key: string]: any;
 }, depth?: number): any;
-export declare function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, serverInfo: IOPCNode["server"]): Promise<{
+export declare function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, opcNode: IOPCNode): Promise<{
     [key: string]: SpinalNode;
 }>;

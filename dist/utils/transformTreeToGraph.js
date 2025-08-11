@@ -34,17 +34,27 @@ function _transformTreeToGraphRecursively(context, opcNode, nodesAlreadyCreated,
     });
 }
 exports._transformTreeToGraphRecursively = _transformTreeToGraphRecursively;
-function getNodeAlreadyCreated(context, network, serverInfo) {
+function getNodeAlreadyCreated(context, network, opcNode) {
+    var _a, _b, _c, _d;
     return __awaiter(this, void 0, void 0, function* () {
-        const obj = {};
         const devices = yield network.getChildrenInContext(context);
-        // cette condition par du principe que chaque gateway a un device unique (si ce n'est pas le cas, il faudra changer la condition)
-        const device = devices.find((el) => { var _a, _b, _c, _d; return ((_b = (_a = el.info.server) === null || _a === void 0 ? void 0 : _a.address) === null || _b === void 0 ? void 0 : _b.get()) == serverInfo.address && ((_d = (_c = el.info.server) === null || _c === void 0 ? void 0 : _c.port) === null || _d === void 0 ? void 0 : _d.get()) == serverInfo.port; });
+        const serverInfo = opcNode.server;
+        const device = devices.find((el) => {
+            var _a, _b, _c, _d, _e, _f, _g, _h;
+            const serverIsMatch = ((_b = (_a = el.info.server) === null || _a === void 0 ? void 0 : _a.address) === null || _b === void 0 ? void 0 : _b.get()) == (serverInfo === null || serverInfo === void 0 ? void 0 : serverInfo.address) && ((_d = (_c = el.info.server) === null || _c === void 0 ? void 0 : _c.port) === null || _d === void 0 ? void 0 : _d.get()) == (serverInfo === null || serverInfo === void 0 ? void 0 : serverInfo.port);
+            if (!serverIsMatch)
+                return false;
+            const key = ((_f = (_e = el.info) === null || _e === void 0 ? void 0 : _e.path) === null || _f === void 0 ? void 0 : _f.get()) || ((_h = (_g = el.info) === null || _g === void 0 ? void 0 : _g.idNetwork) === null || _h === void 0 ? void 0 : _h.get());
+            return opcNode.path === key || opcNode.nodeId.toString() === key;
+        });
         if (!device)
-            return obj;
+            return {}; // If no device found, return an empty object
+        const key = ((_b = (_a = device.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = device.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
+        const obj = {
+            [key]: device // Use the device's path or idNetwork as the key
+        };
         return device.findInContext(context, (node) => {
             var _a, _b, _c, _d;
-            // if (node.info?.idNetwork?.get()) obj[node.info.idNetwork.get()] = node;
             const id = ((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = node.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
             if (id)
                 obj[id] = node;

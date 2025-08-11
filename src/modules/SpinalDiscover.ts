@@ -120,7 +120,7 @@ class SpinalDiscover extends EventEmitter {
 		if (discoveringStore.fileExist(_url)) {
 			// 	console.log("inside file exist");
 			// 	useLastResult = await this.askToContinueDiscovery(model);
-			useLastResult = await model?.useLastResult.get() || true;
+			useLastResult = await model?.useLastResult?.get() || false;
 		}
 
 
@@ -236,11 +236,18 @@ class SpinalDiscover extends EventEmitter {
 			// 	return _transformTreeToGraphRecursively(context, el, gatewayData.nodesAlreadyCreated, network, gatewayData.values);
 			// })
 
-			for (const el of treeToCreate.children) {
-				const gatewayData = dataObject[el.server?.address];
-				if (!gatewayData) continue;
+			for (const nodeTocreate of treeToCreate.children) {
+				const gatewayData = (dataObject[nodeTocreate.server?.address] || []);
+				if (!gatewayData || gatewayData.length <= 0) continue;
 
-				await _transformTreeToGraphRecursively(context, el, gatewayData.nodesAlreadyCreated, network, gatewayData.values);
+				const deviceData = gatewayData.find((el) => {
+					const key = nodeTocreate.path || nodeTocreate.nodeId.toString();
+					return el.node.path === key || el.node.nodeId.toString() === key;
+				});
+
+				if (!deviceData) continue;
+
+				await _transformTreeToGraphRecursively(context, nodeTocreate, deviceData.nodesAlreadyCreated, network, deviceData.values);
 			}
 
 			await model.changeState(OPCUA_ORGAN_STATES.created);
@@ -262,9 +269,11 @@ class SpinalDiscover extends EventEmitter {
 		for (const node of nodes) {
 			const variables = getVariablesList(node);
 			const url = getServerUrl(node.server);
-			const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, node.server);
+			const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, node);
 			const values = await this._getVariablesValues(url, variables);
-			obj[node.server.address] = { variables, values, node, nodesAlreadyCreated };
+			if (!obj[node.server.address]) obj[node.server.address] = [];
+
+			obj[node.server.address].push({ variables, values, node, nodesAlreadyCreated });
 		}
 
 		return obj;
@@ -304,7 +313,8 @@ class SpinalDiscover extends EventEmitter {
 			const obj = {};
 			for (let index = 0; index < result.length; index++) {
 				const element = result[index];
-				obj[variables[index].nodeId.toString()] = element;
+				const key = variables[index].path || variables[index].nodeId.toString();
+				obj[key] = element;
 			}
 
 			opcuaService.disconnect();
