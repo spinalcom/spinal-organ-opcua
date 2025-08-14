@@ -1,4 +1,4 @@
-import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace, MonitoredItem, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, DeadbandType } from "node-opcua";
+import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace, MonitoredItem, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, DeadbandType, StatusCode } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
@@ -281,25 +281,42 @@ export class OPCUAService extends EventEmitter {
 			await this._createSession();
 		}
 
-		const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
+		// const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
 
-		if (dataType) {
-			try {
-				const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
-				console.log("Value in writeNode() => ", _value);
-				const writeValue = new WriteValue({
-					nodeId: node.nodeId,
-					attributeId: AttributeIds.Value,
-					value: { value: _value },
-				});
+		const PossibleDataType = await this._getDataType(value);
 
-				let statusCode = await this.session.write(writeValue);
+		try {
 
-				return statusCode;
-			} catch (error) {
-				console.log("error writing value", error);
-				return StatusCodes.BadInternalError;
+			let statusCode: StatusCode;
+			let isGood: boolean = false; // check we found a data type
+
+			while (!isGood && PossibleDataType.length) {
+				const dataType = PossibleDataType.shift();
+				if (!dataType) throw new Error("No data type found for value: " + value);
+
+				statusCode = await (this.session as any).writeSingleNode(node.nodeId.toString(), { dataType, value });
+
+				if (statusCode.isGoodish()) isGood = true;
+
 			}
+
+			return StatusCodes;
+
+
+			// const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
+			// console.log("Value in writeNode() => ", _value);
+			// const writeValue = new WriteValue({
+			// 	nodeId: node.nodeId,
+			// 	attributeId: AttributeIds.Value,
+			// 	value: { value: _value },
+			// });
+
+			// let statusCode = await this.session.write(writeValue);
+
+			// return statusCode;
+		} catch (error) {
+			console.log("error writing value", error);
+			return StatusCodes.BadInternalError;
 		}
 	}
 
@@ -389,15 +406,38 @@ export class OPCUAService extends EventEmitter {
 		// }, []);
 	}
 
-	private async _getDataType(nodeId: string): Promise<DataType | undefined> {
-		try {
-			const dataTypeId = resolveNodeId(nodeId);
-			const dataType = await findBasicDataType(this.session, dataTypeId);
-			return dataType;
-		} catch (error) {
-			return this.detectOPCUAValueType(nodeId);
+	private _getDataType(value: any): DataType[] {
+		// try {
+		// 	const dataTypeId = resolveNodeId(nodeId);
+		// 	const dataType = await findBasicDataType(this.session, dataTypeId);
+		// 	return dataType;
+		// } catch (error) {
+		// 	return this.detectOPCUAValueType(nodeId);
+		// }
+
+		if (!isNaN(value)) {
+			const numerics = [DataType.Float, DataType.Double, DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64]
+			if (value == 0 || value == 1)
+				return [...numerics, DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
+
+			return numerics; // if the value is a number, it can be a numeric type
 		}
 
+		if (typeof value == "string") {
+			return [DataType.String, DataType.LocalizedText, DataType.XmlElement]; // if the value is a string, it can be a string or a localized text
+		}
+
+
+		if (typeof value == "boolean") {
+			return [DataType.Boolean];
+		}
+
+		if (value instanceof Date) {
+			return [DataType.DateTime];
+		}
+
+
+		return [DataType.Null]; // if the value is not recognized, return null
 	}
 
 	private async readNodeDescription(nodeId: string, path: string = ""): Promise<IOPCNode> {
@@ -423,16 +463,16 @@ export class OPCUAService extends EventEmitter {
 	}
 
 
-	private async _getNodesDetails(node: IOPCNode) {
-		const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
-		const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
+	// private async _getNodesDetails(node: IOPCNode) {
+	// 	const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
+	// 	const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
 
-		const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
-		const valueRank = valueRankDataValue.value.value as number;
-		const dataType = await this._getDataType(node.nodeId.toString());
+	// 	const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
+	// 	const valueRank = valueRankDataValue.value.value as number;
+	// 	const dataType = await this._getDataType(node.nodeId.toString());
 
-		return { dataType, arrayDimension, valueRank };
-	}
+	// 	return { dataType, arrayDimension, valueRank };
+	// }
 
 	private async _getNodeParent(nodeId: NodeId): Promise<{ sep: string; parentNodeId: NodeId } | null> {
 		let browseResult = await this.session.browse({
@@ -533,7 +573,7 @@ export class OPCUAService extends EventEmitter {
 	private async _createSession(client?: OPCUAClient): Promise<ClientSession> {
 		try {
 			const session = await (client || this.client)!.createSession(this.userIdentity);
-			if (!client) {
+			if (!client) { // if no client is provided, set the session to the instance variable
 				this.session = session;
 				this._listenSessionEvent();
 			}

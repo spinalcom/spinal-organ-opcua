@@ -43,7 +43,6 @@ export declare class OPCUAService extends EventEmitter {
     private _browseUsingBrowseDescription;
     private _getDataType;
     private readNodeDescription;
-    private _getNodesDetails;
     private _getNodeParent;
     private _getDiscoverData;
     private _convertTreeToObject;

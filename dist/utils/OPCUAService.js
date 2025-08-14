@@ -258,23 +258,33 @@ class OPCUAService extends events_1.EventEmitter {
             if (!this.session) {
                 yield this._createSession();
             }
-            const { dataType, arrayDimension, valueRank } = yield this._getNodesDetails(node);
-            if (dataType) {
-                try {
-                    const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
-                    console.log("Value in writeNode() => ", _value);
-                    const writeValue = new node_opcua_1.WriteValue({
-                        nodeId: node.nodeId,
-                        attributeId: node_opcua_1.AttributeIds.Value,
-                        value: { value: _value },
-                    });
-                    let statusCode = yield this.session.write(writeValue);
-                    return statusCode;
+            // const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
+            const PossibleDataType = yield this._getDataType(value);
+            try {
+                let statusCode;
+                let isGood = false; // check we found a data type
+                while (!isGood && PossibleDataType.length) {
+                    const dataType = PossibleDataType.shift();
+                    if (!dataType)
+                        throw new Error("No data type found for value: " + value);
+                    statusCode = yield this.session.writeSingleNode(node.nodeId.toString(), { dataType, value });
+                    if (statusCode.isGoodish())
+                        isGood = true;
                 }
-                catch (error) {
-                    console.log("error writing value", error);
-                    return node_opcua_1.StatusCodes.BadInternalError;
-                }
+                return node_opcua_1.StatusCodes;
+                // const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
+                // console.log("Value in writeNode() => ", _value);
+                // const writeValue = new WriteValue({
+                // 	nodeId: node.nodeId,
+                // 	attributeId: AttributeIds.Value,
+                // 	value: { value: _value },
+                // });
+                // let statusCode = await this.session.write(writeValue);
+                // return statusCode;
+            }
+            catch (error) {
+                console.log("error writing value", error);
+                return node_opcua_1.StatusCodes.BadInternalError;
             }
         });
     }
@@ -348,17 +358,30 @@ class OPCUAService extends events_1.EventEmitter {
             // }, []);
         });
     }
-    _getDataType(nodeId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const dataTypeId = (0, node_opcua_1.resolveNodeId)(nodeId);
-                const dataType = yield (0, node_opcua_1.findBasicDataType)(this.session, dataTypeId);
-                return dataType;
-            }
-            catch (error) {
-                return this.detectOPCUAValueType(nodeId);
-            }
-        });
+    _getDataType(value) {
+        // try {
+        // 	const dataTypeId = resolveNodeId(nodeId);
+        // 	const dataType = await findBasicDataType(this.session, dataTypeId);
+        // 	return dataType;
+        // } catch (error) {
+        // 	return this.detectOPCUAValueType(nodeId);
+        // }
+        if (!isNaN(value)) {
+            const numerics = [node_opcua_1.DataType.Float, node_opcua_1.DataType.Double, node_opcua_1.DataType.Int16, node_opcua_1.DataType.Int32, node_opcua_1.DataType.Int64, node_opcua_1.DataType.UInt16, node_opcua_1.DataType.UInt32, node_opcua_1.DataType.UInt64];
+            if (value == 0 || value == 1)
+                return [...numerics, node_opcua_1.DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
+            return numerics; // if the value is a number, it can be a numeric type
+        }
+        if (typeof value == "string") {
+            return [node_opcua_1.DataType.String, node_opcua_1.DataType.LocalizedText, node_opcua_1.DataType.XmlElement]; // if the value is a string, it can be a string or a localized text
+        }
+        if (typeof value == "boolean") {
+            return [node_opcua_1.DataType.Boolean];
+        }
+        if (value instanceof Date) {
+            return [node_opcua_1.DataType.DateTime];
+        }
+        return [node_opcua_1.DataType.Null]; // if the value is not recognized, return null
     }
     readNodeDescription(nodeId, path = "") {
         var _a, _b;
@@ -382,16 +405,14 @@ class OPCUAService extends events_1.EventEmitter {
             };
         });
     }
-    _getNodesDetails(node) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const arrayDimensionDataValue = yield this.session.read({ nodeId: node.nodeId, attributeId: node_opcua_1.AttributeIds.ArrayDimensions });
-            const valueRankDataValue = yield this.session.read({ nodeId: node.nodeId, attributeId: node_opcua_1.AttributeIds.ValueRank });
-            const arrayDimension = arrayDimensionDataValue.value.value;
-            const valueRank = valueRankDataValue.value.value;
-            const dataType = yield this._getDataType(node.nodeId.toString());
-            return { dataType, arrayDimension, valueRank };
-        });
-    }
+    // private async _getNodesDetails(node: IOPCNode) {
+    // 	const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
+    // 	const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
+    // 	const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
+    // 	const valueRank = valueRankDataValue.value.value as number;
+    // 	const dataType = await this._getDataType(node.nodeId.toString());
+    // 	return { dataType, arrayDimension, valueRank };
+    // }
     _getNodeParent(nodeId) {
         var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
@@ -484,7 +505,7 @@ class OPCUAService extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 const session = yield (client || this.client).createSession(this.userIdentity);
-                if (!client) {
+                if (!client) { // if no client is provided, set the session to the instance variable
                     this.session = session;
                     this._listenSessionEvent();
                 }
