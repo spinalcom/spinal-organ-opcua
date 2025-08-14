@@ -605,26 +605,33 @@ class OPCUAService extends events_1.EventEmitter {
         };
     }
     _formatDataValue(dataValue) {
-        var _a, _b, _c, _d, _e, _f;
+        var _a, _b, _c, _d, _e;
         // if dataValue.value is a Variant return the value of the Variant
         if (typeof ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) !== "undefined") {
             const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
             switch ((_c = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _c === void 0 ? void 0 : _c.arrayType) {
-                case node_opcua_1.VariantArrayType.Scalar:
-                    obj.value = (_d = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _d === void 0 ? void 0 : _d.value;
+                /*case VariantArrayType.Scalar:
+                    obj.value = dataValue?.value?.value;
                     break;
+                    */
                 case node_opcua_1.VariantArrayType.Array:
-                    obj.value = (_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value.join(",");
+                    obj.value = (_d = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _d === void 0 ? void 0 : _d.value.join(",");
                     break;
                 default:
-                    obj.value = (_f = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _f === void 0 ? void 0 : _f.value;
+                    let value = (_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value;
+                    if (value == null)
+                        value = "null";
+                    obj.value = value;
                     break;
             }
             return obj;
         }
         // if dataValue.value is not a Variant, return the value and dataType
-        if (typeof dataValue.value !== "object")
+        if (typeof dataValue.value !== "object") {
+            if (dataValue.value == null)
+                dataValue.value = "null";
             return dataValue;
+        }
         return null;
     }
     _readBrowseName(nodeId) {

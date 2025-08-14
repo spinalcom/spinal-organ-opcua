@@ -726,14 +726,18 @@ export class OPCUAService extends EventEmitter {
 			const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
 
 			switch (dataValue?.value?.arrayType) {
-				case VariantArrayType.Scalar:
+				/*case VariantArrayType.Scalar:
 					obj.value = dataValue?.value?.value;
 					break;
+					*/
 				case VariantArrayType.Array:
 					obj.value = dataValue?.value?.value.join(",");
 					break;
 				default:
-					obj.value = dataValue?.value?.value;
+					let value = dataValue?.value?.value;
+					if (value == null) value = "null";
+
+					obj.value = value;
 					break;
 			}
 
@@ -741,7 +745,10 @@ export class OPCUAService extends EventEmitter {
 		}
 
 		// if dataValue.value is not a Variant, return the value and dataType
-		if (typeof dataValue.value !== "object") return dataValue;
+		if (typeof dataValue.value !== "object") {
+			if (dataValue.value == null) dataValue.value = "null";
+			return dataValue;
+		}
 
 		return null;
 	}
