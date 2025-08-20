@@ -204,8 +204,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                     if (!gatewayData || gatewayData.length <= 0)
                         continue;
                     const deviceData = gatewayData.find((el) => {
-                        const key = nodeTocreate.path || nodeTocreate.nodeId.toString();
-                        return el.node.path === key || el.node.nodeId.toString() === key;
+                        const key = (0, utils_1.normalizePath)(nodeTocreate.path) || nodeTocreate.nodeId.toString();
+                        return (0, utils_1.normalizePath)(el.node.path) === key || el.node.nodeId.toString() === key;
                     });
                     if (!deviceData)
                         continue;
@@ -264,7 +264,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 const obj = {};
                 for (let index = 0; index < result.length; index++) {
                     const element = result[index];
-                    const key = variables[index].path || variables[index].nodeId.toString();
+                    const key = (0, utils_1.normalizePath)(variables[index].path) || variables[index].nodeId.toString();
                     obj[key] = element;
                 }
                 opcuaService.disconnect();

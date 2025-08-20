@@ -60,7 +60,7 @@ class OPCUAProfileService {
     }
     static getSupervisionNode(profile) {
         return __awaiter(this, void 0, void 0, function* () {
-            const children = yield profile.getChildren([]);
+            const children = yield profile.getChildren();
             return children.find(el => el.getName().get() === exports.SUPERVISION_NAME);
         });
     }

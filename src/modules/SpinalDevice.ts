@@ -22,21 +22,19 @@
  * <http://resources.spinalcom.com/licenses.pdf>.
  */
 
-import { SpinalBmsDevice, SpinalBmsEndpoint, SpinalBmsEndpointGroup, SpinalBmsNetwork } from "spinal-model-bmsnetwork";
+import { SpinalBmsEndpoint } from "spinal-model-bmsnetwork";
 import { EventEmitter } from "events";
-import { SpinalNode, SPINAL_RELATION_PTR_LST_TYPE, SpinalContext } from "spinal-env-viewer-graph-service";
+import { SpinalNode, SpinalContext } from "spinal-env-viewer-graph-service";
 import { IServer } from "spinal-model-opcua";
 import OPCUAService from "../utils/OPCUAService";
 import { MessageSecurityMode, SecurityPolicy } from "node-opcua-client";
 import { UserTokenType, UserIdentityInfo, DataType } from "node-opcua";
-import certificatProm from "../utils/make_certificate";
-import { IOPCNode } from "../interfaces/OPCNode";
 import { SpinalServiceTimeseries } from "spinal-model-timeseries";
 import { SpinalGraphService } from "spinal-env-viewer-graph-service";
-import { convertSpinalNodeToOPCNode } from "../utils/utils";
-import { getServerUrl } from "../utils/Functions";
 import { SpinalOPCUAListener } from "spinal-model-opcua";
 import { IProfile } from "../utils/SpinalNetworkUtils";
+import { IOPCNode } from "../interfaces/OPCNode";
+import { normalizePath } from "../utils/utils";
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
@@ -48,7 +46,7 @@ export class SpinalDevice extends EventEmitter {
 	public network: SpinalNode;
 	public device: SpinalNode;
 	public server: IServer;
-	public deviceInfo: { name: string, type: string, id: string };
+	public deviceInfo: { name: string, type: string, id: string, path: string };
 	public spinalListenerModel: SpinalOPCUAListener;
 	public profile: IProfile;
 
@@ -56,7 +54,9 @@ export class SpinalDevice extends EventEmitter {
 	private endpoints: { [key: string]: SpinalNode } = {};
 
 	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener, profile: IProfile) {
+
 		super();
+
 		this.server = server;
 		this.context = context;
 		this.network = network;
@@ -72,14 +72,20 @@ export class SpinalDevice extends EventEmitter {
 		return this._convertNodesToObj();
 	}
 
-	public async updateEndpoints(values: { [key: string]: { dataType: string; value: any } }, cov: boolean = false) {
-		const promises = Object.keys(values).map((id) => {
-			// const value = values[id]?.value || null; // may be bad if value is boolean
-			const value = values[id]?.value;
-			const node = this.endpoints[id];
-			if (node) return this._updateEndpoint(node, value, cov);
-			return;
-		});
+	public async updateEndpoints(nodes: IOPCNode[], isCov: boolean = false) {
+
+		const promises = [];
+
+		for (const opcNode of nodes) {
+			const key = normalizePath(opcNode.path) || opcNode.nodeId.toString();
+			const spinalnode = this.endpoints[key];
+			if (!spinalnode) continue;
+
+			await this._updateNodeInfo(opcNode, spinalnode);
+			// const value = opcNode.value?.value || null; // may be bad if value is boolean
+			const value = opcNode.value?.value;
+			promises.push(this._updateEndpoint(spinalnode, value, isCov));
+		}
 
 		return Promise.all(promises);
 	}
@@ -136,132 +142,30 @@ export class SpinalDevice extends EventEmitter {
 
 	private _convertNodesToObj(): Promise<SpinalNode[]> {
 		return this.device.findInContext(this.context, (node) => {
-			if (node.info.idNetwork) this.nodes[node.info.idNetwork.get()] = node;
-			if (node.info.idNetwork && node.getType().get() === SpinalBmsEndpoint.nodeTypeName) this.endpoints[node.info.idNetwork.get()] = node;
+			const key = normalizePath(node.info?.path?.get()) || node.info?.idNetwork?.get()
+
+			if (key) this.nodes[key] = node;
+			if (key && node.getType().get() === SpinalBmsEndpoint.nodeTypeName) this.endpoints[key] = node;
 			return true;
 		});
 	}
 
-	// private async monitorCallback(id: string, value: any) {
-	// 	const node = this.endpoints[id];
-	// 	if (node) {
-	// 		await this._updateEndpoint(node, value);
-	// 	}
-	// }
+	private async _updateNodeInfo(opcNode: IOPCNode, spinalNode: SpinalNode) {
+		if (opcNode?.displayName) {
+			const name = opcNode.displayName || opcNode.browseName;
+			spinalNode.info?.displayName?.set(name);
+			spinalNode.info?.name?.set(name);
+		}
 
-	// private async _getVariablesValues(variablesIds: string | string[]) {
-	// 	if (!Array.isArray(variablesIds)) variablesIds = [variablesIds];
-	// 	const nodes = variablesIds.reduce((opcNodes, id) => {
-	// 		const node = this.endpoints[id] || id;
+		if (opcNode?.browseName) {
+			const name = opcNode.browseName || opcNode.displayName;
+			spinalNode.info?.browseName?.set(name);
+		}
 
-	// 		const opcNode = convertSpinalNodeToOPCNode(node);
-	// 		if (opcNode) opcNodes.push(opcNode);
-	// 		return opcNodes;
-	// 	}, []);
+		if (opcNode?.nodeId) {
+			spinalNode.info?.idNetwork?.set(opcNode.nodeId.toString());
+		}
 
-	// 	return this.opcuaService.readNodeValue(nodes).then((result) => {
-	// 		const obj = {};
-	// 		for (let index = 0; index < result.length; index++) {
-	// 			const element = result[index];
-	// 			obj[nodes[index].nodeId.toString()] = element;
-	// 		}
-
-	// 		return obj;
-	// 	});
-	// }
-
-	// private _transformTreeToGraphRecursively(tree: IOPCNode, parent?: SpinalNode, values: { [key: string]: any } = {}) {
-	// 	const promises = (tree.children || []).map(async (el) => {
-	// 		const { node, relation, alreadyExist } = await this.getNodeAndRelation(el, values);
-	// 		if (parent && !alreadyExist) {
-	// 			await parent.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, this.context);
-	// 		}
-	// 		await this._transformTreeToGraphRecursively(el, node, values);
-	// 		return { node, relation, alreadyExist };
-	// 	});
-
-	// 	return Promise.all(promises);
-	// }
-
-	// private async getNodeAndRelation(node: IOPCNode, values: { [key: string]: any } = {}): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
-	// 	let spinalNode: SpinalNode = this.nodes[node.nodeId.toString()];
-	// 	if (!spinalNode) return this._generateNodeAndRelation(node, values);
-
-	// 	const relation = this._getNodeRelationName(spinalNode.getType().get());
-	// 	// return { node: spinalNode, relation, alreadyExist: true };
-	// 	return { node: spinalNode, relation, alreadyExist: true };
-	// }
-
-	// private async _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any } = {}): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
-	// 	let element;
-	// 	let param: any = {
-	// 		id: node.nodeId.toString(),
-	// 		name: node.displayName,
-	// 		path: node.path,
-	// 	};
-
-	// 	if (this.opcuaService.isVariable(node)) {
-	// 		const dataValue = values[node.nodeId.toString()];
-	// 		param = {
-	// 			...param,
-	// 			typeId: "",
-	// 			nodeTypeName: SpinalBmsEndpoint.nodeTypeName,
-	// 			type: SpinalBmsEndpoint.nodeTypeName,
-	// 			currentValue: dataValue?.value || "null",
-	// 			dataType: dataValue?.dataType || "",
-	// 			unit: "",
-	// 		};
-
-	// 		element = new SpinalBmsEndpoint(param);
-	// 	} else {
-	// 		param = {
-	// 			...param,
-	// 			nodeTypeName: SpinalBmsEndpointGroup.nodeTypeName,
-	// 			type: SpinalBmsEndpointGroup.nodeTypeName,
-	// 		};
-
-	// 		element = new SpinalBmsEndpointGroup(param);
-	// 	}
-
-	// 	const spinalNode = new SpinalNode(param.name, param.type, element);
-	// 	spinalNode.info.add_attr({ idNetwork: param.id });
-
-	// 	if (param.type === SpinalBmsEndpoint.nodeTypeName) this.endpoints[param.id] = spinalNode;
-
-	// 	return { node: spinalNode, relation: this._getNodeRelationName(param.type), alreadyExist: false };
-	// }
-
-	// private _formatValue(dataValue: { dataType: any; value: any }) {
-	// 	let val;
-	// 	switch (dataValue.dataType) {
-	// 		case DataType.DateTime:
-	// 			val = dataValue.value
-	// 				.toString()
-	// 				.replace(/\(.*\)$/gi, (el) => "")
-	// 				.trim();
-
-	// 		default:
-	// 			val = dataValue.value?.toString() || dataValue.value;
-	// 	}
-
-	// 	return (val + "").length > 0 ? val : "null";
-	// }
-
-	// private _getNodeRelationName(type: string) {
-	// 	switch (type) {
-	// 		case SpinalBmsEndpoint.nodeTypeName:
-	// 			return SpinalBmsEndpoint.relationName;
-
-	// 		case SpinalBmsEndpointGroup.nodeTypeName:
-	// 			return SpinalBmsEndpoint.relationName;
-
-	// 		case SpinalBmsDevice.nodeTypeName:
-	// 			return SpinalBmsDevice.relationName;
-
-	// 		case SpinalBmsNetwork.nodeTypeName:
-	// 			return SpinalBmsNetwork.relationName;
-	// 	}
-	// }
-
+	}
 
 }

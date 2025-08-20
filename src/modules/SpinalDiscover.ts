@@ -11,7 +11,7 @@ import { getServerUrl, getVariablesList } from "../utils/Functions";
 import { getOrGenNetworkNode } from "../utils/addNetworkToGraph";
 import OPCUAService from "../utils/OPCUAService";
 import discoveringStore from "../utils/discoveringProcessStore";
-import { discoverIsCancelled, getConfig } from "../utils/utils";
+import { discoverIsCancelled, getConfig, normalizePath } from "../utils/utils";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 
@@ -241,8 +241,8 @@ class SpinalDiscover extends EventEmitter {
 				if (!gatewayData || gatewayData.length <= 0) continue;
 
 				const deviceData = gatewayData.find((el) => {
-					const key = nodeTocreate.path || nodeTocreate.nodeId.toString();
-					return el.node.path === key || el.node.nodeId.toString() === key;
+					const key = normalizePath(nodeTocreate.path) || nodeTocreate.nodeId.toString();
+					return normalizePath(el.node.path) === key || el.node.nodeId.toString() === key;
 				});
 
 				if (!deviceData) continue;
@@ -313,7 +313,7 @@ class SpinalDiscover extends EventEmitter {
 			const obj = {};
 			for (let index = 0; index < result.length; index++) {
 				const element = result[index];
-				const key = variables[index].path || variables[index].nodeId.toString();
+				const key = normalizePath(variables[index].path) || variables[index].nodeId.toString();
 				obj[key] = element;
 			}
 

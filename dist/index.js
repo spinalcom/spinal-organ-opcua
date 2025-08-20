@@ -12,10 +12,8 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // import { config as dotenvConfig } from "dotenv";
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
 const pm2 = require("pm2");
-const nodepath = require("path");
 const utils_1 = require("./utils/utils");
 const Functions_1 = require("./utils/Functions");
-const fs = require("fs");
 // dotenvConfig({ path: nodepath.resolve(__dirname, "../.env"), override: true });
 const { protocol, host, port, userId, password, path, name } = (0, utils_1.getConfig)();
 const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
@@ -26,16 +24,6 @@ const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);
             const restart = organModel.restart.get();
             if (!restart) {
                 listenLoadType(connect, organModel);
-                // const { context, network, device } = await getNetwork(connect);
-                // const server = { address: "10.10.0.11", port: "26543", name: "Device 1" };
-                // const spinalDevice = new SpinalDevice(server, context, network, device);
-                // await spinalDevice.init();
-                // console.log("initialized");
-                // const tree = await spinalDevice.discover();
-                // // await writeInFile("../tree.txt", JSON.stringify(tree));
-                // await spinalDevice.createTreeInGraph(tree);
-                // spinalDevice.launchTestFunction();
-                // console.log("end");
                 return;
             }
             if (app) {
@@ -52,9 +40,6 @@ const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);
         }));
     });
 });
-function writeInFile(argPath, text) {
-    return fs.writeFileSync(nodepath.resolve(__dirname, argPath), text);
-}
 const listenLoadType = (connect, organModel) => {
     loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel) => {
         (0, Functions_1.SpinalDiscoverCallback)(spinalDisoverModel, organModel);
@@ -65,14 +50,6 @@ const listenLoadType = (connect, organModel) => {
     loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel) => {
         (0, Functions_1.SpinalPilotCallback)(spinalPilotModel, organModel);
     }, Functions_1.connectionErrorCallback);
-    // loadTypeInSpinalCore(
-    // 	connect,
-    // 	"SpinalBacnetValueModel",
-    // 	(spinalBacnetValueModel: SpinalBacnetValueModel) => {
-    // 		// SpinalBacnetValueModelCallback(spinalBacnetValueModel, organModel);
-    // 	},
-    // 	connectionErrorCallback
-    // );
 };
 const loadTypeInSpinalCore = (connect, type, callback, errorCallback) => {
     spinal_core_connectorjs_type_1.spinalCore.load_type(connect, type, callback, errorCallback);

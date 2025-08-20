@@ -39,6 +39,7 @@ const node_opcua_client_1 = require("node-opcua-client");
 const node_opcua_1 = require("node-opcua");
 const spinal_model_timeseries_1 = require("spinal-model-timeseries");
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
+const utils_1 = require("../utils/utils");
 const securityMode = node_opcua_client_1.MessageSecurityMode["None"];
 const securityPolicy = node_opcua_client_1.SecurityPolicy["None"];
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
@@ -63,17 +64,20 @@ class SpinalDevice extends events_1.EventEmitter {
             return this._convertNodesToObj();
         });
     }
-    updateEndpoints(values, cov = false) {
+    updateEndpoints(nodes, isCov = false) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
-            const promises = Object.keys(values).map((id) => {
-                var _a;
-                // const value = values[id]?.value || null; // may be bad if value is boolean
-                const value = (_a = values[id]) === null || _a === void 0 ? void 0 : _a.value;
-                const node = this.endpoints[id];
-                if (node)
-                    return this._updateEndpoint(node, value, cov);
-                return;
-            });
+            const promises = [];
+            for (const opcNode of nodes) {
+                const key = (0, utils_1.normalizePath)(opcNode.path) || opcNode.nodeId.toString();
+                const spinalnode = this.endpoints[key];
+                if (!spinalnode)
+                    continue;
+                yield this._updateNodeInfo(opcNode, spinalnode);
+                // const value = opcNode.value?.value || null; // may be bad if value is boolean
+                const value = (_a = opcNode.value) === null || _a === void 0 ? void 0 : _a.value;
+                promises.push(this._updateEndpoint(spinalnode, value, isCov));
+            }
             return Promise.all(promises);
         });
     }
@@ -121,11 +125,30 @@ class SpinalDevice extends events_1.EventEmitter {
     }
     _convertNodesToObj() {
         return this.device.findInContext(this.context, (node) => {
-            if (node.info.idNetwork)
-                this.nodes[node.info.idNetwork.get()] = node;
-            if (node.info.idNetwork && node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName)
-                this.endpoints[node.info.idNetwork.get()] = node;
+            var _a, _b, _c, _d;
+            const key = (0, utils_1.normalizePath)((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = node.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
+            if (key)
+                this.nodes[key] = node;
+            if (key && node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName)
+                this.endpoints[key] = node;
             return true;
+        });
+    }
+    _updateNodeInfo(opcNode, spinalNode) {
+        var _a, _b, _c, _d, _e, _f, _g, _h;
+        return __awaiter(this, void 0, void 0, function* () {
+            if (opcNode === null || opcNode === void 0 ? void 0 : opcNode.displayName) {
+                const name = opcNode.displayName || opcNode.browseName;
+                (_b = (_a = spinalNode.info) === null || _a === void 0 ? void 0 : _a.displayName) === null || _b === void 0 ? void 0 : _b.set(name);
+                (_d = (_c = spinalNode.info) === null || _c === void 0 ? void 0 : _c.name) === null || _d === void 0 ? void 0 : _d.set(name);
+            }
+            if (opcNode === null || opcNode === void 0 ? void 0 : opcNode.browseName) {
+                const name = opcNode.browseName || opcNode.displayName;
+                (_f = (_e = spinalNode.info) === null || _e === void 0 ? void 0 : _e.browseName) === null || _f === void 0 ? void 0 : _f.set(name);
+            }
+            if (opcNode === null || opcNode === void 0 ? void 0 : opcNode.nodeId) {
+                (_h = (_g = spinalNode.info) === null || _g === void 0 ? void 0 : _g.idNetwork) === null || _h === void 0 ? void 0 : _h.set(opcNode.nodeId.toString());
+            }
         });
     }
 }

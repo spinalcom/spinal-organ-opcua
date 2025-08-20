@@ -16,9 +16,6 @@ const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
 const connect: spinal.FileSystem = spinalCore.connect(url);
 
 
-
-
-
 CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) => {
 	organModel.restart.bind(() => {
 		GetPm2Instance(name).then(async (app: any) => {
@@ -27,19 +24,6 @@ CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) =
 			if (!restart) {
 				listenLoadType(connect, organModel);
 
-				// const { context, network, device } = await getNetwork(connect);
-
-				// const server = { address: "10.10.0.11", port: "26543", name: "Device 1" };
-				// const spinalDevice = new SpinalDevice(server, context, network, device);
-				// await spinalDevice.init();
-				// console.log("initialized");
-
-				// const tree = await spinalDevice.discover();
-				// // await writeInFile("../tree.txt", JSON.stringify(tree));
-				// await spinalDevice.createTreeInGraph(tree);
-				// spinalDevice.launchTestFunction();
-
-				// console.log("end");
 				return;
 			}
 
@@ -59,10 +43,6 @@ CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) =
 	});
 });
 
-function writeInFile(argPath, text) {
-	return fs.writeFileSync(nodepath.resolve(__dirname, argPath), text);
-}
-
 const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA) => {
 	loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel: SpinalOPCUADiscoverModel) => {
 		SpinalDiscoverCallback(spinalDisoverModel, organModel);
@@ -76,14 +56,6 @@ const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA
 		SpinalPilotCallback(spinalPilotModel, organModel);
 	}, connectionErrorCallback);
 
-	// loadTypeInSpinalCore(
-	// 	connect,
-	// 	"SpinalBacnetValueModel",
-	// 	(spinalBacnetValueModel: SpinalBacnetValueModel) => {
-	// 		// SpinalBacnetValueModelCallback(spinalBacnetValueModel, organModel);
-	// 	},
-	// 	connectionErrorCallback
-	// );
 
 
 };

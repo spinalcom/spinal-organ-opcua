@@ -27,7 +27,7 @@ class OPCUAService extends events_1.EventEmitter {
         this.endpointUrl = "";
         this.monitoredItemsListData = [];
         this.clientAlarms = new node_opcua_1.ClientAlarmList();
-        this.isVariable = OPCUAService.isVariable;
+        this.isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
         this._restartConnection = () => __awaiter(this, void 0, void 0, function* () {
             try {
                 yield this.client.disconnect();
@@ -39,13 +39,6 @@ class OPCUAService extends events_1.EventEmitter {
         });
         this.endpointUrl = url;
         this._discoverModel = model;
-        // if (typeof modelOrUrl === "string")
-        //      this.endpointUrl = modelOrUrl;
-        // else {
-        //      const server = modelOrUrl.network.get();
-        //      this.endpointUrl = getServerUrl(server);
-        //      this._discoverModel = modelOrUrl;
-        // }
     }
     initialize() {
         return __awaiter(this, void 0, void 0, function* () {
@@ -120,7 +113,7 @@ class OPCUAService extends events_1.EventEmitter {
             yield this.initialize();
             yield this.connect(userIdentity);
             // get the queue and nodesObj from the last discover or create a new one
-            let { nodesObj, queue, browseMode } = yield this._getDiscoverData(entryPointPath, options.useLastResult);
+            let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
             while (queue.length && !(0, utils_1.discoverIsCancelled)(this._discoverModel)) {
                 let discoverState = null;
@@ -129,7 +122,8 @@ class OPCUAService extends events_1.EventEmitter {
                 const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
                 try {
                     discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering; // set the state to discovering
-                    const newsItems = yield this._getChildrenAndAddToObj(chunked, nodesObj);
+                    const children = yield this._browseNode(chunked); // browse the nodes in the queue
+                    const newsItems = yield this._addNodeToNodesObject(children, nodesObj); // add the new nodes to the nodesObj
                     queue.push(...newsItems);
                     if (newsItems.length)
                         console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
@@ -155,66 +149,18 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////////////////////////
-    //                                      Exemple 2 : getTree (take a lot of time)                         //
-    ///////////////////////////////////////////////////////////////////////////
-    // public async getTree2(entryPointPath?: string): Promise<any> {
-    //      console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
-    //      const tree = await this._getEntryPoint(entryPointPath);
-    //      const queue: any[] = [tree];
-    //      const variables = [];
-    //      const nodesObj = { [tree.nodeId.toString()]: tree };
-    //      while (queue.length) {
-    //              const node = queue.shift();
-    //              let _error = null;
-    //              let discoverState = OPCUA_ORGAN_STATES.discovering;
-    //              try {
-    //                      console.log("[getTree2] browsing", node.displayName);
-    //                      // if (this.isVariable(node)) variables.push(node.nodeId.toString());
-    //                      // const children = await this._browseNode(node);
-    //                      // node.children = children;
-    //                      // queue.push(...children);
-    //                      const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
-    //                      queue.push(...children);
-    //              } catch (error) {
-    //                      discoverState = OPCUA_ORGAN_STATES.error;
-    //                      queue.unshift(node);
-    //                      _error = error;
-    //                      console.log("error", error);
-    //              }
-    //              if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
-    //              await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
-    //              if (_error) throw _error;
-    //      }
-    //      return { tree, variables };
-    // }
-    browseNodeRec(node) {
+    readNode(node) {
         return __awaiter(this, void 0, void 0, function* () {
-            console.log("browsing", node.displayName, "inside browseNodeRec");
-            const children = yield this._browseNode(node);
-            for (const child of children) {
-                yield this.browseNodeRec(child);
-            }
-            node.children = children;
-            return children;
+            if (!Array.isArray(node))
+                node = [node];
+            return this.session.read(node);
         });
     }
-    ///////////////////////////////////////////////////////////////////////////
-    _getChildrenAndAddToObj(nodes, nodesObj = {}) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const children = yield this._browseNode(nodes);
-            for (const child of children) {
-                const parent = nodesObj[child.parentId];
-                // create the path based on the parent node
-                const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
-                child.path = (0, utils_1.normalizePath)(path);
-                nodesObj[child.nodeId.toString()] = child;
-            }
-            return children;
-        });
-    }
-    extractBrowsePath(nodeId) {
+    getNodePath(nodeId) {
         var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
+            if (typeof nodeId === "string")
+                nodeId = (0, node_opcua_1.coerceNodeId)(nodeId);
             const browseName = yield this._readBrowseName(nodeId);
             const pathElements = [];
             pathElements.push(`${browseName.namespaceIndex}:${browseName.name}`);
@@ -259,10 +205,11 @@ class OPCUAService extends events_1.EventEmitter {
                 yield this._createSession();
             }
             // const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
-            const PossibleDataType = yield this._getDataType(value);
+            const PossibleDataType = yield this._getPossibleDataType(value);
             try {
                 let statusCode;
                 let isGood = false; // check we found a data type
+                // test each data type until we find a good one
                 while (!isGood && PossibleDataType.length) {
                     const dataType = PossibleDataType.shift();
                     if (!dataType)
@@ -275,15 +222,6 @@ class OPCUAService extends events_1.EventEmitter {
                         isGood = true;
                 }
                 return node_opcua_1.StatusCodes;
-                // const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
-                // console.log("Value in writeNode() => ", _value);
-                // const writeValue = new WriteValue({
-                // 	nodeId: node.nodeId,
-                // 	attributeId: AttributeIds.Value,
-                // 	value: { value: _value },
-                // });
-                // let statusCode = await this.session.write(writeValue);
-                // return statusCode;
             }
             catch (error) {
                 console.log("error writing value", error);
@@ -315,6 +253,43 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
+    getNodeByPath(path) {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                if (!path.startsWith("/Objects"))
+                    path = "/Objects" + path;
+                if (path.endsWith("/"))
+                    path = path.slice(0, -1); // remove trailing slash
+                const browsePaths = (0, node_opcua_1.makeBrowsePath)("RootFolder", path);
+                const nodesFound = yield this.session.translateBrowsePath(browsePaths);
+                if (!nodesFound.targets || nodesFound.targets.length === 0)
+                    return;
+                const startNodeId = (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
+                if (!startNodeId)
+                    return;
+                const startNode = yield this.readNodeDescription(startNodeId, path);
+                return startNode; // return the node with its children and path
+            }
+            catch (error) {
+                return;
+            }
+        });
+    }
+    static isVariable(node) {
+        return node.nodeClass === node_opcua_1.NodeClass.Variable;
+    }
+    isObject(node) {
+        return node.nodeClass === node_opcua_1.NodeClass.Object;
+    }
+    getNodesNewInfoByPath(nodes) {
+        if (!Array.isArray(nodes))
+            nodes = [nodes];
+        const promises = nodes.map(node => this.getNodeByPath(node.path));
+        return Promise.all(promises).then((result) => {
+            return result;
+        });
+    }
     ///////////////////////////////////////////////////////////////////////////
     _listenMonitoredItemEvents(monitoredItem, callback) {
         monitoredItem.on("changed", (dataValue) => {
@@ -327,11 +302,6 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _browseNode(node) {
         node = Array.isArray(node) ? node : [node];
-        // const nodeToBrowse = node.reduce((list, n) => {
-        // 	const configs = convertToBrowseDescription(n);
-        // 	list.push(...configs);
-        // 	return list;
-        // }, []);
         const nodeToBrowse = node.map((n) => (0, utils_1.convertToBrowseDescription)(n)).flat();
         return this._browseUsingBrowseDescription(nodeToBrowse);
     }
@@ -350,72 +320,62 @@ class OPCUAService extends events_1.EventEmitter {
                 }
                 return children;
             }, []);
-            // const references = browseResults.map((el) => el.references).flat(); // each browseResult has an array of references for each description;
-            // return references.reduce((list, ref, index) => {
-            //      const refName = ref.displayName.text || ref.browseName?.toString();
-            //      if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") return list; // skip server and hidden nodes
-            //      const parentId = (descriptions[index] as any)?.nodeId?.toString();
-            //      const formatted = this._formatReference(ref, "", parentId);
-            //      list.push(formatted);
-            //      return list;
-            // }, []);
         });
     }
-    _getDataType(value) {
-        // try {
-        // 	const dataTypeId = resolveNodeId(nodeId);
-        // 	const dataType = await findBasicDataType(this.session, dataTypeId);
-        // 	return dataType;
-        // } catch (error) {
-        // 	return this.detectOPCUAValueType(nodeId);
-        // }
-        if (!isNaN(value)) {
+    _addNodeToNodesObject(nodes, nodesObj = {}) {
+        return __awaiter(this, void 0, void 0, function* () {
+            for (const child of nodes) {
+                const parent = nodesObj[child.parentId];
+                // create the path based on the parent node
+                const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
+                child.path = (0, utils_1.normalizePath)(path);
+                nodesObj[child.nodeId.toString()] = child;
+            }
+            return nodes;
+        });
+    }
+    _getPossibleDataType(value) {
+        if (!isNaN(value)) { // if the value is a number
             const numerics = [node_opcua_1.DataType.Float, node_opcua_1.DataType.Double, node_opcua_1.DataType.Int16, node_opcua_1.DataType.Int32, node_opcua_1.DataType.Int64, node_opcua_1.DataType.UInt16, node_opcua_1.DataType.UInt32, node_opcua_1.DataType.UInt64];
             if (value == 0 || value == 1)
                 return [...numerics, node_opcua_1.DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
             return numerics; // if the value is a number, it can be a numeric type
         }
-        if (typeof value == "string") {
+        if (typeof value == "string") { // if the value is a string
             return [node_opcua_1.DataType.String, node_opcua_1.DataType.LocalizedText, node_opcua_1.DataType.XmlElement]; // if the value is a string, it can be a string or a localized text
         }
-        if (typeof value == "boolean") {
+        if (typeof value == "boolean") { // if the value is a boolean
             return [node_opcua_1.DataType.Boolean];
         }
-        if (value instanceof Date) {
+        if (value instanceof Date) { // if the value is a Date
             return [node_opcua_1.DataType.DateTime];
         }
         return [node_opcua_1.DataType.Null]; // if the value is not recognized, return null
     }
     readNodeDescription(nodeId, path = "") {
-        var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
             const attributesToRead = [
                 { nodeId, attributeId: node_opcua_1.AttributeIds.BrowseName },
                 { nodeId, attributeId: node_opcua_1.AttributeIds.DisplayName },
                 { nodeId, attributeId: node_opcua_1.AttributeIds.NodeClass },
+                { nodeId, attributeId: node_opcua_1.AttributeIds.Value },
             ];
-            const [displayNameData, browseNameData, nodeClassData] = yield this.session.read(attributesToRead);
-            const displayName = ((_a = displayNameData.value.value) === null || _a === void 0 ? void 0 : _a.text) || "";
-            const browseName = ((_b = browseNameData.value.value) === null || _b === void 0 ? void 0 : _b.name) || "";
+            const [displayNameData, browseNameData, nodeClassData, valueData] = yield this.session.read(attributesToRead);
+            const displayName = this._formatDataValue(displayNameData);
+            const browseName = this._formatDataValue(browseNameData);
             const nodeClass = nodeClassData.value.value;
+            const value = this._formatDataValue(valueData);
             return {
-                displayName,
-                browseName,
+                displayName: (displayName === null || displayName === void 0 ? void 0 : displayName.value) || "",
+                browseName: (browseName === null || browseName === void 0 ? void 0 : browseName.value) || "",
                 nodeId: (0, node_opcua_1.coerceNodeId)(nodeId),
                 nodeClass,
                 children: [],
                 path,
+                value
             };
         });
     }
-    // private async _getNodesDetails(node: IOPCNode) {
-    // 	const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
-    // 	const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
-    // 	const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
-    // 	const valueRank = valueRankDataValue.value.value as number;
-    // 	const dataType = await this._getDataType(node.nodeId.toString());
-    // 	return { dataType, arrayDimension, valueRank };
-    // }
     _getNodeParent(nodeId) {
         var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
@@ -447,40 +407,24 @@ class OPCUAService extends events_1.EventEmitter {
             return null;
         });
     }
-    _getDiscoverData(entryPointPath, useLastResult) {
+    _getDiscoverStarterData(entryPointPath, useLastResult) {
         return __awaiter(this, void 0, void 0, function* () {
-            let queue, nodesObj, browseMode;
+            let queue, nodesObj;
+            let browseMode = "unicast"; //always use unicast browsing
             try {
                 if (!useLastResult)
-                    throw new Error("no last result"); // throw error to force unicast browsing
-                browseMode = "Multicast";
-                const data = yield discoveringProcessStore_1.default.getProgress(this.endpointUrl);
+                    throw new Error("no last result"); // throw error to force new browsing
+                const data = yield discoveringProcessStore_1.default.getProgress(this.endpointUrl); // get the last discover data from the store
                 nodesObj = data.nodesObj;
                 queue = data.queue;
             }
             catch (error) {
                 // if no last result or error in file reading, use unicast browsing
-                browseMode = "unicast";
                 let tree = yield this._getEntryPoint(entryPointPath);
                 queue = [tree];
                 nodesObj = { [tree.nodeId.toString()]: tree };
             }
             return { queue, nodesObj, browseMode };
-        });
-    }
-    _convertTreeToObject(tree) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const obj = {};
-            const variables = [];
-            const stack = [tree];
-            while (stack.length) {
-                const node = stack.shift();
-                obj[node.nodeId.toString()] = node;
-                if (this.isVariable(node))
-                    variables.push(node);
-                stack.push(...node.children);
-            }
-            return { obj, variables };
         });
     }
     _convertObjToTree(entryPointPath, obj) {
@@ -501,8 +445,73 @@ class OPCUAService extends events_1.EventEmitter {
             return { tree, variables };
         });
     }
+    ///////////////////////////////////////////////////////
+    //                                      Utils                                                    //
+    ///////////////////////////////////////////////////////
+    _getEntryPoint(entryPointPath) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!entryPointPath || entryPointPath === "/")
+                entryPointPath = "/Objects";
+            if (!entryPointPath.startsWith("/"))
+                entryPointPath = "/" + entryPointPath;
+            const node = yield this.getNodeByPath(entryPointPath);
+            if (node)
+                return node;
+            throw `No node found with entry point : ${entryPointPath}`;
+        });
+    }
+    _formatReference(reference, parentPath, parentId) {
+        var _a;
+        const name = reference.displayName.text || reference.browseName.toString();
+        const browseName = (_a = reference.browseName) === null || _a === void 0 ? void 0 : _a.toString();
+        parentPath = parentPath.endsWith("/") ? parentPath : `${parentPath}/`;
+        return {
+            displayName: name,
+            browseName,
+            nodeId: reference.nodeId,
+            nodeClass: reference.nodeClass,
+            path: parentPath + browseName,
+            children: [],
+            parentId
+        };
+    }
+    _formatDataValue(dataValue) {
+        var _a, _b, _c, _d, _e;
+        // if dataValue.value is not a Variant, return the value and dataType
+        if (typeof dataValue.value !== "object") {
+            dataValue.value = this._formatRealValue(dataValue.value); // format the value if it's not a Variant
+            return dataValue;
+        }
+        // if dataValue.value is a Variant return the value of the Variant
+        if (typeof ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) !== "undefined") {
+            const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
+            if (((_c = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _c === void 0 ? void 0 : _c.arrayType) == node_opcua_1.VariantArrayType.Array) {
+                obj.value = obj.value = (_d = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _d === void 0 ? void 0 : _d.value.join(",");
+            }
+            else {
+                obj.value = this._formatRealValue((_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value);
+            }
+            return obj;
+        }
+        return null;
+    }
+    _formatRealValue(value) {
+        if (value instanceof node_opcua_1.QualifiedName)
+            value = value.name; // if the value is a QualifiedName, get the name
+        if (value instanceof node_opcua_1.LocalizedText)
+            value = value.text; // if the value is a LocalizedText, get the text
+        if (value == null)
+            value = "null";
+        return value; // return the value as is
+    }
+    _readBrowseName(nodeId) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const node = yield this.session.read({ nodeId, attributeId: node_opcua_1.AttributeIds.BrowseName });
+            return node.value.value;
+        });
+    }
     ////////////////////////////////////////////////////////////
-    //                                                      Client                                            //
+    //                       Client                           //
     ////////////////////////////////////////////////////////////
     _createSession(client) {
         return __awaiter(this, void 0, void 0, function* () {
@@ -549,133 +558,6 @@ class OPCUAService extends events_1.EventEmitter {
         });
         this.session.on("keepalive_failure", () => {
             this._restartConnection();
-        });
-    }
-    ///////////////////////////////////////////////////////
-    //                                      Utils                                                    //
-    ///////////////////////////////////////////////////////
-    _getEntryPoint(entryPointPath) {
-        return __awaiter(this, void 0, void 0, function* () {
-            let root = {
-                displayName: "Root",
-                nodeId: node_opcua_1.ObjectIds.RootFolder,
-                path: "/",
-                children: [],
-            };
-            if (!entryPointPath || entryPointPath === "/")
-                entryPointPath = "/Objects";
-            if (!entryPointPath.startsWith("/"))
-                entryPointPath = "/" + entryPointPath;
-            return this._getEntryPointWithPath(root, entryPointPath);
-        });
-    }
-    _getEntryPointWithPath(start, entryPointPath) {
-        var _a;
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                if (!entryPointPath.startsWith("/Objects"))
-                    entryPointPath = "/Objects" + entryPointPath;
-                const browsePaths = (0, node_opcua_1.makeBrowsePath)("RootFolder", entryPointPath);
-                const nodesFound = yield this.session.translateBrowsePath(browsePaths);
-                if (!nodesFound.targets || nodesFound.targets.length === 0) {
-                    throw `No node found with entry point : ${entryPointPath}`;
-                }
-                const startNodeId = (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
-                if (!startNodeId)
-                    throw `No node found with entry point : ${entryPointPath}`;
-                const startNode = yield this.readNodeDescription(startNodeId, entryPointPath);
-                return startNode; // return the node with its children and path
-                return;
-            }
-            catch (error) {
-                throw `No node found with entry point : ${entryPointPath}`;
-            }
-        });
-    }
-    _formatReference(reference, parentPath, parentId) {
-        var _a;
-        const name = reference.displayName.text || reference.browseName.toString();
-        const browseName = (_a = reference.browseName) === null || _a === void 0 ? void 0 : _a.toString();
-        parentPath = parentPath.endsWith("/") ? parentPath : `${parentPath}/`;
-        return {
-            displayName: name,
-            browseName,
-            nodeId: reference.nodeId,
-            nodeClass: reference.nodeClass,
-            path: parentPath + browseName,
-            children: [],
-            parentId
-        };
-    }
-    _formatDataValue(dataValue) {
-        var _a, _b, _c, _d, _e;
-        // if dataValue.value is a Variant return the value of the Variant
-        if (typeof ((_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _a === void 0 ? void 0 : _a.value) !== "undefined") {
-            const obj = { dataType: node_opcua_1.DataType[(_b = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _b === void 0 ? void 0 : _b.dataType], value: undefined };
-            switch ((_c = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _c === void 0 ? void 0 : _c.arrayType) {
-                /*case VariantArrayType.Scalar:
-                    obj.value = dataValue?.value?.value;
-                    break;
-                    */
-                case node_opcua_1.VariantArrayType.Array:
-                    obj.value = (_d = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _d === void 0 ? void 0 : _d.value.join(",");
-                    break;
-                default:
-                    let value = (_e = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) === null || _e === void 0 ? void 0 : _e.value;
-                    if (value == null)
-                        value = "null";
-                    obj.value = value;
-                    break;
-            }
-            return obj;
-        }
-        // if dataValue.value is not a Variant, return the value and dataType
-        if (typeof dataValue.value !== "object") {
-            if (dataValue.value == null)
-                dataValue.value = "null";
-            return dataValue;
-        }
-        return null;
-    }
-    _readBrowseName(nodeId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const node = yield this.session.read({ nodeId, attributeId: node_opcua_1.AttributeIds.BrowseName });
-            return node.value.value;
-        });
-    }
-    static isVariable(node) {
-        return node.nodeClass === node_opcua_1.NodeClass.Variable;
-    }
-    isObject(node) {
-        return node.nodeClass === node_opcua_1.NodeClass.Object;
-    }
-    _parseValue(valueRank, arrayDimension, dataType, value) {
-        const arrayType = valueRank === -1 ? node_opcua_1.VariantArrayType.Scalar : valueRank === 1 ? node_opcua_1.VariantArrayType.Array : node_opcua_1.VariantArrayType.Matrix;
-        const dimensions = arrayType === node_opcua_1.VariantArrayType.Matrix ? arrayDimension : undefined;
-        const _value = new node_opcua_1.Variant({
-            dataType,
-            arrayType,
-            dimensions,
-            value: (0, utils_1.coerceStringToDataType)(dataType, arrayType, node_opcua_1.VariantArrayType, value),
-        });
-        return _value;
-    }
-    readNode(node) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!Array.isArray(node))
-                node = [node];
-            return this.session.read(node);
-        });
-    }
-    detectOPCUAValueType(nodeId) {
-        return __awaiter(this, void 0, void 0, function* () {
-            const resValue = yield this.readNodeValue({ nodeId: (0, node_opcua_1.coerceNodeId)(nodeId) });
-            const value = resValue[0];
-            if (!value)
-                return;
-            if (value.dataType)
-                return node_opcua_1.DataType[value.dataType];
-            return node_opcua_1.DataType[typeof value.value];
         });
     }
 }

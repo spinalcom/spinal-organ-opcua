@@ -24,11 +24,8 @@ export declare class OPCUAService extends EventEmitter {
         tree: IOPCNode;
         variables: string[];
     }>;
-    browseNodeRec(node: any): Promise<IOPCNode[]>;
-    _getChildrenAndAddToObj(nodes: IOPCNode[], nodesObj?: {
-        [key: string]: IOPCNode;
-    }): Promise<IOPCNode[]>;
-    extractBrowsePath(nodeId: NodeId): Promise<string>;
+    readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
+    getNodePath(nodeId: string | NodeId): Promise<string>;
     readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{
         dataType: string;
         value: any;
@@ -38,28 +35,27 @@ export declare class OPCUAService extends EventEmitter {
         value: any;
         dataType: string;
     }, monitorItem: ClientMonitoredItemBase) => any): Promise<void>;
+    getNodeByPath(path?: string): Promise<IOPCNode>;
+    static isVariable(node: IOPCNode): boolean;
+    isObject(node: IOPCNode): boolean;
+    getNodesNewInfoByPath(nodes: IOPCNode | IOPCNode[]): Promise<IOPCNode[]>;
     private _listenMonitoredItemEvents;
     private _browseNode;
     private _browseUsingBrowseDescription;
-    private _getDataType;
+    private _addNodeToNodesObject;
+    private _getPossibleDataType;
     private readNodeDescription;
     private _getNodeParent;
-    private _getDiscoverData;
-    private _convertTreeToObject;
+    private _getDiscoverStarterData;
     private _convertObjToTree;
+    private _getEntryPoint;
+    private _formatReference;
+    private _formatDataValue;
+    private _formatRealValue;
+    private _readBrowseName;
     private _createSession;
     private _listenClientEvents;
     private _listenSessionEvent;
     private _restartConnection;
-    private _getEntryPoint;
-    private _getEntryPointWithPath;
-    private _formatReference;
-    private _formatDataValue;
-    private _readBrowseName;
-    static isVariable(node: IOPCNode): boolean;
-    isObject(node: IOPCNode): boolean;
-    private _parseValue;
-    readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
-    private detectOPCUAValueType;
 }
 export default OPCUAService;

@@ -6,10 +6,16 @@ export interface IOPCNode {
     nodeClass?: NodeClass;
     children?: IOPCNode[];
     path?: string;
-    server?: {
-        address: string;
-        port: number;
-        endpoint?: string;
+    server?: IServer;
+    value?: {
+        dataType: string;
+        value: any;
     };
     [key: string]: any;
+}
+export interface IServer {
+    address: string;
+    port: number;
+    endpoint?: string;
+    ip?: string;
 }

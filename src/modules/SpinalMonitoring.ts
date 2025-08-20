@@ -1,21 +1,24 @@
 
 import { SpinalOPCUAListener } from "spinal-model-opcua";
-import { MinPriorityQueue } from "@datastructures-js/priority-queue";
+import { MinPriorityQueue, PriorityQueue, PriorityQueueItem } from "@datastructures-js/priority-queue";
 
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalDevice } from "./SpinalDevice";
 import * as lodash from "lodash";
-import { SpinalNetworkUtils } from "../utils/SpinalNetworkUtils";
-import { ClientMonitoredItemBase, UserIdentityInfo, UserTokenType } from "node-opcua";
+import { IProfile, SpinalNetworkUtils } from "../utils/SpinalNetworkUtils";
+import { ClientMonitoredItemBase, coerceNodeId, UserIdentityInfo, UserTokenType } from "node-opcua";
 import OPCUAService from "../utils/OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { getServerUrl } from "../utils/Functions";
+import { ISpinalInterval } from "../interfaces/IntervalTypes";
+import { normalizePath } from "../utils/utils";
 
 class SpinalMonitoring {
     private queue: SpinalQueuing = new SpinalQueuing();
     private priorityQueue: MinPriorityQueue<{ interval: number; }> = new MinPriorityQueue();
     private isProcessing: boolean = false;
-    private intervalTimesMap: Map<number, any> = new Map();
+    private intervalTimesMap: Map<number, { [key: string]: ISpinalInterval[] }> = new Map();
+
     private initializedMap: Map<string, boolean> = new Map();
     private spinalDevices: Map<string, SpinalDevice> = new Map();
     private idNetworkToSpinalDevice: Map<string, SpinalDevice> = new Map();
@@ -35,16 +38,16 @@ class SpinalMonitoring {
     }
 
     public async startDeviceInitialisation() {
-        const list = this.queue.getQueue();
+        const modelInQueue = this.queue.getQueue();
         this.queue.refresh();
 
-        const promises = list.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
+        const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
 
-        const devices = lodash.flattenDeep(await Promise.all(promises));
+        const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
         // const filtered = devices.filter(el => typeof el !== "undefined");
-        const filtered = devices.filter(el => !!el);
+        const validDevices = devicesFlatted.filter(el => !!el);
 
-        await this._bindData(filtered);
+        await this._bindData(validDevices);
 
         if (!this.isProcessing) {
             this.isProcessing = true;
@@ -60,26 +63,30 @@ class SpinalMonitoring {
                 continue;
             }
 
-            const { priority, element } = this.priorityQueue.dequeue();
-            const data = this.intervalTimesMap.get(element.interval);
+            const { priority, element: intervalData } = this.priorityQueue.dequeue();
+            const data = this.intervalTimesMap.get(intervalData.interval);
 
-            if (data) {
-                if (priority > Date.now()) {
-                    this.priorityQueue.enqueue({ interval: element.interval }, priority);
-                    await this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
-                    continue;
-                }
+            if (!data) continue; // if no data for this interval, continue to next iteration and not add to the queue
 
-                await this.updateData(data, element.interval, priority);
+
+            // if the priority is greater than the current time, we need to wait for the next iteration
+            if (priority > Date.now()) {
+                this.priorityQueue.enqueue({ interval: intervalData.interval }, priority);
+                await this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
+                continue;
             }
+
+            await this.updateData(data, intervalData.interval, priority);
+
 
         }
     }
 
-    public async updateData(data, interval: number, date?: number) {
+    public async updateData(data: { [key: string]: ISpinalInterval[] }, interval: number, date?: number) {
 
         try {
 
+            // if a date is provided, we wait for the next update
             if (date && Date.now() < date) {
                 console.log(`waiting ${(date - Date.now()) / 1000}s, for the next update`);
                 await this.waitFct(date - Date.now());
@@ -87,12 +94,12 @@ class SpinalMonitoring {
 
             const valuesObj = await this._getOPCValues(data);
 
-            const promises = Object.keys(valuesObj).map((key) => {
+            const promises = Object.keys(valuesObj).map((deviceId) => {
 
-                const device = this.spinalDevices.get(key);
+                const device = this.spinalDevices.get(deviceId);
                 if (!device) return;
 
-                return device.updateEndpoints(valuesObj[key]);
+                return device.updateEndpoints(valuesObj[deviceId]);
             });
 
             await Promise.all(promises);
@@ -129,52 +136,66 @@ class SpinalMonitoring {
                     return;
                 }
 
-                console.log("start monitoring", deviceInfo.name)
-                await this._addToMaps({ url, spinalDevice, profile, deviceInfo });
+                console.log(deviceInfo.name, "is monitored");
+                await this._addToMaps(url, spinalDevice, profile);
 
             })
         }
     }
 
-    private async _addToMaps({ url, spinalDevice, profile, deviceInfo }) {
-        return profile.intervals.reduce(async (prom, el) => {
-            let list = await prom;
+    private async _addToMaps(url: string, spinalDevice: SpinalDevice, profile: IProfile) {
 
-            if (isNaN(el.value) || !el.children?.length) return list;
+        for (const intervalData of profile.intervals) {
+            if (isNaN(intervalData.value) || !intervalData.children?.length) continue;
 
-            const interval = Number(el.value);
+            const interval = Number(intervalData.value);
+
             if (interval == 0) {
-                await this.monitorWithCov(url, spinalDevice, el.children);
-                return list;
+                await this.monitorWithCov(url, spinalDevice, intervalData.children as any);
+                continue; // go to next interval
             }
 
             // add to interval map
-            let intervalObj = this.intervalTimesMap.get(interval) || {};
-            const value = intervalObj[url] || [];
+            await this._addItemTointervalMap(url, spinalDevice, intervalData);
+            await this._addItemToPriorityQueue(interval);
 
-            value.push({
-                id: deviceInfo.id,
-                nodeToUpdate: el.children.map((el) => {
-                    const i = el.idNetwork;
-                    this.idNetworkToSpinalDevice.set(i, spinalDevice);
-                    return { displayName: i, nodeId: i };
-                })
-            });
+        }
 
-            intervalObj[url] = value;
-            this.intervalTimesMap.set(interval, intervalObj);
-            // end add to interval map
+    }
 
-            // add to priority queue
-            const arr = this.priorityQueue.toArray();
-            //@ts-ignore
-            const found = arr.find((p) => p.interval === interval);
-            if (!found) this.priorityQueue.enqueue({ interval }, interval + Date.now());
+    private _addItemTointervalMap(url: string, spinalDevice: SpinalDevice, intervalData: IProfile["intervals"][0]) {
 
-            // end add to priority queue
-            return list;
-        }, Promise.resolve([]));
+        const interval = Number(intervalData.value);
+        if (isNaN(interval) || !intervalData.children?.length) return;
 
+        let intervalObj = this.intervalTimesMap.get(interval) || {};
+        let intervalList = intervalObj[url] || [];
+
+        const nodeToUpdate = intervalData.children.map((child) => {
+            const key = normalizePath(child.path) || child.idNetwork;
+            this.idNetworkToSpinalDevice.set(key, spinalDevice); // save the device in the map to be able to retrieve it later
+            return { path: normalizePath(child.path) };
+        })
+
+        intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate })
+
+        // const data: { id: string; nodeToUpdate: { displayName: string; path: string }[] }[];
+
+
+        intervalObj[url] = intervalList;
+
+        this.intervalTimesMap.set(interval, intervalObj);
+        return { interval, intervalObj }
+    }
+
+    private _addItemToPriorityQueue(interval: number) {
+        const priorityQueueData: PriorityQueueItem<{ interval }>[] = this.priorityQueue.toArray();
+
+        const intervalFound = priorityQueueData.find((priority: any) => priority.interval === interval);
+
+        if (!intervalFound) this.priorityQueue.enqueue({ interval }, interval + Date.now());
+
+        return intervalFound;
     }
 
 
@@ -214,31 +235,44 @@ class SpinalMonitoring {
     }
 
 
-    private _getOPCValues(obj: { [key: string]: { id: string, nodeToUpdate: string[] } }[]) {
-        const deviceObj = {};
+    private _getOPCValues(obj: { [key: string]: ISpinalInterval[] }) {
 
-        const promises = Object.keys(obj).map(async (url) => {
-            const value = obj[url];
-            const opcIds = value.map((el) => el.nodeToUpdate).flat();
+        const urls = Object.keys(obj);
+        const promises = [];
+        if (!urls.length) return Promise.resolve([]);
 
-            return this._getVariablesValues(url, opcIds);
-        });
+        for (const url of urls) {
+            const nodesToUpdate = obj[url].map((el) => el.nodeToUpdate).flat() || [];
+            promises.push(this._getVariablesValues(url, nodesToUpdate));
+        }
 
         return Promise.all(promises).then((result) => {
-            const obj = {};
+            const opcNodeObj: { [key: string]: IOPCNode[] } = {};
 
-            for (const r of result.flat()) {
-                this._classifyByDevice(obj, r);
+            // result is an array of arrays, we need to flatten it and classify by device id
+            for (const opcNode of result.flat()) {
+
+                if (!opcNode || !opcNode.nodeId) continue; // skip if no nodeId
+
+                const key = normalizePath(opcNode.path) || opcNode.nodeId.toString();
+                const device = this.idNetworkToSpinalDevice.get(key);
+                if (!device) continue;
+
+                const deviceId = device.deviceInfo.id;
+                if (!opcNodeObj[deviceId]) opcNodeObj[deviceId] = [];
+
+                opcNodeObj[deviceId].push(opcNode);
             }
 
-            return obj;
+            return opcNodeObj;
         })
+
     }
 
-    private async _getVariablesValues(endpointUrl: string, variablesIds: IOPCNode[]): Promise<{ [key: string]: { dataType: string; value: any } }> {
+    private async _getVariablesValues(endpointUrl: string, variableNodes: IOPCNode[]): Promise<IOPCNode[]> {
         try {
 
-            if (!Array.isArray(variablesIds)) variablesIds = [variablesIds];
+            if (!Array.isArray(variableNodes)) variableNodes = [variableNodes];
 
             const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
             const opcuaService: OPCUAService = new OPCUAService(endpointUrl);
@@ -246,37 +280,17 @@ class SpinalMonitoring {
             await opcuaService.initialize();
             await opcuaService.connect(userIdentity);
 
-            return opcuaService.readNodeValue(variablesIds).then(async (result) => {
-                const obj = {};
-
-                for (let index = 0; index < result.length; index++) {
-                    const element = result[index];
-                    obj[variablesIds[index].nodeId.toString()] = element;
-                }
-
+            return opcuaService.getNodesNewInfoByPath(variableNodes).then(async (result) => {
                 await opcuaService.disconnect();
-                return obj;
+                return result;
             })
 
 
         } catch (error) {
-            return {}
+            return []
         }
     }
 
-    private _classifyByDevice(obj: { [key: string]: { [key: string]: any } }, data: { [key: string]: any }) {
-
-        for (const key in data) {
-            const value = data[key];
-            const device = this.idNetworkToSpinalDevice.get(key);
-            if (!device) continue;
-
-            if (!obj[device.deviceInfo.id]) obj[device.deviceInfo.id] = {};
-            obj[device.deviceInfo.id][key] = value;
-        }
-
-        return obj;
-    }
 
     private _updateProfile(profileId: string, devicesIds: string[]) {
         return devicesIds.map((deviceId) => {
@@ -287,18 +301,29 @@ class SpinalMonitoring {
         });
     }
 
-    private async monitorWithCov(url: string, spinalDevice: SpinalDevice, nodes: any[]) {
-        // const names = {};
+    private async monitorWithCov(url: string, spinalDevice: SpinalDevice, nodes: IOPCNode[]) {
 
-        const ids = nodes.map((el) => {
-            // names[el.idNetwork] = el.name;
-            return el.idNetwork
+        const isCov = true;
+        const idsToPaths: { [key: string]: string } = {};
+
+        const opcNodes = await this._getVariablesValues(url, nodes);
+        await spinalDevice.updateEndpoints(opcNodes, isCov); // update the endpoints node with the new values (name, path, value)
+
+
+        // get new ids from opcNodes and save the path to be able to retrieve it later
+        const ids = opcNodes.map((el) => {
+            const nodeId = el.nodeId.toString();
+            idsToPaths[nodeId] = normalizePath(el.path) || nodeId; // save the path to be able to retrieve it later
+            return nodeId;
         });
 
+        // connect to the OPCUA server and monitor the items
         const opcuaService: OPCUAService = new OPCUAService(url);
         await opcuaService.initialize();
         await opcuaService.connect();
 
+
+        // call monitorItem with the ids and a callback function
         opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
             if (!dataValue || typeof dataValue?.value == "undefined") return;
             const value = ["string", "number", "boolean"].includes(typeof dataValue?.value) ? dataValue?.value : null;
@@ -309,7 +334,7 @@ class SpinalMonitoring {
 
             if (!this.covItemToMonitoring.has(temp_id)) this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
 
-            spinalDevice.updateEndpoints({ [id]: { value: value, dataType: typeof value } }, true);
+            spinalDevice.updateEndpoints([{ path: idsToPaths[id], nodeId: coerceNodeId(id), value: { value: value, dataType: typeof value } }], isCov);
         });
 
     }

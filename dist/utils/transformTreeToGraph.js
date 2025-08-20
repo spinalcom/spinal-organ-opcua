@@ -15,6 +15,7 @@ const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
 const spinal_env_viewer_plugin_documentation_service_1 = require("spinal-env-viewer-plugin-documentation-service");
 const node_opcua_1 = require("node-opcua");
 const OPCUAService_1 = require("./OPCUAService");
+const utils_1 = require("./utils");
 function _transformTreeToGraphRecursively(context, opcNode, nodesAlreadyCreated, parent, values = {}, depth = 0) {
     return __awaiter(this, void 0, void 0, function* () {
         const { node, relation, alreadyExist } = yield getNodeAndRelation(opcNode, nodesAlreadyCreated, values, depth);
@@ -45,7 +46,7 @@ function getNodeAlreadyCreated(context, network, opcNode) {
             if (!serverIsMatch)
                 return false;
             const key = ((_f = (_e = el.info) === null || _e === void 0 ? void 0 : _e.path) === null || _f === void 0 ? void 0 : _f.get()) || ((_h = (_g = el.info) === null || _g === void 0 ? void 0 : _g.idNetwork) === null || _h === void 0 ? void 0 : _h.get());
-            return opcNode.path === key || opcNode.nodeId.toString() === key;
+            return (0, utils_1.normalizePath)(opcNode.path) === key || opcNode.nodeId.toString() === key;
         });
         if (!device)
             return {}; // If no device found, return an empty object
@@ -67,7 +68,7 @@ function getNodeAlreadyCreated(context, network, opcNode) {
 exports.getNodeAlreadyCreated = getNodeAlreadyCreated;
 function getNodeAndRelation(opcNode, nodesAlreadyCreated, values = {}, depth = 0) {
     return __awaiter(this, void 0, void 0, function* () {
-        const key = opcNode.path || opcNode.nodeId.toString();
+        const key = (0, utils_1.normalizePath)(opcNode.path) || opcNode.nodeId.toString();
         let spinalNode = nodesAlreadyCreated[key];
         if (!spinalNode) { // If the node does not exist, create it
             if (depth == 0)
@@ -86,7 +87,7 @@ function getNodeAndRelation(opcNode, nodesAlreadyCreated, values = {}, depth = 0
 function _updateNodeInfo(spinalNode, opcNode) {
     spinalNode.info.name.set(opcNode.displayName || opcNode.browseName);
     spinalNode.info.idNetwork.set(opcNode.nodeId.toString());
-    spinalNode.info.path.set(opcNode.path || "");
+    spinalNode.info.path.set((0, utils_1.normalizePath)(opcNode.path) || "");
     if (spinalNode.info.displayName)
         spinalNode.info.displayName.set(opcNode.displayName || opcNode.browseName);
     if (spinalNode.info.browseName)
@@ -103,7 +104,7 @@ function _generateNodeAndRelation(node, values = {}) {
         browseName: node.browseName || node.displayName
     };
     if (OPCUAService_1.default.isVariable(node)) {
-        const key = node.path || node.nodeId.toString();
+        const key = (0, utils_1.normalizePath)(node.path) || node.nodeId.toString();
         const dataValue = values[key];
         param = Object.assign(Object.assign({}, param), { typeId: "", nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, type: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, 
             // currentValue: dataValue?.value || "null", // may be bad if value is boolean
@@ -185,7 +186,7 @@ function _createNodeAttributes(node, attributes, values = {}) {
     //[TODO] use createOrUpdateAttrsAndCategories
     const formatted = attributes.reduce((obj, el) => {
         var _a;
-        const key = el.path || el.nodeId.toString();
+        const key = (0, utils_1.normalizePath)(el.path) || el.nodeId.toString();
         const value = ((_a = values[key]) === null || _a === void 0 ? void 0 : _a.value) || "";
         obj[el.displayName] = value;
         return obj;
@@ -196,7 +197,7 @@ function _createNodeAttributes(node, attributes, values = {}) {
     // return serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
     // 	const promises = [];
     // 	const formatted = attributes.map((el) => {
-    // 		const key = el.path || el.nodeId.toString();
+    // 		const key = normalizePath(el.path) || el.nodeId.toString();
     // 		return {
     // 			name: el.displayName,
     // 			value: values[key]?.value || ""

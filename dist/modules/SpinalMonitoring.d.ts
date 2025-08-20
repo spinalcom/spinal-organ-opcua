@@ -1,4 +1,5 @@
 import { SpinalOPCUAListener } from "spinal-model-opcua";
+import { ISpinalInterval } from "../interfaces/IntervalTypes";
 declare class SpinalMonitoring {
     private queue;
     private priorityQueue;
@@ -14,15 +15,18 @@ declare class SpinalMonitoring {
     init(): void;
     startDeviceInitialisation(): Promise<void>;
     startMonitoring(): Promise<void>;
-    updateData(data: any, interval: number, date?: number): Promise<void>;
+    updateData(data: {
+        [key: string]: ISpinalInterval[];
+    }, interval: number, date?: number): Promise<void>;
     private _bindData;
     private _addToMaps;
+    private _addItemTointervalMap;
+    private _addItemToPriorityQueue;
     private _removeFromMaps;
     private _stopCovItems;
     private waitFct;
     private _getOPCValues;
     private _getVariablesValues;
-    private _classifyByDevice;
     private _updateProfile;
     private monitorWithCov;
 }

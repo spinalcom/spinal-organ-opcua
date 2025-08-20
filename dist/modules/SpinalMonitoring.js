@@ -17,6 +17,7 @@ const SpinalNetworkUtils_1 = require("../utils/SpinalNetworkUtils");
 const node_opcua_1 = require("node-opcua");
 const OPCUAService_1 = require("../utils/OPCUAService");
 const Functions_1 = require("../utils/Functions");
+const utils_1 = require("../utils/utils");
 class SpinalMonitoring {
     constructor() {
         this.queue = new SpinalQueuing_1.SpinalQueuing();
@@ -40,13 +41,13 @@ class SpinalMonitoring {
     }
     startDeviceInitialisation() {
         return __awaiter(this, void 0, void 0, function* () {
-            const list = this.queue.getQueue();
+            const modelInQueue = this.queue.getQueue();
             this.queue.refresh();
-            const promises = list.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
-            const devices = lodash.flattenDeep(yield Promise.all(promises));
+            const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
+            const devicesFlatted = lodash.flattenDeep(yield Promise.all(promises));
             // const filtered = devices.filter(el => typeof el !== "undefined");
-            const filtered = devices.filter(el => !!el);
-            yield this._bindData(filtered);
+            const validDevices = devicesFlatted.filter(el => !!el);
+            yield this._bindData(validDevices);
             if (!this.isProcessing) {
                 this.isProcessing = true;
                 this.startMonitoring();
@@ -61,32 +62,34 @@ class SpinalMonitoring {
                     yield this.waitFct(900);
                     continue;
                 }
-                const { priority, element } = this.priorityQueue.dequeue();
-                const data = this.intervalTimesMap.get(element.interval);
-                if (data) {
-                    if (priority > Date.now()) {
-                        this.priorityQueue.enqueue({ interval: element.interval }, priority);
-                        yield this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
-                        continue;
-                    }
-                    yield this.updateData(data, element.interval, priority);
+                const { priority, element: intervalData } = this.priorityQueue.dequeue();
+                const data = this.intervalTimesMap.get(intervalData.interval);
+                if (!data)
+                    continue; // if no data for this interval, continue to next iteration and not add to the queue
+                // if the priority is greater than the current time, we need to wait for the next iteration
+                if (priority > Date.now()) {
+                    this.priorityQueue.enqueue({ interval: intervalData.interval }, priority);
+                    yield this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
+                    continue;
                 }
+                yield this.updateData(data, intervalData.interval, priority);
             }
         });
     }
     updateData(data, interval, date) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
+                // if a date is provided, we wait for the next update
                 if (date && Date.now() < date) {
                     console.log(`waiting ${(date - Date.now()) / 1000}s, for the next update`);
                     yield this.waitFct(date - Date.now());
                 }
                 const valuesObj = yield this._getOPCValues(data);
-                const promises = Object.keys(valuesObj).map((key) => {
-                    const device = this.spinalDevices.get(key);
+                const promises = Object.keys(valuesObj).map((deviceId) => {
+                    const device = this.spinalDevices.get(deviceId);
                     if (!device)
                         return;
-                    return device.updateEndpoints(valuesObj[key]);
+                    return device.updateEndpoints(valuesObj[deviceId]);
                 });
                 yield Promise.all(promises);
                 // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
@@ -115,47 +118,52 @@ class SpinalMonitoring {
                     this._stopCovItems(deviceInfo.id);
                     return;
                 }
-                console.log("start monitoring", deviceInfo.name);
-                yield this._addToMaps({ url, spinalDevice, profile, deviceInfo });
+                console.log(deviceInfo.name, "is monitored");
+                yield this._addToMaps(url, spinalDevice, profile);
             }));
         }
     }
-    _addToMaps({ url, spinalDevice, profile, deviceInfo }) {
+    _addToMaps(url, spinalDevice, profile) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
-            return profile.intervals.reduce((prom, el) => __awaiter(this, void 0, void 0, function* () {
-                var _a;
-                let list = yield prom;
-                if (isNaN(el.value) || !((_a = el.children) === null || _a === void 0 ? void 0 : _a.length))
-                    return list;
-                const interval = Number(el.value);
+            for (const intervalData of profile.intervals) {
+                if (isNaN(intervalData.value) || !((_a = intervalData.children) === null || _a === void 0 ? void 0 : _a.length))
+                    continue;
+                const interval = Number(intervalData.value);
                 if (interval == 0) {
-                    yield this.monitorWithCov(url, spinalDevice, el.children);
-                    return list;
+                    yield this.monitorWithCov(url, spinalDevice, intervalData.children);
+                    continue; // go to next interval
                 }
                 // add to interval map
-                let intervalObj = this.intervalTimesMap.get(interval) || {};
-                const value = intervalObj[url] || [];
-                value.push({
-                    id: deviceInfo.id,
-                    nodeToUpdate: el.children.map((el) => {
-                        const i = el.idNetwork;
-                        this.idNetworkToSpinalDevice.set(i, spinalDevice);
-                        return { displayName: i, nodeId: i };
-                    })
-                });
-                intervalObj[url] = value;
-                this.intervalTimesMap.set(interval, intervalObj);
-                // end add to interval map
-                // add to priority queue
-                const arr = this.priorityQueue.toArray();
-                //@ts-ignore
-                const found = arr.find((p) => p.interval === interval);
-                if (!found)
-                    this.priorityQueue.enqueue({ interval }, interval + Date.now());
-                // end add to priority queue
-                return list;
-            }), Promise.resolve([]));
+                yield this._addItemTointervalMap(url, spinalDevice, intervalData);
+                yield this._addItemToPriorityQueue(interval);
+            }
         });
+    }
+    _addItemTointervalMap(url, spinalDevice, intervalData) {
+        var _a;
+        const interval = Number(intervalData.value);
+        if (isNaN(interval) || !((_a = intervalData.children) === null || _a === void 0 ? void 0 : _a.length))
+            return;
+        let intervalObj = this.intervalTimesMap.get(interval) || {};
+        let intervalList = intervalObj[url] || [];
+        const nodeToUpdate = intervalData.children.map((child) => {
+            const key = (0, utils_1.normalizePath)(child.path) || child.idNetwork;
+            this.idNetworkToSpinalDevice.set(key, spinalDevice); // save the device in the map to be able to retrieve it later
+            return { path: (0, utils_1.normalizePath)(child.path) };
+        });
+        intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate });
+        // const data: { id: string; nodeToUpdate: { displayName: string; path: string }[] }[];
+        intervalObj[url] = intervalList;
+        this.intervalTimesMap.set(interval, intervalObj);
+        return { interval, intervalObj };
+    }
+    _addItemToPriorityQueue(interval) {
+        const priorityQueueData = this.priorityQueue.toArray();
+        const intervalFound = priorityQueueData.find((priority) => priority.interval === interval);
+        if (!intervalFound)
+            this.priorityQueue.enqueue({ interval }, interval + Date.now());
+        return intervalFound;
     }
     _removeFromMaps(deviceId, url) {
         this.intervalTimesMap.forEach((valueObj, key) => {
@@ -190,55 +198,50 @@ class SpinalMonitoring {
         });
     }
     _getOPCValues(obj) {
-        const deviceObj = {};
-        const promises = Object.keys(obj).map((url) => __awaiter(this, void 0, void 0, function* () {
-            const value = obj[url];
-            const opcIds = value.map((el) => el.nodeToUpdate).flat();
-            return this._getVariablesValues(url, opcIds);
-        }));
+        const urls = Object.keys(obj);
+        const promises = [];
+        if (!urls.length)
+            return Promise.resolve([]);
+        for (const url of urls) {
+            const nodesToUpdate = obj[url].map((el) => el.nodeToUpdate).flat() || [];
+            promises.push(this._getVariablesValues(url, nodesToUpdate));
+        }
         return Promise.all(promises).then((result) => {
-            const obj = {};
-            for (const r of result.flat()) {
-                this._classifyByDevice(obj, r);
+            const opcNodeObj = {};
+            // result is an array of arrays, we need to flatten it and classify by device id
+            for (const opcNode of result.flat()) {
+                if (!opcNode || !opcNode.nodeId)
+                    continue; // skip if no nodeId
+                const key = (0, utils_1.normalizePath)(opcNode.path) || opcNode.nodeId.toString();
+                const device = this.idNetworkToSpinalDevice.get(key);
+                if (!device)
+                    continue;
+                const deviceId = device.deviceInfo.id;
+                if (!opcNodeObj[deviceId])
+                    opcNodeObj[deviceId] = [];
+                opcNodeObj[deviceId].push(opcNode);
             }
-            return obj;
+            return opcNodeObj;
         });
     }
-    _getVariablesValues(endpointUrl, variablesIds) {
+    _getVariablesValues(endpointUrl, variableNodes) {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                if (!Array.isArray(variablesIds))
-                    variablesIds = [variablesIds];
+                if (!Array.isArray(variableNodes))
+                    variableNodes = [variableNodes];
                 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
                 const opcuaService = new OPCUAService_1.default(endpointUrl);
                 yield opcuaService.initialize();
                 yield opcuaService.connect(userIdentity);
-                return opcuaService.readNodeValue(variablesIds).then((result) => __awaiter(this, void 0, void 0, function* () {
-                    const obj = {};
-                    for (let index = 0; index < result.length; index++) {
-                        const element = result[index];
-                        obj[variablesIds[index].nodeId.toString()] = element;
-                    }
+                return opcuaService.getNodesNewInfoByPath(variableNodes).then((result) => __awaiter(this, void 0, void 0, function* () {
                     yield opcuaService.disconnect();
-                    return obj;
+                    return result;
                 }));
             }
             catch (error) {
-                return {};
+                return [];
             }
         });
-    }
-    _classifyByDevice(obj, data) {
-        for (const key in data) {
-            const value = data[key];
-            const device = this.idNetworkToSpinalDevice.get(key);
-            if (!device)
-                continue;
-            if (!obj[device.deviceInfo.id])
-                obj[device.deviceInfo.id] = {};
-            obj[device.deviceInfo.id][key] = value;
-        }
-        return obj;
     }
     _updateProfile(profileId, devicesIds) {
         return devicesIds.map((deviceId) => {
@@ -250,14 +253,21 @@ class SpinalMonitoring {
     }
     monitorWithCov(url, spinalDevice, nodes) {
         return __awaiter(this, void 0, void 0, function* () {
-            // const names = {};
-            const ids = nodes.map((el) => {
-                // names[el.idNetwork] = el.name;
-                return el.idNetwork;
+            const isCov = true;
+            const idsToPaths = {};
+            const opcNodes = yield this._getVariablesValues(url, nodes);
+            yield spinalDevice.updateEndpoints(opcNodes, isCov); // update the endpoints node with the new values (name, path, value)
+            // get new ids from opcNodes and save the path to be able to retrieve it later
+            const ids = opcNodes.map((el) => {
+                const nodeId = el.nodeId.toString();
+                idsToPaths[nodeId] = (0, utils_1.normalizePath)(el.path) || nodeId; // save the path to be able to retrieve it later
+                return nodeId;
             });
+            // connect to the OPCUA server and monitor the items
             const opcuaService = new OPCUAService_1.default(url);
             yield opcuaService.initialize();
             yield opcuaService.connect();
+            // call monitorItem with the ids and a callback function
             opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
                 if (!dataValue || typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) == "undefined")
                     return;
@@ -266,7 +276,7 @@ class SpinalMonitoring {
                 const temp_id = `${spinalDevice.deviceInfo.id}_${id}`;
                 if (!this.covItemToMonitoring.has(temp_id))
                     this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
-                spinalDevice.updateEndpoints({ [id]: { value: value, dataType: typeof value } }, true);
+                spinalDevice.updateEndpoints([{ path: idsToPaths[id], nodeId: (0, node_opcua_1.coerceNodeId)(id), value: { value: value, dataType: typeof value } }], isCov);
             });
         });
     }

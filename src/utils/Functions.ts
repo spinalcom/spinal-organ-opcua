@@ -25,7 +25,7 @@
 import { FileSystem, File as SpinalFile } from "spinal-core-connectorjs_type";
 import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { discover } from "../modules/SpinalDiscover";
-import { IOPCNode } from "../interfaces/OPCNode";
+import { IOPCNode, IServer } from "../interfaces/OPCNode";
 import { NodeClass } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
 import { spinalMonitoring } from "../modules/SpinalMonitoring";
@@ -225,7 +225,7 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 
 
 
-export function getServerUrl(serverInfo: any): string {
+export function getServerUrl(serverInfo: IServer): string {
 	let endpoint = serverInfo.endpoint || "";
 
 	if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;

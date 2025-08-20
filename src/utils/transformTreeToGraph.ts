@@ -5,6 +5,7 @@ import { NodeClass } from "node-opcua";
 
 import OPCUAService from "./OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
+import { normalizePath } from "./utils";
 
 export async function _transformTreeToGraphRecursively(context: SpinalContext, opcNode: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0) {
 
@@ -36,7 +37,7 @@ export async function getNodeAlreadyCreated(context: SpinalContext, network: Spi
 		const serverIsMatch = el.info.server?.address?.get() == serverInfo?.address && el.info.server?.port?.get() == serverInfo?.port;
 		if (!serverIsMatch) return false;
 		const key = el.info?.path?.get() || el.info?.idNetwork?.get();
-		return opcNode.path === key || opcNode.nodeId.toString() === key;
+		return normalizePath(opcNode.path) === key || opcNode.nodeId.toString() === key;
 	});
 
 
@@ -60,7 +61,7 @@ export async function getNodeAlreadyCreated(context: SpinalContext, network: Spi
 }
 
 async function getNodeAndRelation(opcNode: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, values: { [key: string]: any } = {}, depth: number = 0): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
-	const key = opcNode.path || opcNode.nodeId.toString();
+	const key = normalizePath(opcNode.path) || opcNode.nodeId.toString();
 	let spinalNode: SpinalNode = nodesAlreadyCreated[key];
 
 	if (!spinalNode) { // If the node does not exist, create it
@@ -79,7 +80,7 @@ async function getNodeAndRelation(opcNode: IOPCNode, nodesAlreadyCreated: { [key
 function _updateNodeInfo(spinalNode: SpinalNode, opcNode: IOPCNode): SpinalNode {
 	spinalNode.info.name.set(opcNode.displayName || opcNode.browseName);
 	spinalNode.info.idNetwork.set(opcNode.nodeId.toString());
-	spinalNode.info.path.set(opcNode.path || "");
+	spinalNode.info.path.set(normalizePath(opcNode.path) || "");
 
 	if (spinalNode.info.displayName) spinalNode.info.displayName.set(opcNode.displayName || opcNode.browseName);
 	if (spinalNode.info.browseName) spinalNode.info.browseName.set(opcNode.browseName || spinalNode.info.browseName);
@@ -99,7 +100,7 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 	};
 
 	if (OPCUAService.isVariable(node)) {
-		const key = node.path || node.nodeId.toString();
+		const key = normalizePath(node.path) || node.nodeId.toString();
 		const dataValue = values[key];
 		param = {
 			...param,
@@ -206,7 +207,7 @@ function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values:
 
 	//[TODO] use createOrUpdateAttrsAndCategories
 	const formatted = attributes.reduce((obj, el) => {
-		const key = el.path || el.nodeId.toString();
+		const key = normalizePath(el.path) || el.nodeId.toString();
 		const value = values[key]?.value || "";
 		obj[el.displayName] = value;
 		return obj;
@@ -219,7 +220,7 @@ function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values:
 	// return serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
 	// 	const promises = [];
 	// 	const formatted = attributes.map((el) => {
-	// 		const key = el.path || el.nodeId.toString();
+	// 		const key = normalizePath(el.path) || el.nodeId.toString();
 	// 		return {
 	// 			name: el.displayName,
 	// 			value: values[key]?.value || ""

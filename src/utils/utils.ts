@@ -105,6 +105,9 @@ export function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): b
 	return !_discoverModel || _discoverModel.state?.get() !== OPCUA_ORGAN_STATES.discovering;
 }
 
-export function normalizePath(path) {
+export function normalizePath(path: string): string {
+	if (!path) return null;
+	if (path.endsWith("/")) path = path.slice(0, -1);
+
 	return path.replace(/([^:]\/)\/+/g, "$1");
 }

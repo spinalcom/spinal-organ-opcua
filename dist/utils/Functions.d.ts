@@ -1,5 +1,5 @@
 import { SpinalOrganOPCUA } from "spinal-model-opcua";
-import { IOPCNode } from "../interfaces/OPCNode";
+import { IOPCNode, IServer } from "../interfaces/OPCNode";
 export declare const WaitModelReady: () => Promise<any>;
 export declare const connectionErrorCallback: (err?: Error) => void;
 export declare const CreateOrganConfigFile: (spinalConnection: any, path: string, connectorName: string) => Promise<SpinalOrganOPCUA>;
@@ -8,4 +8,4 @@ export declare const SpinalListnerCallback: (spinalListenerModel: SpinalOPCUALis
 export declare const SpinalDiscoverCallback: (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA) => Promise<void | boolean>;
 export declare const SpinalPilotCallback: (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA) => Promise<void>;
 export declare function getVariablesList(tree: IOPCNode): IOPCNode[];
-export declare function getServerUrl(serverInfo: any): string;
+export declare function getServerUrl(serverInfo: IServer): string;

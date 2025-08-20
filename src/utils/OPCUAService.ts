@@ -1,4 +1,4 @@
-import { OPCUAClient, ResultMask, NodeClass, NodeClassMask, OPCUAClientOptions, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, OPCUACertificateManager, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, MonitoringMode, ClientMonitoredItem, DataValue, DataType, NodeIdLike, coerceNodeId, makeResultMask, findBasicDataType, Variant, WriteValue, BrowsePath, ObjectIds, RelativePath, makeRelativePath, TranslateBrowsePathsToNodeIdsRequest, browseAll, INamespace, MonitoredItem, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, DeadbandType, StatusCode } from "node-opcua";
+import { OPCUAClient, NodeClass, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, DataValue, DataType, coerceNodeId, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, StatusCode, LocalizedText } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
@@ -24,19 +24,12 @@ export class OPCUAService extends EventEmitter {
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
 	private _discoverModel: SpinalOPCUADiscoverModel;
 
-	public isVariable = OPCUAService.isVariable;
+	public isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
 
 	public constructor(url: string, model?: SpinalOPCUADiscoverModel) {
 		super();
 		this.endpointUrl = url;
 		this._discoverModel = model;
-		// if (typeof modelOrUrl === "string")
-		//      this.endpointUrl = modelOrUrl;
-		// else {
-		//      const server = modelOrUrl.network.get();
-		//      this.endpointUrl = getServerUrl(server);
-		//      this._discoverModel = modelOrUrl;
-		// }
 	}
 
 	public async initialize() {
@@ -114,7 +107,7 @@ export class OPCUAService extends EventEmitter {
 		await this.connect(userIdentity);
 
 		// get the queue and nodesObj from the last discover or create a new one
-		let { nodesObj, queue, browseMode } = await this._getDiscoverData(entryPointPath, options.useLastResult);
+		let { nodesObj, queue, browseMode } = await this._getDiscoverStarterData(entryPointPath, options.useLastResult);
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
 
@@ -128,8 +121,9 @@ export class OPCUAService extends EventEmitter {
 
 			try {
 				discoverState = OPCUA_ORGAN_STATES.discovering; // set the state to discovering
+				const children = await this._browseNode(chunked); // browse the nodes in the queue
+				const newsItems = await this._addNodeToNodesObject(children, nodesObj); // add the new nodes to the nodesObj
 
-				const newsItems = await this._getChildrenAndAddToObj(chunked, nodesObj);
 				queue.push(...newsItems);
 
 				if (newsItems.length) console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
@@ -158,76 +152,18 @@ export class OPCUAService extends EventEmitter {
 	}
 
 
-
 	///////////////////////////////////////////////////////////////////////////
-	//                                      Exemple 2 : getTree (take a lot of time)                         //
-	///////////////////////////////////////////////////////////////////////////
-	// public async getTree2(entryPointPath?: string): Promise<any> {
-	//      console.log("discovering", this.endpointUrl || "", "inside getTree2, may take up to 1 hour or more...");
-	//      const tree = await this._getEntryPoint(entryPointPath);
-	//      const queue: any[] = [tree];
-	//      const variables = [];
-	//      const nodesObj = { [tree.nodeId.toString()]: tree };
 
-	//      while (queue.length) {
-	//              const node = queue.shift();
-	//              let _error = null;
-	//              let discoverState = OPCUA_ORGAN_STATES.discovering;
 
-	//              try {
-	//                      console.log("[getTree2] browsing", node.displayName);
-	//                      // if (this.isVariable(node)) variables.push(node.nodeId.toString());
-	//                      // const children = await this._browseNode(node);
-	//                      // node.children = children;
-	//                      // queue.push(...children);
-	//                      const children = await this._getChildrenAndAddToObj([node], nodesObj, variables);
-	//                      queue.push(...children);
-	//              } catch (error) {
-	//                      discoverState = OPCUA_ORGAN_STATES.error;
-	//                      queue.unshift(node);
-	//                      _error = error;
-	//                      console.log("error", error);
-	//              }
-
-	//              if (!_error && queue.length === 0) discoverState = OPCUA_ORGAN_STATES.discovered;
-	//              await discoveringStore.saveProgress(this.endpointUrl, tree, queue, discoverState);
-
-	//              if (_error) throw _error;
-	//      }
-
-	//      return { tree, variables };
-	// }
-
-	public async browseNodeRec(node: any) {
-		console.log("browsing", node.displayName, "inside browseNodeRec");
-		const children = await this._browseNode(node);
-		for (const child of children) {
-			await this.browseNodeRec(child);
-		}
-		node.children = children;
-		return children;
-
+	public async readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]> {
+		if (!Array.isArray(node)) node = [node];
+		return this.session.read(node);
 	}
 
-	///////////////////////////////////////////////////////////////////////////
+	public async getNodePath(nodeId: string | NodeId): Promise<string> {
 
-	public async _getChildrenAndAddToObj(nodes: IOPCNode[], nodesObj: { [key: string]: IOPCNode } = {}) {
-		const children = await this._browseNode(nodes);
+		if (typeof nodeId === "string") nodeId = coerceNodeId(nodeId);
 
-		for (const child of children) {
-			const parent = nodesObj[child.parentId];
-
-			// create the path based on the parent node
-			const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
-
-			child.path = normalizePath(path);
-			nodesObj[child.nodeId.toString()] = child;
-		}
-
-		return children;
-	}
-
-	public async extractBrowsePath(nodeId: NodeId): Promise<string> {
 		const browseName = await this._readBrowseName(nodeId);
 		const pathElements = [];
 		pathElements.push(`${browseName.namespaceIndex}:${browseName.name}`);
@@ -250,6 +186,7 @@ export class OPCUAService extends EventEmitter {
 		const a = await this.session.translateBrowsePath(makeBrowsePath("i=84", browsePath));
 		return browsePath + " (" + a.targets[0]?.targetId?.toString() + ")";
 	}
+
 
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{ dataType: string; value: any }[]> {
 		await this.initialize();
@@ -283,17 +220,19 @@ export class OPCUAService extends EventEmitter {
 
 		// const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
 
-		const PossibleDataType = await this._getDataType(value);
+		const PossibleDataType = await this._getPossibleDataType(value);
 
 		try {
 
 			let statusCode: StatusCode;
 			let isGood: boolean = false; // check we found a data type
 
+			// test each data type until we find a good one
 			while (!isGood && PossibleDataType.length) {
 				const dataType = PossibleDataType.shift();
 				if (!dataType) throw new Error("No data type found for value: " + value);
 				let tempValue = value;
+
 				if (dataType == DataType.Boolean) tempValue = value == 0 ? false : true; // convert 1 and 0 to boolean
 				statusCode = await (this.session as any).writeSingleNode(node.nodeId.toString(), { dataType, value: tempValue });
 
@@ -303,18 +242,6 @@ export class OPCUAService extends EventEmitter {
 
 			return StatusCodes;
 
-
-			// const _value = this._parseValue(valueRank, arrayDimension, dataType, value);
-			// console.log("Value in writeNode() => ", _value);
-			// const writeValue = new WriteValue({
-			// 	nodeId: node.nodeId,
-			// 	attributeId: AttributeIds.Value,
-			// 	value: { value: _value },
-			// });
-
-			// let statusCode = await this.session.write(writeValue);
-
-			// return statusCode;
 		} catch (error) {
 			console.log("error writing value", error);
 			return StatusCodes.BadInternalError;
@@ -348,6 +275,50 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
+	public async getNodeByPath(path?: string): Promise<IOPCNode> {
+
+		try {
+			if (!path.startsWith("/Objects")) path = "/Objects" + path;
+
+			if (path.endsWith("/")) path = path.slice(0, -1); // remove trailing slash
+
+			const browsePaths = makeBrowsePath("RootFolder", path);
+			const nodesFound = await this.session.translateBrowsePath(browsePaths);
+
+			if (!nodesFound.targets || nodesFound.targets.length === 0) return;
+
+			const startNodeId = nodesFound.targets[0].targetId?.toString();
+			if (!startNodeId) return;
+
+			const startNode = await this.readNodeDescription(startNodeId, path);
+
+			return startNode; // return the node with its children and path
+
+		} catch (error) {
+			return;
+		}
+
+	}
+
+
+	public static isVariable(node: IOPCNode): boolean {
+		return node.nodeClass === NodeClass.Variable;
+	}
+
+	public isObject(node: IOPCNode): boolean {
+		return node.nodeClass === NodeClass.Object;
+	}
+
+	public getNodesNewInfoByPath(nodes: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
+		if (!Array.isArray(nodes)) nodes = [nodes];
+
+		const promises = nodes.map(node => this.getNodeByPath(node.path));
+
+		return Promise.all(promises).then((result) => {
+			return result;
+		})
+	}
+
 	///////////////////////////////////////////////////////////////////////////
 
 
@@ -365,12 +336,6 @@ export class OPCUAService extends EventEmitter {
 
 	private _browseNode(node: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
 		node = Array.isArray(node) ? node : [node];
-
-		// const nodeToBrowse = node.reduce((list, n) => {
-		// 	const configs = convertToBrowseDescription(n);
-		// 	list.push(...configs);
-		// 	return list;
-		// }, []);
 
 		const nodeToBrowse = node.map((n) => convertToBrowseDescription(n)).flat();
 
@@ -394,29 +359,27 @@ export class OPCUAService extends EventEmitter {
 
 			return children;
 		}, []);
-
-		// const references = browseResults.map((el) => el.references).flat(); // each browseResult has an array of references for each description;
-		// return references.reduce((list, ref, index) => {
-		//      const refName = ref.displayName.text || ref.browseName?.toString();
-		//      if (!refName || refName.toLowerCase() === "server" || refName[0] === ".") return list; // skip server and hidden nodes
-
-		//      const parentId = (descriptions[index] as any)?.nodeId?.toString();
-		//      const formatted = this._formatReference(ref, "", parentId);
-		//      list.push(formatted);
-		//      return list;
-		// }, []);
 	}
 
-	private _getDataType(value: any): DataType[] {
-		// try {
-		// 	const dataTypeId = resolveNodeId(nodeId);
-		// 	const dataType = await findBasicDataType(this.session, dataTypeId);
-		// 	return dataType;
-		// } catch (error) {
-		// 	return this.detectOPCUAValueType(nodeId);
-		// }
 
-		if (!isNaN(value)) {
+	private async _addNodeToNodesObject(nodes: IOPCNode[], nodesObj: { [key: string]: IOPCNode } = {}) {
+		for (const child of nodes) {
+			const parent = nodesObj[child.parentId];
+
+			// create the path based on the parent node
+			const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
+
+			child.path = normalizePath(path);
+			nodesObj[child.nodeId.toString()] = child;
+		}
+
+		return nodes;
+	}
+
+	private _getPossibleDataType(value: any): DataType[] {
+
+		if (!isNaN(value)) { // if the value is a number
+
 			const numerics = [DataType.Float, DataType.Double, DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64]
 			if (value == 0 || value == 1)
 				return [...numerics, DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
@@ -424,16 +387,16 @@ export class OPCUAService extends EventEmitter {
 			return numerics; // if the value is a number, it can be a numeric type
 		}
 
-		if (typeof value == "string") {
+		if (typeof value == "string") { // if the value is a string
 			return [DataType.String, DataType.LocalizedText, DataType.XmlElement]; // if the value is a string, it can be a string or a localized text
 		}
 
 
-		if (typeof value == "boolean") {
+		if (typeof value == "boolean") { // if the value is a boolean
 			return [DataType.Boolean];
 		}
 
-		if (value instanceof Date) {
+		if (value instanceof Date) { // if the value is a Date
 			return [DataType.DateTime];
 		}
 
@@ -446,34 +409,25 @@ export class OPCUAService extends EventEmitter {
 			{ nodeId, attributeId: AttributeIds.BrowseName },
 			{ nodeId, attributeId: AttributeIds.DisplayName },
 			{ nodeId, attributeId: AttributeIds.NodeClass },
+			{ nodeId, attributeId: AttributeIds.Value },
 		];
 
-		const [displayNameData, browseNameData, nodeClassData] = await this.session.read(attributesToRead);
-		const displayName = displayNameData.value.value?.text || "";
-		const browseName = browseNameData.value.value?.name || "";
+		const [displayNameData, browseNameData, nodeClassData, valueData] = await this.session.read(attributesToRead);
+		const displayName = this._formatDataValue(displayNameData);
+		const browseName = this._formatDataValue(browseNameData);
 		const nodeClass = nodeClassData.value.value as NodeClass;
+		const value = this._formatDataValue(valueData);
 
 		return {
-			displayName,
-			browseName,
+			displayName: displayName?.value || "",
+			browseName: browseName?.value || "",
 			nodeId: coerceNodeId(nodeId),
 			nodeClass,
 			children: [],
 			path,
+			value
 		};
 	}
-
-
-	// private async _getNodesDetails(node: IOPCNode) {
-	// 	const arrayDimensionDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ArrayDimensions });
-	// 	const valueRankDataValue = await this.session.read({ nodeId: node.nodeId, attributeId: AttributeIds.ValueRank });
-
-	// 	const arrayDimension = arrayDimensionDataValue.value.value as null | number[];
-	// 	const valueRank = valueRankDataValue.value.value as number;
-	// 	const dataType = await this._getDataType(node.nodeId.toString());
-
-	// 	return { dataType, arrayDimension, valueRank };
-	// }
 
 	private async _getNodeParent(nodeId: NodeId): Promise<{ sep: string; parentNodeId: NodeId } | null> {
 		let browseResult = await this.session.browse({
@@ -509,15 +463,15 @@ export class OPCUAService extends EventEmitter {
 		return null;
 	}
 
-	private async _getDiscoverData(entryPointPath: string, useLastResult: boolean) {
-		let queue, nodesObj, browseMode;
+	private async _getDiscoverStarterData(entryPointPath: string, useLastResult: boolean) {
+		let queue, nodesObj;
 
+		let browseMode = "unicast"; //always use unicast browsing
 
 		try {
-			if (!useLastResult) throw new Error("no last result"); // throw error to force unicast browsing
+			if (!useLastResult) throw new Error("no last result"); // throw error to force new browsing
 
-			browseMode = "Multicast";
-			const data = await discoveringStore.getProgress(this.endpointUrl);
+			const data = await discoveringStore.getProgress(this.endpointUrl); // get the last discover data from the store
 
 			nodesObj = data.nodesObj;
 			queue = data.queue;
@@ -525,7 +479,6 @@ export class OPCUAService extends EventEmitter {
 		} catch (error) {
 			// if no last result or error in file reading, use unicast browsing
 
-			browseMode = "unicast";
 			let tree = await this._getEntryPoint(entryPointPath);
 			queue = [tree];
 			nodesObj = { [tree.nodeId.toString()]: tree };
@@ -534,21 +487,6 @@ export class OPCUAService extends EventEmitter {
 		return { queue, nodesObj, browseMode };
 	}
 
-	private async _convertTreeToObject(tree: IOPCNode) {
-		const obj = {};
-		const variables = [];
-		const stack = [tree];
-
-		while (stack.length) {
-			const node = stack.shift();
-			obj[node.nodeId.toString()] = node;
-			if (this.isVariable(node)) variables.push(node);
-
-			stack.push(...node.children);
-		}
-
-		return { obj, variables };
-	}
 
 	private async _convertObjToTree(entryPointPath: string, obj: { [key: string]: IOPCNode }): Promise<{ tree: IOPCNode, variables: string[] }> {
 		let tree = await this._getEntryPoint(entryPointPath);
@@ -567,8 +505,84 @@ export class OPCUAService extends EventEmitter {
 		tree = obj[tree.nodeId.toString()];
 		return { tree, variables }
 	}
+
+
+	///////////////////////////////////////////////////////
+	//                                      Utils                                                    //
+	///////////////////////////////////////////////////////
+
+	private async _getEntryPoint(entryPointPath?: string): Promise<IOPCNode> {
+		if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
+		if (!entryPointPath.startsWith("/")) entryPointPath = "/" + entryPointPath;
+
+		const node = await this.getNodeByPath(entryPointPath);
+		if (node) return node;
+
+		throw `No node found with entry point : ${entryPointPath}`;
+	}
+
+
+	private _formatReference(reference: ReferenceDescription, parentPath: string, parentId?: string): IOPCNode {
+		const name = reference.displayName.text || reference.browseName.toString();
+		const browseName = reference.browseName?.toString();
+
+		parentPath = parentPath.endsWith("/") ? parentPath : `${parentPath}/`;
+
+		return {
+			displayName: name,
+			browseName,
+			nodeId: reference.nodeId,
+			nodeClass: reference.nodeClass as number,
+			path: parentPath + browseName,
+			children: [],
+			parentId
+		};
+	}
+
+
+
+	private _formatDataValue(dataValue: any): { value: any; dataType: string } {
+
+
+		// if dataValue.value is not a Variant, return the value and dataType
+		if (typeof dataValue.value !== "object") {
+			dataValue.value = this._formatRealValue(dataValue.value); // format the value if it's not a Variant
+			return dataValue;
+		}
+
+		// if dataValue.value is a Variant return the value of the Variant
+		if (typeof dataValue?.value?.value !== "undefined") {
+			const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
+
+			if (dataValue?.value?.arrayType == VariantArrayType.Array) {
+				obj.value = obj.value = dataValue?.value?.value.join(",");
+			} else {
+				obj.value = this._formatRealValue(dataValue?.value?.value);
+			}
+
+			return obj;
+		}
+
+
+		return null;
+	}
+
+	private _formatRealValue(value) {
+		if (value instanceof QualifiedName) value = value.name; // if the value is a QualifiedName, get the name
+		if (value instanceof LocalizedText) value = value.text; // if the value is a LocalizedText, get the text
+
+		if (value == null) value = "null";
+
+		return value; // return the value as is
+	}
+
+	private async _readBrowseName(nodeId: NodeId): Promise<QualifiedName> {
+		const node = await this.session.read({ nodeId, attributeId: AttributeIds.BrowseName });
+		return node.value.value;
+	}
+
 	////////////////////////////////////////////////////////////
-	//                                                      Client                                            //
+	//                       Client                           //
 	////////////////////////////////////////////////////////////
 
 	private async _createSession(client?: OPCUAClient): Promise<ClientSession> {
@@ -630,171 +644,6 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	///////////////////////////////////////////////////////
-	//                                      Utils                                                    //
-	///////////////////////////////////////////////////////
-
-	private async _getEntryPoint(entryPointPath?: string): Promise<IOPCNode> {
-		let root: any = {
-			displayName: "Root",
-			nodeId: ObjectIds.RootFolder,
-			path: "/",
-			children: [],
-		};
-
-		if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
-		if (!entryPointPath.startsWith("/")) entryPointPath = "/" + entryPointPath;
-
-		return this._getEntryPointWithPath(root, entryPointPath);
-	}
-
-	private async _getEntryPointWithPath(start: any, entryPointPath?: string): Promise<IOPCNode> {
-
-		try {
-			if (!entryPointPath.startsWith("/Objects")) entryPointPath = "/Objects" + entryPointPath;
-			const browsePaths = makeBrowsePath("RootFolder", entryPointPath);
-			const nodesFound = await this.session.translateBrowsePath(browsePaths);
-
-			if (!nodesFound.targets || nodesFound.targets.length === 0) {
-				throw `No node found with entry point : ${entryPointPath}`;
-			}
-
-			const startNodeId = nodesFound.targets[0].targetId?.toString();
-			if (!startNodeId) throw `No node found with entry point : ${entryPointPath}`;
-
-			const startNode = await this.readNodeDescription(startNodeId, entryPointPath);
-
-			return startNode; // return the node with its children and path
-
-			return
-
-		} catch (error) {
-			throw `No node found with entry point : ${entryPointPath}`;
-		}
-
-
-
-
-		// const paths = entryPointPath.split("/").filter((el) => el !== "");
-		// let error;
-		// let node = start;
-		// let lastNode;
-
-		// while (paths.length && !error) {
-		// 	const path = paths.shift();
-		// 	const children = await this._browseNode(node);
-		// 	let found = children.find((el) => {
-		// 		const names = [el.displayName.toLocaleLowerCase(), el.browseName.toLocaleLowerCase()];
-		// 		return names.includes(path.toLocaleLowerCase());
-		// 	});
-
-		// 	if (!found) {
-		// 		error = `No node found with entry point : ${entryPointPath}`;
-		// 		break;
-		// 	}
-
-		// 	node = found;
-		// 	node
-		// 	if (paths.length === 0) lastNode = node;
-		// }
-
-		// if (error) throw new Error(error);
-
-		// return { ...lastNode, children: [], path: `/${paths.join("/")}` };
-	}
-
-	private _formatReference(reference: ReferenceDescription, parentPath: string, parentId?: string): IOPCNode {
-		const name = reference.displayName.text || reference.browseName.toString();
-		const browseName = reference.browseName?.toString();
-
-		parentPath = parentPath.endsWith("/") ? parentPath : `${parentPath}/`;
-
-		return {
-			displayName: name,
-			browseName,
-			nodeId: reference.nodeId,
-			nodeClass: reference.nodeClass as number,
-			path: parentPath + browseName,
-			children: [],
-			parentId
-		};
-	}
-
-	private _formatDataValue(dataValue: any): { value: any; dataType: string } {
-
-		// if dataValue.value is a Variant return the value of the Variant
-		if (typeof dataValue?.value?.value !== "undefined") {
-			const obj = { dataType: DataType[dataValue?.value?.dataType], value: undefined };
-
-			switch (dataValue?.value?.arrayType) {
-				/*case VariantArrayType.Scalar:
-					obj.value = dataValue?.value?.value;
-					break;
-					*/
-				case VariantArrayType.Array:
-					obj.value = dataValue?.value?.value.join(",");
-					break;
-				default:
-					let value = dataValue?.value?.value;
-					if (value == null) value = "null";
-
-					obj.value = value;
-					break;
-			}
-
-			return obj;
-		}
-
-		// if dataValue.value is not a Variant, return the value and dataType
-		if (typeof dataValue.value !== "object") {
-			if (dataValue.value == null) dataValue.value = "null";
-			return dataValue;
-		}
-
-		return null;
-	}
-
-	private async _readBrowseName(nodeId: NodeId): Promise<QualifiedName> {
-		const node = await this.session.read({ nodeId, attributeId: AttributeIds.BrowseName });
-		return node.value.value;
-	}
-
-	public static isVariable(node: IOPCNode): boolean {
-		return node.nodeClass === NodeClass.Variable;
-	}
-
-	public isObject(node: IOPCNode): boolean {
-		return node.nodeClass === NodeClass.Object;
-	}
-
-	private _parseValue(valueRank: number, arrayDimension: number[], dataType: DataType, value: any) {
-		const arrayType = valueRank === -1 ? VariantArrayType.Scalar : valueRank === 1 ? VariantArrayType.Array : VariantArrayType.Matrix;
-		const dimensions = arrayType === VariantArrayType.Matrix ? arrayDimension : undefined;
-
-		const _value = new Variant({
-			dataType,
-			arrayType,
-			dimensions,
-			value: coerceStringToDataType(dataType, arrayType, VariantArrayType, value),
-		});
-		return _value;
-	}
-
-	public async readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]> {
-		if (!Array.isArray(node)) node = [node];
-		return this.session.read(node);
-	}
-
-
-	private async detectOPCUAValueType(nodeId: string): Promise<DataType | undefined> {
-		const resValue = await this.readNodeValue({ nodeId: coerceNodeId(nodeId) });
-		const value = resValue[0];
-		if (!value) return;
-
-		if (value.dataType) return DataType[value.dataType];
-
-		return DataType[typeof value.value];
-	}
 
 }
 

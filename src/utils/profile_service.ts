@@ -25,7 +25,7 @@ export const INTERVAL_TO_ITEM = "hasItem";
 
 class OPCUAProfileService {
 
-    constructor() {}
+    constructor() { }
 
 
     static async getItems(profile: SpinalNode) {
@@ -64,7 +64,7 @@ class OPCUAProfileService {
 
 
     static async getSupervisionNode(profile) {
-        const children = await profile.getChildren([]);
+        const children = await profile.getChildren();
         return children.find(el => el.getName().get() === SUPERVISION_NAME);
     }
 

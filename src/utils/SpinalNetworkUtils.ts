@@ -71,6 +71,7 @@ export class SpinalNetworkUtils extends EventEmitter {
             node: profile,
             intervals
         }
+
         this.profiles.set(profileId, data);
 
 
