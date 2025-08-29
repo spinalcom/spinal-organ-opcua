@@ -191,6 +191,7 @@ function _createNodeAttributes(node, attributes, values = {}) {
         obj[el.displayName] = value;
         return obj;
     }, {});
+    //@ts-ignore
     return spinal_env_viewer_plugin_documentation_service_1.serviceDocumentation.createOrUpdateAttrsAndCategories(node, categoryName, formatted).then((result) => {
         return result;
     });

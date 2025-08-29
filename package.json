@@ -1,47 +1,47 @@
 {
-	"name": "spinal-organ-opcua",
-	"version": "1.8.15",
-	"description": "",
-	"main": "index.js",
-	"scripts": {
-		"clean": "rimraf dist",
-		"build": "npm run clean && tsc",
-		"start": "npm run build && node dist/index.js",
-		"pm2": "npm run build && pm2 start ecosystem.config.js",
-		"test": "npm run build && node dist/test.js"
-	},
-	"keywords": [],
-	"author": "",
-	"license": "ISC",
-	"dependencies": {
-		"@datastructures-js/priority-queue": "^5.1.1",
-		"axios-retry": "^4.5.0",
-		"big-json": "^3.1.0",
-		"dotenv": "^16.0.1",
-		"json5": "^2.2.0",
-		"lodash": "^4.17.21",
-		"node-gzip": "^1.1.2",
-		"node-opcua": "^2.119.2",
-		"pm2": "^4.5.6",
-		"three": "^0.143.0",
-		"ts-priority-queue": "^0.1.1",
-		"zlib": "^1.0.5"
-	},
-	"devDependencies": {
-		"@types/node": "^18.7.6",
-		"babel-cli": "^6.26.0",
-		"babel-preset-es2015": "^6.24.1",
-		"babel-preset-stage-2": "^6.24.1",
-		"babel-register": "^6.26.0",
-		"rimraf": "^5.0.5",
-		"tslint": "^6.1.3",
-		"typescript": "^4.1.3"
-	},
-	"spinalDependencies": {
-		"spinal-env-viewer-graph-service": "Spinal-Graph-Service",
-		"spinal-model-bmsnetwork": "spinal-model-bmsnetwork@bacnet",
-		"spinal-model-opcua": "spinal-model-opcua",
-		"spinal-model-timeseries": "spinal-model-timeseries",
-		"spinal-models-documentation": "spinal-models-documentation"
-	}
+  "name": "spinal-organ-opcua",
+  "version": "1.8.15",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "clean": "rimraf dist",
+    "build": "npm run clean && tsc",
+    "start": "npm run build && node dist/index.js",
+    "pm2": "npm run build && pm2 start ecosystem.config.js",
+    "test": "npm run build && node dist/test.js"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@datastructures-js/priority-queue": "^5.1.1",
+    "axios-retry": "^4.5.0",
+    "big-json": "^3.1.0",
+    "dotenv": "^16.0.1",
+    "json5": "^2.2.0",
+    "lodash": "^4.17.21",
+    "node-gzip": "^1.1.2",
+    "node-opcua": "^2.119.2",
+    "pm2": "^4.5.6",
+    "three": "^0.143.0",
+    "ts-priority-queue": "^0.1.1",
+    "zlib": "^1.0.5"
+  },
+  "devDependencies": {
+    "@types/node": "^18.7.6",
+    "babel-cli": "^6.26.0",
+    "babel-preset-es2015": "^6.24.1",
+    "babel-preset-stage-2": "^6.24.1",
+    "babel-register": "^6.26.0",
+    "rimraf": "^5.0.5",
+    "tslint": "^6.1.3",
+    "typescript": "^4.1.3"
+  },
+  "spinalDependencies": {
+    "spinal-env-viewer-graph-service": "Spinal-Graph-Service",
+    "spinal-model-bmsnetwork": "spinal-model-bmsnetwork@bacnet",
+    "spinal-model-opcua": "spinal-model-opcua@dev2",
+    "spinal-model-timeseries": "spinal-model-timeseries",
+    "spinal-models-documentation": "spinal-models-documentation"
+  }
 }

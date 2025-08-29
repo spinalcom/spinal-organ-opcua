@@ -23,7 +23,8 @@ const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);
         (0, Functions_1.GetPm2Instance)(name).then((app) => __awaiter(void 0, void 0, void 0, function* () {
             const restart = organModel.restart.get();
             if (!restart) {
-                listenLoadType(connect, organModel);
+                // listenLoadType(connect, organModel);
+                (0, Functions_1.bindModels)(connect, organModel);
                 return;
             }
             if (app) {
@@ -40,17 +41,17 @@ const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);
         }));
     });
 });
-const listenLoadType = (connect, organModel) => {
-    loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel) => {
-        (0, Functions_1.SpinalDiscoverCallback)(spinalDisoverModel, organModel);
-    }, Functions_1.connectionErrorCallback);
-    loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel) => {
-        (0, Functions_1.SpinalListnerCallback)(spinalListenerModel, organModel);
-    }, Functions_1.connectionErrorCallback);
-    loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel) => {
-        (0, Functions_1.SpinalPilotCallback)(spinalPilotModel, organModel);
-    }, Functions_1.connectionErrorCallback);
-};
+// const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA) => {
+// 	loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel: SpinalOPCUADiscoverModel) => {
+// 		SpinalDiscoverCallback(spinalDisoverModel, organModel);
+// 	}, connectionErrorCallback);
+// 	loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel: SpinalOPCUAListener) => {
+// 		SpinalListnerCallback(spinalListenerModel, organModel);
+// 	}, connectionErrorCallback);
+// 	loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel: SpinalOPCUAPilot) => {
+// 		SpinalPilotCallback(spinalPilotModel, organModel);
+// 	}, connectionErrorCallback);
+// };
 const loadTypeInSpinalCore = (connect, type, callback, errorCallback) => {
     spinal_core_connectorjs_type_1.spinalCore.load_type(connect, type, callback, errorCallback);
 };

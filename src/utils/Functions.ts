@@ -23,7 +23,7 @@
  */
 
 import { FileSystem, File as SpinalFile } from "spinal-core-connectorjs_type";
-import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
+import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, SpinalOPCUAListener, SpinalOPCUAPilot, ModelsInfo } from "spinal-model-opcua";
 import { discover } from "../modules/SpinalDiscover";
 import { IOPCNode, IServer } from "../interfaces/OPCNode";
 import { NodeClass } from "node-opcua";
@@ -161,46 +161,6 @@ async function checkOrgan(spinalOrgan: SpinalOPCUAListener | SpinalOPCUADiscover
 
 }
 
-export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA): Promise<void> => {
-	const itsForme = await checkOrgan(spinalListenerModel, organModel.id?.get());
-	if (itsForme) spinalMonitoring.addToMonitoringList(spinalListenerModel);
-};
-
-export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA): Promise<void | boolean> => {
-
-	try {
-		const itsForme = await checkOrgan(spinalDisoverModel, organModel.id?.get());
-
-		if (itsForme) {
-			const minute = 2 * (60 * 1000);
-			const time = Date.now();
-			const creation = spinalDisoverModel.creation?.get() || 0;
-
-			const state = spinalDisoverModel.state.get();
-			const timeout = time - creation >= minute;
-
-			// Check if model is not timeout.
-			if (timeout || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state)) throw "Time out !"
-
-			discover.addToQueue(spinalDisoverModel);
-		}
-	} catch (error) {
-		spinalDisoverModel.changeState(OPCUA_ORGAN_STATES.timeout);
-		return spinalDisoverModel.removeFromGraph();
-	}
-
-};
-
-export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA): Promise<void> => {
-	try {
-		const itsForme = await checkOrgan(spinalPilotModel, organModel.id?.get());
-
-		if (itsForme) spinalPilot.addToPilotList(spinalPilotModel);
-
-	} catch (error) { }
-
-};
-
 export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 	const variables = [];
 
@@ -221,10 +181,6 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 	}
 }
 
-
-
-
-
 export function getServerUrl(serverInfo: IServer): string {
 	let endpoint = serverInfo.endpoint || "";
 
@@ -234,3 +190,103 @@ export function getServerUrl(serverInfo: IServer): string {
 	const ip = serverInfo.address || serverInfo.ip;
 	return `opc.tcp://${ip}:${serverInfo.port}${endpoint}`;
 }
+
+
+export function bindModels(connect: FileSystem, organModel: SpinalOrganOPCUA) {
+	
+	const listenerAlreadyBind = new Set<string>();
+	const discoverAlreadyBind = new Set<string>();
+	
+	organModel.discover.modification_date.bind(async () => {
+		const discoverList: SpinalOPCUADiscoverModel[] = await organModel.getDiscoverModelFromGraph();
+
+		for (const spinalDisoverModel of discoverList) {
+			// SpinalDiscoverCallback(spinalDisoverModel, organModel);
+			if(discoverAlreadyBind.has(spinalDisoverModel._server_id)) continue;
+
+			SpinalDiscoverCallback(spinalDisoverModel);
+			discoverAlreadyBind.add(spinalDisoverModel._server_id);
+		}
+	}, true)
+
+	organModel.pilot.modification_date.bind(async () => {
+		const pilotList: SpinalOPCUAPilot[] = await organModel.getPilotModelFromGraph();
+		for (const spinalPilotModel of pilotList) {
+			// SpinalPilotCallback(spinalPilotModel, organModel);
+			SpinalPilotCallback(spinalPilotModel);
+		}
+	}, true)
+
+
+	organModel.listener.modification_date.bind(async () => {
+		const listenerList: SpinalOPCUAListener[] = await organModel.getListenerModelFromGraph();
+		for (const spinalListenerModel of listenerList) {
+			if (listenerAlreadyBind.has(spinalListenerModel._server_id)) continue;
+
+			// SpinalListnerCallback(spinalListenerModel, organModel);
+			SpinalListnerCallback(spinalListenerModel);
+			listenerAlreadyBind.add(spinalListenerModel._server_id);
+		}
+	}, true)
+	
+	// loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel: SpinalOPCUADiscoverModel) => {
+	// 	SpinalDiscoverCallback(spinalDisoverModel, organModel);
+	// }, connectionErrorCallback);
+
+	// loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel: SpinalOPCUAListener) => {
+	// 	SpinalListnerCallback(spinalListenerModel, organModel);
+	// }, connectionErrorCallback);
+
+	// loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel: SpinalOPCUAPilot) => {
+	// 	SpinalPilotCallback(spinalPilotModel, organModel);
+	// }, connectionErrorCallback);
+
+}
+
+
+
+
+// export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA): Promise<void> => {
+export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAListener): Promise<void> => {
+	// const itsForme = await checkOrgan(spinalListenerModel, organModel.id?.get());
+	// if (itsForme) spinalMonitoring.addToMonitoringList(spinalListenerModel);
+	spinalMonitoring.addToMonitoringList(spinalListenerModel);
+};
+
+// export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA): Promise<void | boolean> => {
+export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADiscoverModel): Promise<void | boolean> => {
+
+	try {
+		// const itsForme = await checkOrgan(spinalDisoverModel, organModel.id?.get());
+
+		// if (itsForme) {
+			const minute = 2 * (60 * 1000);
+			const time = Date.now();
+			const creation = spinalDisoverModel.creation?.get() || 0;
+
+			const state = spinalDisoverModel.state.get();
+			const timeout = time - creation >= minute;
+
+			// Check if model is not timeout.
+			if (timeout || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state)) throw "Time out !"
+
+			if(state === OPCUA_ORGAN_STATES.readyToDiscover) discover.addToQueue(spinalDisoverModel);
+		// }
+	} catch (error) {
+		spinalDisoverModel.changeState(OPCUA_ORGAN_STATES.timeout);
+		return spinalDisoverModel.removeFromGraph();
+	}
+
+};
+
+// export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA): Promise<void> => {
+export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot): Promise<void> => {
+	try {
+		// const itsForme = await checkOrgan(spinalPilotModel, organModel.id?.get());
+
+		// if (itsForme) spinalPilot.addToPilotList(spinalPilotModel);
+		spinalPilot.addToPilotList(spinalPilotModel);
+
+	} catch (error) { }
+
+};

@@ -213,6 +213,7 @@ function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values:
 		return obj;
 	}, {});
 
+	//@ts-ignore
 	return serviceDocumentation.createOrUpdateAttrsAndCategories(node, categoryName, formatted).then((result) => {
 		return result;
 	})
