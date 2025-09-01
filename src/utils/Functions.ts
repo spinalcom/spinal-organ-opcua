@@ -199,7 +199,7 @@ export function bindModels(connect: FileSystem, organModel: SpinalOrganOPCUA) {
 	
 	organModel.discover.modification_date.bind(async () => {
 		const discoverList: SpinalOPCUADiscoverModel[] = await organModel.getDiscoverModelFromGraph();
-
+		
 		for (const spinalDisoverModel of discoverList) {
 			// SpinalDiscoverCallback(spinalDisoverModel, organModel);
 			if(discoverAlreadyBind.has(spinalDisoverModel._server_id)) continue;
@@ -219,10 +219,13 @@ export function bindModels(connect: FileSystem, organModel: SpinalOrganOPCUA) {
 
 
 	organModel.listener.modification_date.bind(async () => {
-		const listenerList: SpinalOPCUAListener[] = await organModel.getListenerModelFromGraph();
-		for (const spinalListenerModel of listenerList) {
-			if (listenerAlreadyBind.has(spinalListenerModel._server_id)) continue;
+		const listenerList = await organModel.getListenerModelFromGraph();
 
+		for (let i = 0; i < listenerList.length; i++) {
+			const spinalListenerModel = listenerList[i];
+
+			if (listenerAlreadyBind.has(spinalListenerModel._server_id)) continue;
+			
 			// SpinalListnerCallback(spinalListenerModel, organModel);
 			SpinalListnerCallback(spinalListenerModel);
 			listenerAlreadyBind.add(spinalListenerModel._server_id);

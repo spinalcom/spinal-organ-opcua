@@ -1,6 +1,6 @@
 {
   "name": "spinal-organ-opcua",
-  "version": "1.8.15",
+  "version": "1.9.15",
   "description": "",
   "main": "index.js",
   "scripts": {

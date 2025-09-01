@@ -124,14 +124,19 @@ class SpinalDevice extends events_1.EventEmitter {
         });
     }
     _convertNodesToObj() {
-        return this.device.findInContext(this.context, (node) => {
-            var _a, _b, _c, _d;
-            const key = (0, utils_1.normalizePath)((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = node.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
-            if (key)
-                this.nodes[key] = node;
-            if (key && node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName)
-                this.endpoints[key] = node;
-            return true;
+        return __awaiter(this, void 0, void 0, function* () {
+            const nodesProm = this.device.findInContext(this.context, (node) => {
+                var _a, _b, _c, _d;
+                const key = (0, utils_1.normalizePath)((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = node.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
+                if (key)
+                    this.nodes[key] = node;
+                if (key && node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName)
+                    this.endpoints[key] = node;
+                return true;
+            });
+            const nodes = yield nodesProm;
+            this.isInit = true;
+            return nodes;
         });
     }
     _updateNodeInfo(opcNode, spinalNode) {

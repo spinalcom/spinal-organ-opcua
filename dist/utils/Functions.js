@@ -205,7 +205,8 @@ function bindModels(connect, organModel) {
     }), true);
     organModel.listener.modification_date.bind(() => __awaiter(this, void 0, void 0, function* () {
         const listenerList = yield organModel.getListenerModelFromGraph();
-        for (const spinalListenerModel of listenerList) {
+        for (let i = 0; i < listenerList.length; i++) {
+            const spinalListenerModel = listenerList[i];
             if (listenerAlreadyBind.has(spinalListenerModel._server_id))
                 continue;
             // SpinalListnerCallback(spinalListenerModel, organModel);

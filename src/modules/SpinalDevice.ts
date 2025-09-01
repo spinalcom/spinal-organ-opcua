@@ -140,14 +140,18 @@ export class SpinalDevice extends EventEmitter {
 		}
 	}
 
-	private _convertNodesToObj(): Promise<SpinalNode[]> {
-		return this.device.findInContext(this.context, (node) => {
+	private async _convertNodesToObj(): Promise<SpinalNode[]> {
+		const nodesProm = this.device.findInContext(this.context, (node) => {
 			const key = normalizePath(node.info?.path?.get()) || node.info?.idNetwork?.get()
 
 			if (key) this.nodes[key] = node;
 			if (key && node.getType().get() === SpinalBmsEndpoint.nodeTypeName) this.endpoints[key] = node;
 			return true;
 		});
+
+		const nodes = await nodesProm;
+		this.isInit = true;
+		return nodes;
 	}
 
 	private async _updateNodeInfo(opcNode: IOPCNode, spinalNode: SpinalNode) {

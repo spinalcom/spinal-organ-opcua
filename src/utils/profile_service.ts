@@ -49,10 +49,9 @@ class OPCUAProfileService {
             const intervals = await supervisionNode.getChildren(SUPERVISION_TO_INTERVAL);
             const promises = intervals.map(async node => {
                 const children = await node.getChildren(INTERVAL_TO_ITEM)
-                return {
-                    ...(node.info.get()),
-                    children: children.map(el => el.info.get())
-                }
+                const info = node.info.get();
+                info.children = children.map(el => el.info.get());
+                return info;
             })
 
             return Promise.all(promises);
@@ -64,7 +63,8 @@ class OPCUAProfileService {
 
 
     static async getSupervisionNode(profile) {
-        const children = await profile.getChildren();
+        const SUPERVISION_RELATION_NAME = "hasSupervision";
+        const children = await profile.getChildren([SUPERVISION_RELATION_NAME]);
         return children.find(el => el.getName().get() === SUPERVISION_NAME);
     }
 

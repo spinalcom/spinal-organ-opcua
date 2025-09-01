@@ -41,16 +41,22 @@ class SpinalMonitoring {
     }
     startDeviceInitialisation() {
         return __awaiter(this, void 0, void 0, function* () {
-            const modelInQueue = this.queue.getQueue();
-            this.queue.refresh();
-            const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
-            const devicesFlatted = lodash.flattenDeep(yield Promise.all(promises));
-            // const filtered = devices.filter(el => typeof el !== "undefined");
-            const validDevices = devicesFlatted.filter(el => !!el);
-            yield this._bindData(validDevices);
-            if (!this.isProcessing) {
-                this.isProcessing = true;
-                this.startMonitoring();
+            try {
+                const modelInQueue = this.queue.getQueue();
+                this.queue.refresh();
+                const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
+                const devicesResults = yield Promise.all(promises);
+                const devicesFlatted = lodash.flattenDeep(devicesResults);
+                // const filtered = devices.filter(el => typeof el !== "undefined");
+                const validDevices = devicesFlatted.filter(el => !!el);
+                yield this._bindData(validDevices);
+                if (!this.isProcessing) {
+                    this.isProcessing = true;
+                    this.startMonitoring();
+                }
+            }
+            catch (error) {
+                console.error(error);
             }
         });
     }

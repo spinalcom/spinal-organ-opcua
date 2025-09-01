@@ -51,7 +51,9 @@ class OPCUAProfileService {
                 const intervals = yield supervisionNode.getChildren(exports.SUPERVISION_TO_INTERVAL);
                 const promises = intervals.map((node) => __awaiter(this, void 0, void 0, function* () {
                     const children = yield node.getChildren(exports.INTERVAL_TO_ITEM);
-                    return Object.assign(Object.assign({}, (node.info.get())), { children: children.map(el => el.info.get()) });
+                    const info = node.info.get();
+                    info.children = children.map(el => el.info.get());
+                    return info;
                 }));
                 return Promise.all(promises);
             }
@@ -60,7 +62,8 @@ class OPCUAProfileService {
     }
     static getSupervisionNode(profile) {
         return __awaiter(this, void 0, void 0, function* () {
-            const children = yield profile.getChildren();
+            const SUPERVISION_RELATION_NAME = "hasSupervision";
+            const children = yield profile.getChildren([SUPERVISION_RELATION_NAME]);
             return children.find(el => el.getName().get() === exports.SUPERVISION_NAME);
         });
     }

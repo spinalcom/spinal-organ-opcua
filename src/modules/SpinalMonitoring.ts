@@ -34,25 +34,32 @@ class SpinalMonitoring {
 
     init() {
         this.queue.on("start", () => this.startDeviceInitialisation());
+
         this.spinalNetworkUtils.on("profileUpdated", ({ profileId, devicesIds }) => this._updateProfile(profileId, devicesIds));
     }
 
     public async startDeviceInitialisation() {
-        const modelInQueue = this.queue.getQueue();
-        this.queue.refresh();
+        try {
+            const modelInQueue = this.queue.getQueue();
+            this.queue.refresh();
 
-        const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
+            const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
+            const devicesResults = await Promise.all(promises);
+            const devicesFlatted = lodash.flattenDeep(devicesResults);
+            // const filtered = devices.filter(el => typeof el !== "undefined");
+            const validDevices = devicesFlatted.filter(el => !!el);
 
-        const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
-        // const filtered = devices.filter(el => typeof el !== "undefined");
-        const validDevices = devicesFlatted.filter(el => !!el);
+            await this._bindData(validDevices);
 
-        await this._bindData(validDevices);
-
-        if (!this.isProcessing) {
-            this.isProcessing = true;
-            this.startMonitoring();
+            if (!this.isProcessing) {
+                this.isProcessing = true;
+                this.startMonitoring();
+            }
+        } catch (error) {
+            console.error(error);
+            
         }
+        
     }
 
     public async startMonitoring() {
