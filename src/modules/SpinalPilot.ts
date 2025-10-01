@@ -78,11 +78,13 @@ class SpinalPilot {
          console.log(`send update request to ${request.nodeId} with value ${request.value}`);
 
          const url = getServerUrl(request.networkInfo);
+
          const opcuaService = new OPCUAService(url);
-
          await opcuaService.initialize();
-
          await opcuaService.connect();
+
+         const newNodeId = await opcuaService.getNodeIdByPath(request.path); // in case the nodeId has changed
+         if (newNodeId) request.nodeId = newNodeId; // update the nodeId
 
          await opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
 

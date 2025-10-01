@@ -240,11 +240,13 @@ export class OPCUAService extends EventEmitter {
 
 			}
 
-			return StatusCodes;
+			if (!isGood) throw new Error("Cannot write value: " + value + " to node: " + node.nodeId + " with any data type");
+			return statusCode;
 
 		} catch (error) {
-			console.log("error writing value", error);
-			return StatusCodes.BadInternalError;
+			// console.log("error writing value", error);
+			// return StatusCodes.BadInternalError;
+			throw error;
 		}
 	}
 
@@ -275,7 +277,8 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	public async getNodeByPath(path?: string): Promise<IOPCNode> {
+
+	public async getNodeIdByPath(path?: string): Promise<string> {
 
 		try {
 			if (!path.startsWith("/Objects")) path = "/Objects" + path;
@@ -287,7 +290,19 @@ export class OPCUAService extends EventEmitter {
 
 			if (!nodesFound.targets || nodesFound.targets.length === 0) return;
 
-			const startNodeId = nodesFound.targets[0].targetId?.toString();
+			return nodesFound.targets[0].targetId?.toString();
+
+		} catch (error) {
+			return;
+		}
+
+	}
+
+
+	public async getNodeByPath(path?: string): Promise<IOPCNode> {
+
+		try {
+			const startNodeId = await this.getNodeIdByPath(path);
 			if (!startNodeId) return;
 
 			const startNode = await this.readNodeDescription(startNodeId, path);

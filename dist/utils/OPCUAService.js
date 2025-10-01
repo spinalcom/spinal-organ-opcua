@@ -221,11 +221,14 @@ class OPCUAService extends events_1.EventEmitter {
                     if (statusCode.isGoodish())
                         isGood = true;
                 }
-                return node_opcua_1.StatusCodes;
+                if (!isGood)
+                    throw new Error("Cannot write value: " + value + " to node: " + node.nodeId + " with any data type");
+                return statusCode;
             }
             catch (error) {
-                console.log("error writing value", error);
-                return node_opcua_1.StatusCodes.BadInternalError;
+                // console.log("error writing value", error);
+                // return StatusCodes.BadInternalError;
+                throw error;
             }
         });
     }
@@ -253,7 +256,7 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    getNodeByPath(path) {
+    getNodeIdByPath(path) {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
@@ -265,7 +268,17 @@ class OPCUAService extends events_1.EventEmitter {
                 const nodesFound = yield this.session.translateBrowsePath(browsePaths);
                 if (!nodesFound.targets || nodesFound.targets.length === 0)
                     return;
-                const startNodeId = (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
+                return (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
+            }
+            catch (error) {
+                return;
+            }
+        });
+    }
+    getNodeByPath(path) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const startNodeId = yield this.getNodeIdByPath(path);
                 if (!startNodeId)
                     return;
                 const startNode = yield this.readNodeDescription(startNodeId, path);

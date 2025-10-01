@@ -79,6 +79,9 @@ class SpinalPilot {
                 const opcuaService = new OPCUAService_1.OPCUAService(url);
                 yield opcuaService.initialize();
                 yield opcuaService.connect();
+                const newNodeId = yield opcuaService.getNodeIdByPath(request.path); // in case the nodeId has changed
+                if (newNodeId)
+                    request.nodeId = newNodeId; // update the nodeId
                 yield opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
                 yield opcuaService.disconnect();
                 pilot.setSuccessMode();

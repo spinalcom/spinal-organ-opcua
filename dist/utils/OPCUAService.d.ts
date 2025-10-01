@@ -35,6 +35,7 @@ export declare class OPCUAService extends EventEmitter {
         value: any;
         dataType: string;
     }, monitorItem: ClientMonitoredItemBase) => any): Promise<void>;
+    getNodeIdByPath(path?: string): Promise<string>;
     getNodeByPath(path?: string): Promise<IOPCNode>;
     static isVariable(node: IOPCNode): boolean;
     isObject(node: IOPCNode): boolean;

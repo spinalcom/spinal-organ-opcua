@@ -7,3 +7,4 @@ PORT=8080                                       # hub port
 ORGAN_FOLDER_PATH="/__users__/admin/organs"     # the path to store/retrieve the connector config file
 
 OPCUA_SERVER_ENTRYPOINT="/"                     #if empty, the server will discover the default entry point (Objects Folder) otherwise, it will use the provided path.
+NODEOPCUA_LOG_LEVEL=3  # only display errors
