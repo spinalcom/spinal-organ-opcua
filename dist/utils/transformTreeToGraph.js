@@ -213,8 +213,16 @@ function _changeValueAndDataType(node, data) {
     return __awaiter(this, void 0, void 0, function* () {
         const element = yield node.getElement();
         // element.mod_attr("currentValue", data?.value || "null"); // may be bad if value is boolean
-        element.mod_attr("currentValue", data === null || data === void 0 ? void 0 : data.value);
-        element.mod_attr("dataType", (data === null || data === void 0 ? void 0 : data.dataType) || "");
+        // element.mod_attr("currentValue", data?.value);
+        if (typeof element.currentValue === "undefined")
+            element.add_attr({ currentValue: data === null || data === void 0 ? void 0 : data.value });
+        else
+            element.currentValue.set(data === null || data === void 0 ? void 0 : data.value);
+        // element.mod_attr("dataType", data?.dataType || "");
+        if (typeof element.dataType === "undefined")
+            element.add_attr({ dataType: (data === null || data === void 0 ? void 0 : data.dataType) || "" });
+        else
+            element.dataType.set((data === null || data === void 0 ? void 0 : data.dataType) || "");
     });
 }
 //# sourceMappingURL=transformTreeToGraph.js.map

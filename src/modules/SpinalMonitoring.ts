@@ -191,7 +191,7 @@ class SpinalMonitoring {
     private _addItemToPriorityQueue(interval: number) {
         const priorityQueueData: PriorityQueueItem<{ interval }>[] = this.priorityQueue.toArray();
 
-        const intervalFound = priorityQueueData.find((priority: any) => priority.interval === interval);
+        const intervalFound = priorityQueueData.find((priority: any) => priority.interval == interval);
 
         if (!intervalFound) this.priorityQueue.enqueue({ interval }, interval + Date.now());
 
