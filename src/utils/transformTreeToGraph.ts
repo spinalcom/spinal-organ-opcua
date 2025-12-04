@@ -238,7 +238,11 @@ function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values:
 
 async function _changeValueAndDataType(node: SpinalNode, data: { value: any; dataType: string }) {
 	const element = await node.getElement();
-	// element.mod_attr("currentValue", data?.value || "null"); // may be bad if value is boolean
-	element.mod_attr("currentValue", data?.value);
-	element.mod_attr("dataType", data?.dataType || "");
+	// element.mod_attr("currentValue", data?.value);
+	if (typeof element.currentValue === "undefined") element.add_attr({ currentValue: data?.value });
+	else element.currentValue.set(data?.value);
+
+	// element.mod_attr("dataType", data?.dataType || "");
+	if (typeof element.dataType === "undefined") element.add_attr({ dataType: data?.dataType || "" });
+	else element.dataType.set(data?.dataType || "");
 }

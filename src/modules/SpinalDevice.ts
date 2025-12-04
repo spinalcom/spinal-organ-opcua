@@ -122,7 +122,9 @@ export class SpinalDevice extends EventEmitter {
 			const element = await endpointNode.getElement(true);
 			if (!element) return false;
 
-			element.mod_attr("currentValue", value);
+			// element.mod_attr("currentValue", value);
+			if (typeof element.currentValue === "undefined") element.add_attr({ currentValue: value });
+			else element.currentValue.set(value);
 
 			// avertir du changement de valeur, le log du cov est fait dans son callback
 			if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.info?.idNetwork?.get()} changed value to`, value);
