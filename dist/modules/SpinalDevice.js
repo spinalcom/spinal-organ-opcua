@@ -61,7 +61,14 @@ class SpinalDevice extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.isInit)
                 return;
-            return this._convertNodesToObj();
+            return this._convertNodesToObj().then((result) => {
+                this.isInit = true;
+                console.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
+                return result;
+            }).catch((err) => {
+                console.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${err.message}`);
+            });
+            ;
         });
     }
     updateEndpoints(nodes, isCov = false) {

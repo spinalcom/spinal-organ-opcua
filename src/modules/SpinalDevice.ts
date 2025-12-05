@@ -68,7 +68,13 @@ export class SpinalDevice extends EventEmitter {
 
 	public async init() {
 		if (this.isInit) return;
-		return this._convertNodesToObj();
+		return this._convertNodesToObj().then((result) => {
+			this.isInit = true;
+			console.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
+			return result;
+		}).catch((err) => {
+			console.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${err.message}`);
+		});;
 	}
 
 	public async updateEndpoints(nodes: IOPCNode[], isCov: boolean = false) {

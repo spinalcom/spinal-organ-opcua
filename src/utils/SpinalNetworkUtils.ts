@@ -49,7 +49,10 @@ export class SpinalNetworkUtils extends EventEmitter {
         const profileData = await this.initProfile(profile, device.getId().get());
 
         const spinalDevice = new SpinalDevice(serverinfo, context, network, device, spinalListenerModel, profileData);
-        await spinalDevice.init();
+
+        // if (spinalListenerModel.monitored?.get()) {
+        spinalDevice.init();
+        // }
 
         // const deviceId = spinalDevice.deviceInfo.id;
 

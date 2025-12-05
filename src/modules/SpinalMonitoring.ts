@@ -20,10 +20,11 @@ class SpinalMonitoring {
     private intervalTimesMap: Map<number, { [key: string]: ISpinalInterval[] }> = new Map();
 
     private initializedMap: Map<string, boolean> = new Map();
-    private spinalDevices: Map<string, SpinalDevice> = new Map();
+    private spinalDevicesStore: Map<string, SpinalDevice> = new Map();
     private idNetworkToSpinalDevice: Map<string, SpinalDevice> = new Map();
     private spinalNetworkUtils: SpinalNetworkUtils = SpinalNetworkUtils.getInstance();
     private covItemToMonitoring: Map<string, ClientMonitoredItemBase> = new Map();
+    private addToMonitoringMapQueue: SpinalQueuing = new SpinalQueuing();
 
 
     constructor() { }
@@ -35,24 +36,48 @@ class SpinalMonitoring {
     init() {
         this.queue.on("start", () => this.startDeviceInitialisation());
         this.spinalNetworkUtils.on("profileUpdated", ({ profileId, devicesIds }) => this._updateProfile(profileId, devicesIds));
+        this.addToMonitoringMapQueue.on("start", async () => this._addAllDeviceDataToMaps());
     }
 
     public async startDeviceInitialisation() {
-        const modelInQueue = this.queue.getQueue();
-        this.queue.refresh();
+        const modelInQueue = this.queue.getQueue(); // get all models as array
+        this.queue.refresh(); // clear the queue
 
-        const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
+        console.log(`Starting initialization of ${modelInQueue.length} devices`);
 
-        const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
-        // const filtered = devices.filter(el => typeof el !== "undefined");
-        const validDevices = devicesFlatted.filter(el => !!el);
+        const devices = await this.initAllListenersModels(modelInQueue);
 
-        await this._bindData(validDevices);
+        console.log(`${devices.length} devices initialized successfully`);
+        // const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
+
+        // const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
+        // const validDevices = devicesFlatted.filter(el => !!el);
+        console.log(`Starting to bind to devices`);
+        await this._bindDevices(devices);
 
         if (!this.isProcessing) {
             this.isProcessing = true;
             this.startMonitoring();
         }
+    }
+
+
+    public async initAllListenersModels(spinalListenerModels: SpinalOPCUAListener[]): Promise<SpinalDevice[]> {
+        const devices = [];
+        for (const model of spinalListenerModels) {
+            const modelData = await this.spinalNetworkUtils.initSpinalListenerModel(model);
+            devices.push(modelData);
+        }
+
+        return new Promise((resolve, reject) => {
+            const interval = setInterval(() => {
+                const allInitialized = devices.every((device) => device?.isInit);
+                if (allInitialized) {
+                    clearInterval(interval);
+                    resolve(devices.filter(el => !!el));
+                }
+            }, 400)
+        });
     }
 
     public async startMonitoring() {
@@ -68,17 +93,14 @@ class SpinalMonitoring {
 
             if (!data) continue; // if no data for this interval, continue to next iteration and not add to the queue
 
-
             // if the priority is greater than the current time, we need to wait for the next iteration
             if (priority > Date.now()) {
                 this.priorityQueue.enqueue({ interval: intervalData.interval }, priority);
-                await this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
+                await this.waitFct(900); // wait 900ms before next iteration (it's less than 1s to avoid busy waiting)
                 continue;
             }
 
             await this.updateData(data, intervalData.interval, priority);
-
-
         }
     }
 
@@ -96,7 +118,7 @@ class SpinalMonitoring {
 
             const promises = Object.keys(valuesObj).map((deviceId) => {
 
-                const device = this.spinalDevices.get(deviceId);
+                const device = this.spinalDevicesStore.get(deviceId);
                 if (!device) return;
 
                 return device.updateEndpoints(valuesObj[deviceId]);
@@ -115,21 +137,21 @@ class SpinalMonitoring {
     }
 
 
-    private _bindData(data: SpinalDevice[]) {
-        for (const spinalDevice of data) {
-            this.spinalDevices.set(spinalDevice.deviceInfo.id, spinalDevice);
+    private _bindDevices(devices: SpinalDevice[]) {
+        for (const spinalDevice of devices) {
+            this.spinalDevicesStore.set(spinalDevice.deviceInfo.id, spinalDevice); // save the device in the map to be able to retrieve it later
+
             const spinalModel = spinalDevice.spinalListenerModel;
-            // const network = spinalDevice.network;
             const profile = spinalDevice.profile;
 
             spinalModel.monitored.bind(async () => {
-                const monitored = spinalModel.monitored.get();
+                const deviceIsMonitored = spinalModel.monitored.get();
                 const deviceInfo = spinalDevice.deviceInfo;
 
                 // const serverInfo = network.info.serverInfo.get()
                 const url = getServerUrl(spinalDevice.server);
 
-                if (!monitored) {
+                if (!deviceIsMonitored) {
                     console.log(deviceInfo.name, "is stopped");
                     this._removeFromMaps(deviceInfo.id, url);
                     this._stopCovItems(deviceInfo.id);
@@ -137,13 +159,23 @@ class SpinalMonitoring {
                 }
 
                 console.log(deviceInfo.name, "is monitored");
-                await this._addToMaps(url, spinalDevice, profile);
+                this.addToMonitoringMapQueue.addToQueue({ url, spinalDevice, profile });
+                // await this._addDeviceDataToMaps(url, spinalDevice, profile);
 
             })
         }
     }
 
-    private async _addToMaps(url: string, spinalDevice: SpinalDevice, profile: IProfile) {
+    private async _addAllDeviceDataToMaps() {
+        const queueData = this.addToMonitoringMapQueue.getQueue(); // get all models as array
+        this.addToMonitoringMapQueue.refresh(); // clear the queue
+
+        for (const { url, spinalDevice, profile } of queueData) {
+            await this._addDeviceDataToMaps(url, spinalDevice, profile);
+        }
+    }
+
+    private async _addDeviceDataToMaps(url: string, spinalDevice: SpinalDevice, profile: IProfile) {
 
         for (const intervalData of profile.intervals) {
             if (isNaN(intervalData.value) || !intervalData.children?.length) continue;
@@ -158,7 +190,6 @@ class SpinalMonitoring {
             // add to interval map
             await this._addItemTointervalMap(url, spinalDevice, intervalData);
             await this._addItemToPriorityQueue(interval);
-
         }
 
     }
@@ -191,8 +222,8 @@ class SpinalMonitoring {
     private _addItemToPriorityQueue(interval: number) {
         const priorityQueueData: PriorityQueueItem<{ interval }>[] = this.priorityQueue.toArray();
 
-        const intervalFound = priorityQueueData.find((priority: any) => priority.interval == interval);
-
+        const intervalFound = priorityQueueData.find((priority: any) => priority.element?.interval == interval);
+        console.log("Interval found in priority queue:", !!intervalFound, interval);
         if (!intervalFound) this.priorityQueue.enqueue({ interval }, interval + Date.now());
 
         return intervalFound;
@@ -294,7 +325,7 @@ class SpinalMonitoring {
 
     private _updateProfile(profileId: string, devicesIds: string[]) {
         return devicesIds.map((deviceId) => {
-            const device = this.spinalDevices.get(deviceId);
+            const device = this.spinalDevicesStore.get(deviceId);
             if (!device) return;
 
             device.restartMonitoring();

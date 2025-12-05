@@ -32,7 +32,9 @@ class SpinalNetworkUtils extends stream_1.EventEmitter {
             const serverinfo = ((_a = device.info.server) === null || _a === void 0 ? void 0 : _a.get()) || {};
             const profileData = yield this.initProfile(profile, device.getId().get());
             const spinalDevice = new SpinalDevice_1.SpinalDevice(serverinfo, context, network, device, spinalListenerModel, profileData);
-            yield spinalDevice.init();
+            // if (spinalListenerModel.monitored?.get()) {
+            spinalDevice.init();
+            // }
             // const deviceId = spinalDevice.deviceInfo.id;
             return spinalDevice;
         });
