@@ -240,6 +240,8 @@ export class OPCUAService extends EventEmitter {
 
 			}
 
+			console.log(statusCode);
+
 			if (!isGood) throw new Error("Cannot write value: " + value + " to node: " + node.nodeId + " with any data type");
 			return statusCode;
 

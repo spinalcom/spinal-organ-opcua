@@ -88,7 +88,7 @@ class SpinalPilot {
                 console.log(`[${request.nodeId}] updated successfully`);
             }
             catch (error) {
-                console.log(`the update of [${request.nodeId}] failed`);
+                console.log(`the update of [${request.nodeId}] failed due to error: ${error.message}`);
                 pilot.setErrorMode();
             }
             yield pilot.removeFromNode();

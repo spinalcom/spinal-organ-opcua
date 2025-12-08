@@ -132,7 +132,8 @@ export class SpinalDevice extends EventEmitter {
 			else element.currentValue.set(value);
 
 			// avertir du changement de valeur, le log du cov est fait dans son callback
-			if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.info?.idNetwork?.get()} changed value to`, value);
+			// if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.info?.idNetwork?.get()} changed value to`, value);
+			if (!cov) console.log(`[${endpointNode.info?.path?.get().replace("/Objects", "")}] changed value to`, value);
 
 			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
 				const spinalServiceTimeseries = new SpinalServiceTimeseries();

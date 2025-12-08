@@ -40,6 +40,7 @@ class SpinalQueuing extends events_1.EventEmitter {
     }
     refresh() {
         this.queueList = [];
+        this.finish();
     }
     getQueue() {
         return [...this.queueList];

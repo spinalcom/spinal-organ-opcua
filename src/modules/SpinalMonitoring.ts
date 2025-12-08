@@ -52,7 +52,7 @@ class SpinalMonitoring {
 
         // const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
         // const validDevices = devicesFlatted.filter(el => !!el);
-        console.log(`Starting to bind to devices`);
+        console.log(`Starting to bind devices`);
         await this._bindDevices(devices);
 
         if (!this.isProcessing) {

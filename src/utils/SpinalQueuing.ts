@@ -46,6 +46,7 @@ export class SpinalQueuing extends EventEmitter {
 
 	public refresh() {
 		this.queueList = [];
+		this.finish();
 	}
 
 	public getQueue(): any[] {

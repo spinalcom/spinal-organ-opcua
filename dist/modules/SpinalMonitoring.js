@@ -50,7 +50,7 @@ class SpinalMonitoring {
             // const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
             // const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
             // const validDevices = devicesFlatted.filter(el => !!el);
-            console.log(`Starting to bind to devices`);
+            console.log(`Starting to bind devices`);
             yield this._bindDevices(devices);
             if (!this.isProcessing) {
                 this.isProcessing = true;
@@ -88,11 +88,10 @@ class SpinalMonitoring {
                 const data = this.intervalTimesMap.get(intervalData.interval);
                 if (!data)
                     continue; // if no data for this interval, continue to next iteration and not add to the queue
-                console.log(this.priorityQueue.size(), "items in the priority queue");
                 // if the priority is greater than the current time, we need to wait for the next iteration
                 if (priority > Date.now()) {
                     this.priorityQueue.enqueue({ interval: intervalData.interval }, priority);
-                    yield this.waitFct(900); // wait pour ne pas avoir une boucle infinie et pour detecter les changements de priorité
+                    yield this.waitFct(900); // wait 900ms before next iteration (it's less than 1s to avoid busy waiting)
                     continue;
                 }
                 yield this.updateData(data, intervalData.interval, priority);

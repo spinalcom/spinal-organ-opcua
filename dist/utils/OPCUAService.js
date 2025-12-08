@@ -221,6 +221,7 @@ class OPCUAService extends events_1.EventEmitter {
                     if (statusCode.isGoodish())
                         isGood = true;
                 }
+                console.log(statusCode);
                 if (!isGood)
                     throw new Error("Cannot write value: " + value + " to node: " + node.nodeId + " with any data type");
                 return statusCode;
