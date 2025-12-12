@@ -3,6 +3,7 @@ import { OPCUAService } from "../utils/OPCUAService";
 import { getServerUrl } from "../utils/Functions";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalOPCUAPilot, IRequest } from "spinal-model-opcua";
+import OPCUAFactory from "../utils/OPCUAFactory";
 
 
 class SpinalPilot {
@@ -79,16 +80,17 @@ class SpinalPilot {
 
          const url = getServerUrl(request.networkInfo);
 
-         const opcuaService = new OPCUAService(url);
-         await opcuaService.initialize();
-         await opcuaService.connect();
+         const opcuaService = OPCUAFactory.getOPCUAInstance(url);
+         await opcuaService.checkAndRetablishConnection();
 
          const newNodeId = await opcuaService.getNodeIdByPath(request.path); // in case the nodeId has changed
          if (newNodeId) request.nodeId = newNodeId; // update the nodeId
 
          await opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
 
-         await opcuaService.disconnect();
+         // Disable disconnect to keep the connection alive for future requests
+         // await opcuaService.disconnect(); // disconnect after the write operation
+
          pilot.setSuccessMode();
          console.log(`[${request.nodeId}] updated successfully`);
 

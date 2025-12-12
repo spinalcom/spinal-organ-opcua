@@ -18,6 +18,7 @@ const make_certificate_1 = require("../utils/make_certificate");
 const discoveringProcessStore_1 = require("./discoveringProcessStore");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
 const constants_1 = require("./constants");
+const OPCUAFactory_1 = require("./OPCUAFactory");
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class OPCUAService extends events_1.EventEmitter {
     constructor(url, model) {
@@ -25,73 +26,19 @@ class OPCUAService extends events_1.EventEmitter {
         this.userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
         this.verbose = false;
         this.endpointUrl = "";
-        this.monitoredItemsListData = [];
+        this.monitoredItemsData = [];
         this.clientAlarms = new node_opcua_1.ClientAlarmList();
         this.isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
-        this._restartConnection = () => __awaiter(this, void 0, void 0, function* () {
-            try {
-                yield this.client.disconnect();
-                yield this.client.connect(this.endpointUrl);
-            }
-            catch (error) {
-                console.log("OpcUa: restartConnection", error);
-            }
-        });
+        this.isReconnecting = false;
         this.endpointUrl = url;
         this._discoverModel = model;
     }
-    initialize() {
+    checkAndRetablishConnection() {
         return __awaiter(this, void 0, void 0, function* () {
-            const { certificateFile, clientCertificateManager, applicationUri, applicationName } = yield make_certificate_1.default;
-            this.client = node_opcua_1.OPCUAClient.create({
-                securityMode: node_opcua_1.MessageSecurityMode.None,
-                securityPolicy: node_opcua_1.SecurityPolicy.None,
-                endpointMustExist: false,
-                defaultSecureTokenLifetime: 30 * 1000,
-                requestedSessionTimeout: 50 * 1000,
-                keepSessionAlive: true,
-                transportTimeout: 60 * 1000,
-                connectionStrategy: {
-                    maxRetry: 3,
-                    initialDelay: 1000,
-                    // maxDelay: 10 * 1000,
-                },
-            });
-            this._listenClientEvents();
-        });
-    }
-    createSubscription() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!this.session) {
-                yield this._createSession();
-            }
-            try {
-                const parameters = {
-                    requestedPublishingInterval: 10 * 1000,
-                    requestedLifetimeCount: 100,
-                    requestedMaxKeepAliveCount: 4,
-                    maxNotificationsPerPublish: 10,
-                    publishingEnabled: true,
-                    priority: 1 // Donne une priorité à la subscription
-                };
-                this.subscription = yield this.session.createSubscription2(parameters);
-            }
-            catch (error) {
-                console.log("cannot create subscription !", error.message);
-            }
-        });
-    }
-    connect(userIdentity) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                this.userIdentity = userIdentity || { type: node_opcua_1.UserTokenType.Anonymous };
-                yield this.client.connect(this.endpointUrl);
-                yield this._createSession();
-                yield this.createSubscription();
-            }
-            catch (error) {
-                throw error;
-            }
+            if (this.client && this.session)
+                return;
+            yield this.createClient();
+            yield this.connect(userIdentity);
         });
     }
     disconnect() {
@@ -101,6 +48,7 @@ class OPCUAService extends events_1.EventEmitter {
                 this.session = undefined;
                 yield session.close();
             }
+            OPCUAFactory_1.default.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
             yield this.client.disconnect();
         });
     }
@@ -110,7 +58,7 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
-            yield this.initialize();
+            yield this.createClient();
             yield this.connect(userIdentity);
             // get the queue and nodesObj from the last discover or create a new one
             let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(entryPointPath, options.useLastResult);
@@ -181,8 +129,7 @@ class OPCUAService extends events_1.EventEmitter {
     }
     readNodeValue(node) {
         return __awaiter(this, void 0, void 0, function* () {
-            yield this.initialize();
-            yield this.connect(userIdentity);
+            yield this.checkAndRetablishConnection();
             if (!this.session) {
                 this._createSession();
             }
@@ -233,13 +180,18 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    monitorItem(nodeIds, callback) {
+    monitorItem(nodeIds, callback, isReconnection = false) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!this.subscription) {
                 yield this.createSubscription();
             }
             ;
             nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
+            // if not reconnection save the monitored items for reconnexion}
+            if (!isReconnection) {
+                const data = { ids: nodeIds, callback };
+                this.monitoredItemsData.push(data);
+            }
             const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: node_opcua_1.AttributeIds.Value }));
             const parameters = {
                 samplingInterval: 3 * 1000,
@@ -305,6 +257,80 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////////////////////////
+    createClient() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.client) {
+                const { certificateFile, clientCertificateManager, applicationUri, applicationName } = yield make_certificate_1.default;
+                this.client = node_opcua_1.OPCUAClient.create({
+                    securityMode: node_opcua_1.MessageSecurityMode.None,
+                    securityPolicy: node_opcua_1.SecurityPolicy.None,
+                    endpointMustExist: false,
+                    defaultSecureTokenLifetime: 30 * 1000,
+                    requestedSessionTimeout: 50 * 1000,
+                    keepSessionAlive: true,
+                    transportTimeout: 5 * 60 * 1000,
+                    connectionStrategy: {
+                        maxRetry: 3,
+                        initialDelay: 1000,
+                        // maxDelay: 10 * 1000,
+                    },
+                });
+                this._listenClientEvents();
+            }
+            return this.client;
+        });
+    }
+    createSubscription() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session) {
+                yield this._createSession();
+            }
+            try {
+                const parameters = {
+                    requestedPublishingInterval: 10 * 1000,
+                    requestedLifetimeCount: 100,
+                    requestedMaxKeepAliveCount: 4,
+                    maxNotificationsPerPublish: 10,
+                    publishingEnabled: true,
+                    priority: 1 // Donne une priorité à la subscription
+                };
+                this.subscription = yield this.session.createSubscription2(parameters);
+            }
+            catch (error) {
+                console.log("cannot create subscription !", error.message);
+            }
+        });
+    }
+    connect(userIdentity) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                this.userIdentity = userIdentity || { type: node_opcua_1.UserTokenType.Anonymous };
+                yield this.client.connect(this.endpointUrl);
+                yield this._createSession();
+                yield this.createSubscription();
+            }
+            catch (error) {
+                throw error;
+            }
+        });
+    }
+    reconnect() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                if (this.isReconnecting)
+                    return;
+                this.isReconnecting = true;
+                yield this.client.disconnect();
+                yield this.connect();
+                this.isReconnecting = false;
+            }
+            catch (error) {
+                console.log(`Reconnection failed to ${this.endpointUrl}`, error);
+                this.isReconnecting = false;
+                // OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
+            }
+        });
+    }
     _listenMonitoredItemEvents(monitoredItem, callback) {
         monitoredItem.on("changed", (dataValue) => {
             const value = this._formatDataValue(dataValue);
@@ -544,34 +570,41 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _listenClientEvents() {
         this.client.on("backoff", (number, delay) => {
-            if (number === 1)
-                return this.client.disconnect();
-            console.log(`connection failed, retrying attempt ${number + 1}`);
+            // if (number === 1) return this.client.disconnect();
+            // console.log(`connection failed, retrying attempt ${number + 1}`)
         });
-        this.client.on("start_reconnection", () => console.log("Starting reconnection...." + this.endpointUrl));
-        this.client.on("connection_reestablished", () => console.log("CONNECTION RE-ESTABLISHED !! " + this.endpointUrl));
-        // monitoring des lifetimes
-        this.client.on("lifetime_75", (token) => {
-            if (this.verbose)
-                console.log("received lifetime_75 on " + this.endpointUrl);
+        // this.client.on("start_reconnection", () => console.log("Starting reconnection to" + this.endpointUrl));
+        this.client.on("after_reconnection", () => {
+            const isReconnection = true;
+            for (const { ids, callback } of this.monitoredItemsData) {
+                this.monitorItem(ids, callback, isReconnection);
+            }
         });
-        this.client.on("security_token_renewed", () => {
-            if (this.verbose)
-                console.log(" security_token_renewed on " + this.endpointUrl);
+        this.client.on("connection_lost", () => {
+            this.reconnect();
         });
-        this.client.on("timed_out_request", (request) => {
-            this.emit("timed_out_request", request);
-        });
+        // this.client.on("connection_reestablished", () => console.log("CONNECTION RE-ESTABLISHED !! " + this.endpointUrl));
+        // // monitoring des lifetimes
+        // this.client.on("lifetime_75", (token) => {
+        // 	if (this.verbose) console.log("received lifetime_75 on " + this.endpointUrl);
+        // });
+        // this.client.on("security_token_renewed", () => {
+        // 	if (this.verbose) console.log(" security_token_renewed on " + this.endpointUrl);
+        // });
+        // this.client.on("timed_out_request", (request) => {
+        // 	this.emit("timed_out_request", request);
+        // });
     }
     _listenSessionEvent() {
         this.session.on("session_closed", () => {
             // console.log(" Warning => Session closed");
+            this.reconnect();
         });
-        this.session.on("keepalive", () => {
-            // console.log("session keepalive");
-        });
+        // this.session.on("keepalive", () => {
+        // 	// console.log("session keepalive");
+        // })
         this.session.on("keepalive_failure", () => {
-            this._restartConnection();
+            this.reconnect();
         });
     }
 }

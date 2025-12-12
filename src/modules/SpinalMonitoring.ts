@@ -12,6 +12,7 @@ import { IOPCNode } from "../interfaces/OPCNode";
 import { getServerUrl } from "../utils/Functions";
 import { ISpinalInterval } from "../interfaces/IntervalTypes";
 import { normalizePath } from "../utils/utils";
+import OPCUAFactory from "../utils/OPCUAFactory";
 
 class SpinalMonitoring {
     private queue: SpinalQueuing = new SpinalQueuing();
@@ -306,13 +307,13 @@ class SpinalMonitoring {
             if (!Array.isArray(variableNodes)) variableNodes = [variableNodes];
 
             const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
-            const opcuaService: OPCUAService = new OPCUAService(endpointUrl);
+            const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(endpointUrl);
 
-            await opcuaService.initialize();
-            await opcuaService.connect(userIdentity);
+            await opcuaService.checkAndRetablishConnection();
 
             return opcuaService.getNodesNewInfoByPath(variableNodes).then(async (result) => {
-                await opcuaService.disconnect();
+                // Disable disconnect to keep the connection alive for future operations
+                // await opcuaService.disconnect();
                 return result;
             })
 
@@ -349,9 +350,8 @@ class SpinalMonitoring {
         });
 
         // connect to the OPCUA server and monitor the items
-        const opcuaService: OPCUAService = new OPCUAService(url);
-        await opcuaService.initialize();
-        await opcuaService.connect();
+        const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
+        await opcuaService.checkAndRetablishConnection();
 
 
         // call monitorItem with the ids and a callback function

@@ -14,9 +14,9 @@ const priority_queue_1 = require("@datastructures-js/priority-queue");
 const SpinalQueuing_1 = require("../utils/SpinalQueuing");
 const SpinalNetworkUtils_1 = require("../utils/SpinalNetworkUtils");
 const node_opcua_1 = require("node-opcua");
-const OPCUAService_1 = require("../utils/OPCUAService");
 const Functions_1 = require("../utils/Functions");
 const utils_1 = require("../utils/utils");
+const OPCUAFactory_1 = require("../utils/OPCUAFactory");
 class SpinalMonitoring {
     constructor() {
         this.queue = new SpinalQueuing_1.SpinalQueuing();
@@ -262,11 +262,11 @@ class SpinalMonitoring {
                 if (!Array.isArray(variableNodes))
                     variableNodes = [variableNodes];
                 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
-                const opcuaService = new OPCUAService_1.default(endpointUrl);
-                yield opcuaService.initialize();
-                yield opcuaService.connect(userIdentity);
+                const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(endpointUrl);
+                yield opcuaService.checkAndRetablishConnection();
                 return opcuaService.getNodesNewInfoByPath(variableNodes).then((result) => __awaiter(this, void 0, void 0, function* () {
-                    yield opcuaService.disconnect();
+                    // Disable disconnect to keep the connection alive for future operations
+                    // await opcuaService.disconnect();
                     return result;
                 }));
             }
@@ -296,9 +296,8 @@ class SpinalMonitoring {
                 return nodeId;
             });
             // connect to the OPCUA server and monitor the items
-            const opcuaService = new OPCUAService_1.default(url);
-            yield opcuaService.initialize();
-            yield opcuaService.connect();
+            const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
+            yield opcuaService.checkAndRetablishConnection();
             // call monitorItem with the ids and a callback function
             opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
                 if (!dataValue || typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) == "undefined")

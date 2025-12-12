@@ -16,10 +16,10 @@ const spinal_model_opcua_1 = require("spinal-model-opcua");
 const transformTreeToGraph_1 = require("../utils/transformTreeToGraph");
 const Functions_1 = require("../utils/Functions");
 const addNetworkToGraph_1 = require("../utils/addNetworkToGraph");
-const OPCUAService_1 = require("../utils/OPCUAService");
 const discoveringProcessStore_1 = require("../utils/discoveringProcessStore");
 const utils_1 = require("../utils/utils");
 const SpinalQueuing_1 = require("../utils/SpinalQueuing");
+const OPCUAFactory_1 = require("../utils/OPCUAFactory");
 // import * as testJSON from "./test.json";
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDiscover extends events_1.EventEmitter {
@@ -151,7 +151,7 @@ class SpinalDiscover extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             const { entryPointPath } = (0, utils_1.getConfig)();
             const url = (0, Functions_1.getServerUrl)(server);
-            const opcuaService = new OPCUAService_1.default(url, model);
+            const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url, model);
             const options = { useLastResult, useBroadCast: true };
             let err;
             return opcuaService.getTree(entryPointPath, options)
@@ -179,7 +179,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                 // model.changeState(OPCUA_ORGAN_STATES.error);
             }))
                 .finally(() => __awaiter(this, void 0, void 0, function* () {
-                yield opcuaService.disconnect();
+                // Disable disconnect to keep the connection alive for future operations
+                // await opcuaService.disconnect();
             }));
         });
     }
@@ -259,7 +260,7 @@ class SpinalDiscover extends events_1.EventEmitter {
     _getVariablesValues(url, variables) {
         return __awaiter(this, void 0, void 0, function* () {
             // const endpointUrl = getServerUrl(server);
-            const opcuaService = new OPCUAService_1.default(url);
+            const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
             return opcuaService.readNodeValue(variables).then((result) => {
                 const obj = {};
                 for (let index = 0; index < result.length; index++) {
@@ -267,7 +268,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                     const key = (0, utils_1.normalizePath)(variables[index].path) || variables[index].nodeId.toString();
                     obj[key] = element;
                 }
-                opcuaService.disconnect();
+                // Disable disconnect to keep the connection alive for future operations
+                // opcuaService.disconnect();
                 return obj;
             });
         });

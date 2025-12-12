@@ -9,9 +9,15 @@ import discoveringStore from "./discoveringProcessStore";
 import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 import { ITreeOption } from "../interfaces/ITreeOption";
 import { NAMES_TO_IGNORE } from "./constants";
+import OPCUAFactory from "./OPCUAFactory";
 
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
+
+type CovCallbackType = (id: string, data: {
+	value: any;
+	dataType: string;
+}, monitorItem: ClientMonitoredItemBase) => void;
 
 export class OPCUAService extends EventEmitter {
 	private client?: OPCUAClient;
@@ -20,11 +26,13 @@ export class OPCUAService extends EventEmitter {
 	private userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 	public verbose: boolean = false;
 	private endpointUrl: string = "";
-	private monitoredItemsListData: any[] = [];
+	private monitoredItemsData: { ids: string[]; callback: CovCallbackType }[] = [];
+
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
 	private _discoverModel: SpinalOPCUADiscoverModel;
 
 	public isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
+	private isReconnecting: boolean = false;
 
 	public constructor(url: string, model?: SpinalOPCUADiscoverModel) {
 		super();
@@ -32,58 +40,13 @@ export class OPCUAService extends EventEmitter {
 		this._discoverModel = model;
 	}
 
-	public async initialize() {
-		const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
+	public async checkAndRetablishConnection(): Promise<void> {
+		if (this.client && this.session) return;
 
-		this.client = OPCUAClient.create({
-			securityMode: MessageSecurityMode.None,
-			securityPolicy: SecurityPolicy.None,
-			endpointMustExist: false,
-			defaultSecureTokenLifetime: 30 * 1000,
-			requestedSessionTimeout: 50 * 1000,
-			keepSessionAlive: true,
-			transportTimeout: 60 * 1000,
-			connectionStrategy: {
-				maxRetry: 3,
-				initialDelay: 1000,
-				// maxDelay: 10 * 1000,
-			},
-		});
-
-		this._listenClientEvents();
+		await this.createClient();
+		await this.connect(userIdentity);
 	}
 
-	public async createSubscription() {
-		if (!this.session) {
-			await this._createSession();
-		}
-
-		try {
-			const parameters = {
-				requestedPublishingInterval: 10 * 1000, // interval auquel on veut recevoir les notifications
-				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée 
-				requestedMaxKeepAliveCount: 4, // Nombre de notification avant que le serveur envoie un keep alive
-				maxNotificationsPerPublish: 10, // Nombre de valueur (DataChange) maximum par notification
-				publishingEnabled: true, // Activer ou desactiver l'envoi de notification
-				priority: 1 // Donne une priorité à la subscription
-			};
-
-			this.subscription = await this.session.createSubscription2(parameters);
-		} catch (error) {
-			console.log("cannot create subscription !", error.message);
-		}
-	}
-
-	public async connect(userIdentity?: UserIdentityInfo) {
-		try {
-			this.userIdentity = userIdentity || { type: UserTokenType.Anonymous };
-			await this.client.connect(this.endpointUrl);
-			await this._createSession();
-			await this.createSubscription();
-		} catch (error) {
-			throw error;
-		}
-	}
 
 	public async disconnect(): Promise<void> {
 		if (this.session) {
@@ -92,6 +55,7 @@ export class OPCUAService extends EventEmitter {
 			await session.close();
 		}
 
+		OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
 		await this.client!.disconnect();
 	}
 
@@ -102,8 +66,7 @@ export class OPCUAService extends EventEmitter {
 
 	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
 
-
-		await this.initialize();
+		await this.createClient();
 		await this.connect(userIdentity);
 
 		// get the queue and nodesObj from the last discover or create a new one
@@ -189,8 +152,7 @@ export class OPCUAService extends EventEmitter {
 
 
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{ dataType: string; value: any }[]> {
-		await this.initialize();
-		await this.connect(userIdentity);
+		await this.checkAndRetablishConnection();
 
 		if (!this.session) {
 			this._createSession();
@@ -252,12 +214,18 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	public async monitorItem(nodeIds: string | string[], callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any): Promise<void> {
+	public async monitorItem(nodeIds: string | string[], callback: CovCallbackType, isReconnection: boolean = false): Promise<void> {
 		if (!this.subscription) {
 			await this.createSubscription();
 		};
 
 		nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
+
+		// if not reconnection save the monitored items for reconnexion}
+		if (!isReconnection) {
+			const data = { ids: nodeIds, callback };
+			this.monitoredItemsData.push(data);
+		}
 
 		const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: AttributeIds.Value }));
 
@@ -278,6 +246,8 @@ export class OPCUAService extends EventEmitter {
 			this._listenMonitoredItemEvents(monitoredItem, callback);
 		}
 	}
+
+
 
 
 	public async getNodeIdByPath(path?: string): Promise<string> {
@@ -339,7 +309,85 @@ export class OPCUAService extends EventEmitter {
 	///////////////////////////////////////////////////////////////////////////
 
 
+
+	private async createClient(): Promise<OPCUAClient> {
+
+		if (!this.client) {
+			const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
+
+			this.client = OPCUAClient.create({
+				securityMode: MessageSecurityMode.None,
+				securityPolicy: SecurityPolicy.None,
+				endpointMustExist: false,
+				defaultSecureTokenLifetime: 30 * 1000,
+				requestedSessionTimeout: 50 * 1000,
+				keepSessionAlive: true,
+				transportTimeout: 5 * 60 * 1000,
+				connectionStrategy: {
+					maxRetry: 3,
+					initialDelay: 1000,
+					// maxDelay: 10 * 1000,
+				},
+			});
+
+			this._listenClientEvents();
+		}
+
+		return this.client;
+	}
+
+	private async createSubscription() {
+		if (!this.session) {
+			await this._createSession();
+		}
+
+		try {
+			const parameters = {
+				requestedPublishingInterval: 10 * 1000, // interval auquel on veut recevoir les notifications
+				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée 
+				requestedMaxKeepAliveCount: 4, // Nombre de notification avant que le serveur envoie un keep alive
+				maxNotificationsPerPublish: 10, // Nombre de valueur (DataChange) maximum par notification
+				publishingEnabled: true, // Activer ou desactiver l'envoi de notification
+				priority: 1 // Donne une priorité à la subscription
+			};
+
+			this.subscription = await this.session.createSubscription2(parameters);
+		} catch (error) {
+			console.log("cannot create subscription !", error.message);
+		}
+	}
+
+	private async connect(userIdentity?: UserIdentityInfo) {
+		try {
+			this.userIdentity = userIdentity || { type: UserTokenType.Anonymous };
+			await this.client.connect(this.endpointUrl);
+			await this._createSession();
+			await this.createSubscription();
+		} catch (error) {
+			throw error;
+		}
+	}
+
+	private async reconnect() {
+		try {
+			if (this.isReconnecting) return;
+			this.isReconnecting = true;
+
+			await this.client.disconnect();
+			await this.connect();
+
+			this.isReconnecting = false;
+		} catch (error) {
+			console.log(`Reconnection failed to ${this.endpointUrl}`, error);
+			this.isReconnecting = false;
+			// OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
+		}
+	}
+
+
 	private _listenMonitoredItemEvents(monitoredItem: ClientMonitoredItemBase, callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any) {
+		console.log(`Monitor ${monitoredItem.itemToMonitor.nodeId.toString()} with COV`);
+
 		monitoredItem.on("changed", (dataValue: DataValue) => {
 			const value = this._formatDataValue(dataValue);
 			callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
@@ -618,48 +666,60 @@ export class OPCUAService extends EventEmitter {
 
 	private _listenClientEvents(): void {
 		this.client.on("backoff", (number, delay) => {
-			if (number === 1) return this.client.disconnect();
-			console.log(`connection failed, retrying attempt ${number + 1}`)
+			// if (number === 1) return this.client.disconnect();
+			// console.log(`connection failed, retrying attempt ${number + 1}`)
 		});
 
-		this.client.on("start_reconnection", () => console.log("Starting reconnection...." + this.endpointUrl));
+		// this.client.on("start_reconnection", () => console.log("Starting reconnection to" + this.endpointUrl));
 
-		this.client.on("connection_reestablished", () => console.log("CONNECTION RE-ESTABLISHED !! " + this.endpointUrl));
-
-		// monitoring des lifetimes
-		this.client.on("lifetime_75", (token) => {
-			if (this.verbose) console.log("received lifetime_75 on " + this.endpointUrl);
+		this.client.on("after_reconnection", () => {
+			const isReconnection = true;
+			for (const { ids, callback } of this.monitoredItemsData) {
+				this.monitorItem(ids, callback, isReconnection);
+			}
 		});
 
-		this.client.on("security_token_renewed", () => {
-			if (this.verbose) console.log(" security_token_renewed on " + this.endpointUrl);
+		this.client.on("connection_lost", () => {
+			this.reconnect();
 		});
 
-		this.client.on("timed_out_request", (request) => {
-			this.emit("timed_out_request", request);
-		});
+		// this.client.on("connection_reestablished", () => console.log("CONNECTION RE-ESTABLISHED !! " + this.endpointUrl));
+
+		// // monitoring des lifetimes
+		// this.client.on("lifetime_75", (token) => {
+		// 	if (this.verbose) console.log("received lifetime_75 on " + this.endpointUrl);
+		// });
+
+		// this.client.on("security_token_renewed", () => {
+		// 	if (this.verbose) console.log(" security_token_renewed on " + this.endpointUrl);
+		// });
+
+		// this.client.on("timed_out_request", (request) => {
+		// 	this.emit("timed_out_request", request);
+		// });
 	}
 
 	private _listenSessionEvent(): void {
 		this.session.on("session_closed", () => {
 			// console.log(" Warning => Session closed");
+			this.reconnect();
 		})
-		this.session.on("keepalive", () => {
-			// console.log("session keepalive");
-		})
+		// this.session.on("keepalive", () => {
+		// 	// console.log("session keepalive");
+		// })
 		this.session.on("keepalive_failure", () => {
-			this._restartConnection();
+			this.reconnect();
 		})
 	}
 
-	private _restartConnection = async () => {
-		try {
-			await this.client.disconnect()
-			await this.client.connect(this.endpointUrl)
-		} catch (error) {
-			console.log("OpcUa: restartConnection", error)
-		}
-	}
+	// private _restartConnection = async () => {
+	// 	try {
+	// 		await this.client.disconnect()
+	// 		await this.client.connect(this.endpointUrl)
+	// 	} catch (error) {
+	// 		console.log("OpcUa: restartConnection", error)
+	// 	}
+	// }
 
 
 }

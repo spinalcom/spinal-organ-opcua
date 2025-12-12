@@ -2,6 +2,7 @@ import { SpinalBmsDevice } from "spinal-model-bmsnetwork";
 import { getConfig } from "./utils/utils";
 import discoveringStore from "./utils/discoveringProcessStore";
 import OPCUAService from "./utils/OPCUAService";
+import OPCUAFactory from "./utils/OPCUAFactory";
 
 const { spinalCore } = require("spinal-core-connectorjs_type");
 const { SpinalBmsNetwork } = require("spinal-model-bmsnetwork");
@@ -70,9 +71,8 @@ async function getOrgan(context, organName) {
 
 	const ex_path = `opc.tcp://spinalcom:5011/IcoFwxServer`;
 	const nodeId = "ns=1;s=ac:Metiers/CVC/Test pilotage";
-	const opcuaService = new OPCUAService(ex_path);
-	await opcuaService.initialize();
-	await opcuaService.connect();
+	const opcuaService = OPCUAFactory.getOPCUAInstance(ex_path);
+	await opcuaService.checkAndRetablishConnection();
 
 	opcuaService.monitorItem([nodeId], (id, dataValue) => {
 		console.log(`Node id: ${id} value: ${dataValue}`);

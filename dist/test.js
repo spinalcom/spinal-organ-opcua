@@ -11,7 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.getNetwork = void 0;
 const utils_1 = require("./utils/utils");
-const OPCUAService_1 = require("./utils/OPCUAService");
+const OPCUAFactory_1 = require("./utils/OPCUAFactory");
 const { spinalCore } = require("spinal-core-connectorjs_type");
 const { SpinalBmsNetwork } = require("spinal-model-bmsnetwork");
 const { SpinalNode, SPINAL_RELATION_PTR_LST_TYPE, SpinalContext, SpinalGraph } = require("spinal-model-graph");
@@ -65,9 +65,8 @@ function getOrgan(context, organName) {
         //////////////		 	COV		 //////////////
         const ex_path = `opc.tcp://spinalcom:5011/IcoFwxServer`;
         const nodeId = "ns=1;s=ac:Metiers/CVC/Test pilotage";
-        const opcuaService = new OPCUAService_1.default(ex_path);
-        yield opcuaService.initialize();
-        yield opcuaService.connect();
+        const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(ex_path);
+        yield opcuaService.checkAndRetablishConnection();
         opcuaService.monitorItem([nodeId], (id, dataValue) => {
             console.log(`Node id: ${id} value: ${dataValue}`);
         });

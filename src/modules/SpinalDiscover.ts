@@ -14,6 +14,7 @@ import discoveringStore from "../utils/discoveringProcessStore";
 import { discoverIsCancelled, getConfig, normalizePath } from "../utils/utils";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
+import OPCUAFactory from "../utils/OPCUAFactory";
 
 // import * as testJSON from "./test.json";
 
@@ -178,7 +179,7 @@ class SpinalDiscover extends EventEmitter {
 		const { entryPointPath } = getConfig();
 		const url = getServerUrl(server);
 
-		const opcuaService: OPCUAService = new OPCUAService(url, model);
+		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url, model);
 
 		const options: ITreeOption = { useLastResult, useBroadCast: true };
 		let err;
@@ -212,7 +213,8 @@ class SpinalDiscover extends EventEmitter {
 				// model.changeState(OPCUA_ORGAN_STATES.error);
 			})
 			.finally(async () => {
-				await opcuaService.disconnect();
+				// Disable disconnect to keep the connection alive for future operations
+				// await opcuaService.disconnect();
 			});
 
 	}
@@ -307,7 +309,7 @@ class SpinalDiscover extends EventEmitter {
 
 	private async _getVariablesValues(url: string, variables: IOPCNode[]) {
 		// const endpointUrl = getServerUrl(server);
-		const opcuaService: OPCUAService = new OPCUAService(url);
+		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
 
 		return opcuaService.readNodeValue(variables).then((result) => {
 			const obj = {};
@@ -317,7 +319,8 @@ class SpinalDiscover extends EventEmitter {
 				obj[key] = element;
 			}
 
-			opcuaService.disconnect();
+			// Disable disconnect to keep the connection alive for future operations
+			// opcuaService.disconnect();
 			return obj;
 		});
 	}

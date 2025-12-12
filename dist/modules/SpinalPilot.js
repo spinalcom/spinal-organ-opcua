@@ -10,9 +10,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.spinalPilot = void 0;
-const OPCUAService_1 = require("../utils/OPCUAService");
 const Functions_1 = require("../utils/Functions");
 const SpinalQueuing_1 = require("../utils/SpinalQueuing");
+const OPCUAFactory_1 = require("../utils/OPCUAFactory");
 class SpinalPilot {
     constructor() {
         this.queue = new SpinalQueuing_1.SpinalQueuing();
@@ -76,14 +76,14 @@ class SpinalPilot {
             try {
                 console.log(`send update request to ${request.nodeId} with value ${request.value}`);
                 const url = (0, Functions_1.getServerUrl)(request.networkInfo);
-                const opcuaService = new OPCUAService_1.OPCUAService(url);
-                yield opcuaService.initialize();
-                yield opcuaService.connect();
+                const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
+                yield opcuaService.checkAndRetablishConnection();
                 const newNodeId = yield opcuaService.getNodeIdByPath(request.path); // in case the nodeId has changed
                 if (newNodeId)
                     request.nodeId = newNodeId; // update the nodeId
                 yield opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
-                yield opcuaService.disconnect();
+                // Disable disconnect to keep the connection alive for future requests
+                // await opcuaService.disconnect(); // disconnect after the write operation
                 pilot.setSuccessMode();
                 console.log(`[${request.nodeId}] updated successfully`);
             }
