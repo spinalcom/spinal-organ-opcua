@@ -1,4 +1,4 @@
-import { OPCUAClient, NodeClass, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, DataValue, DataType, coerceNodeId, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, StatusCode, LocalizedText } from "node-opcua";
+import { OPCUAClient, NodeClass, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, DataValue, DataType, coerceNodeId, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, StatusCode, LocalizedText, DeadbandType } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import * as lodash from "lodash";
@@ -233,8 +233,8 @@ export class OPCUAService extends EventEmitter {
 			samplingInterval: 3 * 1000, // 10 seconds
 			filter: new DataChangeFilter({
 				trigger: DataChangeTrigger.StatusValue,
-				// deadbandType: DeadbandType.Absolute,
-				// deadbandValue: 0.5
+				deadbandType: DeadbandType.Absolute,
+				deadbandValue: 0.1
 			}),
 			discardOldest: true,
 			queueSize: 1

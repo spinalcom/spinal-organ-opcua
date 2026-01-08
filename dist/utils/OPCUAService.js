@@ -197,8 +197,8 @@ class OPCUAService extends events_1.EventEmitter {
                 samplingInterval: 3 * 1000,
                 filter: new node_opcua_1.DataChangeFilter({
                     trigger: node_opcua_1.DataChangeTrigger.StatusValue,
-                    // deadbandType: DeadbandType.Absolute,
-                    // deadbandValue: 0.5
+                    deadbandType: node_opcua_1.DeadbandType.Absolute,
+                    deadbandValue: 0.1
                 }),
                 discardOldest: true,
                 queueSize: 1
@@ -332,6 +332,7 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     _listenMonitoredItemEvents(monitoredItem, callback) {
+        console.log(`Monitor ${monitoredItem.itemToMonitor.nodeId.toString()} with COV`);
         monitoredItem.on("changed", (dataValue) => {
             const value = this._formatDataValue(dataValue);
             callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
