@@ -159,8 +159,10 @@ export class OPCUAService extends EventEmitter {
 		}
 
 		node = Array.isArray(node) ? node : [node];
+		const chunckSize = 100; // read 100 nodes at a time to avoid timeout errors
 
-		const nodesChunk = lodash.chunk(node, 500);
+		const nodesChunk = lodash.chunk(node, chunckSize);
+
 		const _promise = nodesChunk.reduce(async (prom, chunk) => {
 			let list = await prom;
 			const values = await this.readNode(chunk);
@@ -302,7 +304,16 @@ export class OPCUAService extends EventEmitter {
 		const promises = nodes.map(node => this.getNodeByPath(node.path));
 
 		return Promise.all(promises).then((result) => {
-			return result;
+			const res = []
+			for (let i = 0; i < result.length; i++) {
+				if (!result[i]) {
+					console.log(`Node with path ${nodes[i].path} not found anymore, it may have been deleted`);
+					continue;
+				}
+
+				res.push(result[i]);
+			}
+			return res;
 		})
 	}
 
