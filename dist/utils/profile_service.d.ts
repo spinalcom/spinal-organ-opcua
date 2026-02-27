@@ -1,4 +1,5 @@
 import { SpinalNode } from "spinal-env-viewer-graph-service";
+import { IIntervalInfo } from "../interfaces/INodeInfo";
 export declare const CONTEXT_NAME = "OPCdeviceProfileContext";
 export declare const ITEMS_GROUP_NAME = "Item_list";
 export declare const SUPERVISION_NAME = "Supervision";
@@ -16,9 +17,9 @@ export declare const ITEM_LIST_TO_ITEM = "hasItem";
 export declare const INTERVAL_TO_ITEM = "hasItem";
 declare class OPCUAProfileService {
     constructor();
-    static getItems(profile: SpinalNode): Promise<SpinalNode<any>[]>;
-    static getItemListNode(profile: SpinalNode): Promise<SpinalNode<any>>;
-    static getIntervals(profile: SpinalNode): Promise<any[]>;
-    static getSupervisionNode(profile: any): Promise<any>;
+    static getItems(profile: SpinalNode): Promise<SpinalNode[]>;
+    static getItemListNode(profile: SpinalNode): Promise<SpinalNode | undefined>;
+    static getIntervals(profile: SpinalNode): Promise<IIntervalInfo[]>;
+    static getSupervisionNode(profile: SpinalNode): Promise<SpinalNode | undefined>;
 }
 export { OPCUAProfileService };

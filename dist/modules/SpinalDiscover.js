@@ -82,6 +82,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                 while (index < servers.length && !(0, utils_1.discoverIsCancelled)(model)) {
                     try {
                         const tree = yield this._discoverDevice(servers[index], model);
+                        if (!tree || !tree.children)
+                            throw new Error("No tree discovered");
                         discovered.push(...tree.children);
                         const count = model.progress.finished.get();
                         model.progress.finished.set(count + 1);
@@ -118,10 +120,10 @@ class SpinalDiscover extends events_1.EventEmitter {
                 useLastResult = (yield ((_a = model === null || model === void 0 ? void 0 : model.useLastResult) === null || _a === void 0 ? void 0 : _a.get())) || false;
             }
             console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
-            const { tree } = yield this._getOPCUATree(server, useLastResult, model, true);
-            if (!tree)
+            const discoverResult = yield this._getOPCUATree(server, useLastResult, model, true);
+            if (!discoverResult)
                 return;
-            return tree;
+            return discoverResult.tree;
         });
     }
     askToContinueDiscovery(model) {
@@ -156,24 +158,14 @@ class SpinalDiscover extends events_1.EventEmitter {
             let err;
             return opcuaService.getTree(entryPointPath, options)
                 .then((result) => __awaiter(this, void 0, void 0, function* () {
+                if (!result || !result.tree || !result.tree.children)
+                    throw new Error("No tree discovered");
                 result.tree.children.map((el) => {
                     el.server = server;
                     return el;
                 });
                 return result;
-            }))
-                // .catch(async (err) => {
-                // 	if (!tryTree2) throw err;
-                // 	console.log(`[${server.address}] - failed to use multi browsing, trying with unique browsing`);
-                // 	options.useBroadCast = false;
-                // 	const result = await opcuaService.getTree(entryPointPath, options);
-                // 	result.tree.children.map((el) => {
-                // 		el.server = server;
-                // 		return el;
-                // 	})
-                // 	return result;
-                // })
-                .catch((err) => __awaiter(this, void 0, void 0, function* () {
+            })).catch((err) => __awaiter(this, void 0, void 0, function* () {
                 console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
                 throw err;
                 // model.changeState(OPCUA_ORGAN_STATES.error);
@@ -205,8 +197,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                     if (!gatewayData || gatewayData.length <= 0)
                         continue;
                     const deviceData = gatewayData.find((el) => {
-                        const key = (0, utils_1.normalizePath)(nodeTocreate.path) || nodeTocreate.nodeId.toString();
-                        return (0, utils_1.normalizePath)(el.node.path) === key || el.node.nodeId.toString() === key;
+                        const key = (0, utils_1.normalizePath)(nodeTocreate.path || "") || nodeTocreate.nodeId.toString();
+                        return (0, utils_1.normalizePath)(el.node.path || "") === key || el.node.nodeId.toString() === key;
                     });
                     if (!deviceData)
                         continue;
@@ -225,6 +217,8 @@ class SpinalDiscover extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             const obj = {};
             for (const node of nodes) {
+                if (!node.server)
+                    continue;
                 const variables = (0, Functions_1.getVariablesList)(node);
                 const url = (0, Functions_1.getServerUrl)(node.server);
                 const nodesAlreadyCreated = yield (0, transformTreeToGraph_1.getNodeAlreadyCreated)(context, network, node);
@@ -234,29 +228,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                 obj[node.server.address].push({ variables, values, node, nodesAlreadyCreated });
             }
             return obj;
-            // const promises = nodes.map(async (el) => {
-            // 	const variables = getVariablesList(el);
-            // 	const url = getServerUrl(el.server);
-            // 	const values = await this._getVariablesValues(url, variables);
-            // 	const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, el.server);
-            // 	return { variables, values, nodesAlreadyCreated, server: el.server, node: el };
-            // })
-            // return Promise.all(promises);
         });
     }
-    // private _formatGateway() {
-    // }
-    // private convertToBase64(tree: any) {
-    // 	return new Promise((resolve, reject) => {
-    // 		const treeString = JSON.stringify(tree);
-    // 		zlib.deflate(treeString, (err, buffer) => {
-    // 			if (!err) {
-    // 				const base64 = buffer.toString("base64");
-    // 				return resolve(base64);
-    // 			}
-    // 		});
-    // 	});
-    // }
     _getVariablesValues(url, variables) {
         return __awaiter(this, void 0, void 0, function* () {
             // const endpointUrl = getServerUrl(server);
@@ -265,11 +238,10 @@ class SpinalDiscover extends events_1.EventEmitter {
                 const obj = {};
                 for (let index = 0; index < result.length; index++) {
                     const element = result[index];
-                    const key = (0, utils_1.normalizePath)(variables[index].path) || variables[index].nodeId.toString();
+                    const variable = variables[index];
+                    const key = (0, utils_1.normalizePath)(variable.path || "") || variable.nodeId.toString();
                     obj[key] = element;
                 }
-                // Disable disconnect to keep the connection alive for future operations
-                // opcuaService.disconnect();
                 return obj;
             });
         });

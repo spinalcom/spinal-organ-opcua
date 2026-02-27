@@ -8,8 +8,9 @@ import certificatProm from "../utils/make_certificate";
 import discoveringStore from "./discoveringProcessStore";
 import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 import { ITreeOption } from "../interfaces/ITreeOption";
-import { NAMES_TO_IGNORE } from "./constants";
+import { NAMES_TO_IGNORE, noSessionError, noSubscriptionError } from "./constants";
 import OPCUAFactory from "./OPCUAFactory";
+import * as path from "path";
 
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
@@ -40,34 +41,158 @@ export class OPCUAService extends EventEmitter {
 		this._discoverModel = model;
 	}
 
+	//////////////////////////// Client connection management ////////////////////////////
+
+	private async createClient(): Promise<OPCUAClient> {
+
+		if (this.client) return this.client; // if the client already exists, return it
+
+		const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
+
+		const client = OPCUAClient.create({
+			securityMode: MessageSecurityMode.None,
+			securityPolicy: SecurityPolicy.None,
+			endpointMustExist: false,
+			defaultSecureTokenLifetime: 30 * 1000,
+			requestedSessionTimeout: 50 * 1000,
+			keepSessionAlive: true,
+			transportTimeout: 5 * 60 * 1000,
+			connectionStrategy: {
+				maxRetry: 3,
+				initialDelay: 1000,
+				// maxDelay: 10 * 1000,
+			},
+		});
+
+		this._listenClientEvents(client);
+
+
+		return client;
+	}
+
+	private _listenClientEvents(client: OPCUAClient): void {
+		client.on("backoff", (number, delay) => {
+			// if (number === 1) return client.disconnect();
+			// console.log(`connection failed, retrying attempt ${number + 1}`)
+		});
+
+		client.on("after_reconnection", () => {
+			const isReconnection = true;
+			for (const { ids, callback } of this.monitoredItemsData) {
+				this.monitorItem(ids, callback, isReconnection);
+			}
+		});
+
+		client.on("connection_lost", () => {
+			this.reconnect();
+		});
+
+	}
+
 	public async checkAndRetablishConnection(): Promise<void> {
 		if (this.client && this.session) return;
 
-		await this.createClient();
+		this.client = await this.createClient();
 		await this.connect(userIdentity);
 	}
 
-
 	public async disconnect(): Promise<void> {
-		if (this.session) {
-			const session = this.session;
-			this.session = undefined;
-			await session.close();
-		}
+		if (this.session) this.session.close();
 
 		OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
-		await this.client!.disconnect();
+		if (this.client) await this.client.disconnect();
 	}
+
+	private async _createSession(): Promise<ClientSession> {
+		try {
+			if (!this.client) this.client = await this.createClient();
+
+			const session = await this.client.createSession(this.userIdentity);
+			this._listenSessionEvent(session);
+
+			return session;
+		} catch (err) {
+			console.log(" Cannot create session ", (err as Error).toString());
+			throw err;
+		}
+	}
+
+	private _listenSessionEvent(session: ClientSession): void {
+		session.on("session_closed", () => {
+			// console.log(" Warning => Session closed");
+			this.reconnect();
+		})
+		// session.on("keepalive", () => {
+		// 	// console.log("session keepalive");
+		// })
+		session.on("keepalive_failure", () => {
+			this.reconnect();
+		})
+	}
+
+
+	private async createSubscription() {
+		if (!this.session) this.session = await this._createSession();
+
+
+		try {
+			const parameters = {
+				requestedPublishingInterval: 10 * 1000, // interval auquel on veut recevoir les notifications
+				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée 
+				requestedMaxKeepAliveCount: 4, // Nombre de notification avant que le serveur envoie un keep alive
+				maxNotificationsPerPublish: 10, // Nombre de valueur (DataChange) maximum par notification
+				publishingEnabled: true, // Activer ou desactiver l'envoi de notification
+				priority: 1 // Donne une priorité à la subscription
+			};
+
+			return this.session.createSubscription2(parameters);
+		} catch (error) {
+			console.log("cannot create subscription !", (error as Error).message);
+			throw error;
+		}
+	}
+
+	private async connect(userIdentity?: UserIdentityInfo) {
+		try {
+			this.userIdentity = userIdentity || { type: UserTokenType.Anonymous };
+			if (!this.client) this.client = await this.createClient();
+
+			await this.client.connect(this.endpointUrl);
+			this.session = await this._createSession();
+			this.subscription = await this.createSubscription();
+		} catch (error) {
+			throw error;
+		}
+	}
+
+	private async reconnect() {
+		try {
+			if (this.isReconnecting) return;
+
+			if (!this.client) this.client = await this.createClient();
+			this.isReconnecting = true;
+			await this.client.disconnect();
+			await this.connect();
+
+			this.isReconnecting = false;
+		} catch (error) {
+			console.log(`Reconnection failed to ${this.endpointUrl}`, error);
+			this.isReconnecting = false;
+			// OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
+		}
+	}
+
+
 
 	///////////////////////////////////////////////////////////////////////////
 	//              Exemple 1 : [getTree] - Browse several node              //
 	//              May have timeout error if the tree is too big            //
 	///////////////////////////////////////////////////////////////////////////
 
-	public async getTree(entryPointPath?: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] }> {
+	public async getTree(entryPointPath: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] } | void> {
 
-		await this.createClient();
-		await this.connect(userIdentity);
+		// await this.connect(userIdentity);
+		if (!this.session) throw noSessionError;
 
 		// get the queue and nodesObj from the last discover or create a new one
 		let { nodesObj, queue, browseMode } = await this._getDiscoverStarterData(entryPointPath, options.useLastResult);
@@ -119,11 +244,14 @@ export class OPCUAService extends EventEmitter {
 
 
 	public async readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]> {
+		if (!this.session) throw noSessionError;
+
 		if (!Array.isArray(node)) node = [node];
 		return this.session.read(node);
 	}
 
 	public async getNodePath(nodeId: string | NodeId): Promise<string> {
+		if (!this.session) throw noSessionError;
 
 		if (typeof nodeId === "string") nodeId = coerceNodeId(nodeId);
 
@@ -146,49 +274,47 @@ export class OPCUAService extends EventEmitter {
 		const browsePath = "/" + pathElements.join("");
 
 		// verification
-		const a = await this.session.translateBrowsePath(makeBrowsePath("i=84", browsePath));
-		return browsePath + " (" + a.targets[0]?.targetId?.toString() + ")";
+		const translation = await this.session.translateBrowsePath(makeBrowsePath("i=84", browsePath));
+		if (!translation.targets || translation.targets.length === 0) return "";
+
+		return `${browsePath}/${translation.targets[0]?.targetId?.toString()}`;
 	}
 
 
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{ dataType: string; value: any }[]> {
 		await this.checkAndRetablishConnection();
 
-		if (!this.session) {
-			this._createSession();
-		}
+		if (!this.session) throw noSessionError;
 
 		node = Array.isArray(node) ? node : [node];
 		const chunckSize = 100; // read 100 nodes at a time to avoid timeout errors
-
 		const nodesChunk = lodash.chunk(node, chunckSize);
 
-		const _promise = nodesChunk.reduce(async (prom, chunk) => {
-			let list = await prom;
-			const values = await this.readNode(chunk);
-			list.push(...values);
-			return list;
-		}, Promise.resolve([]));
+		const promises = nodesChunk.map((chunk) => this.readNode(chunk));
 
-		const dataValues = await _promise;
-		await this.disconnect();
+		return Promise.allSettled(promises).then((results) => {
+			const dataValues = [];
+			for (const result of results) {
+				if (result.status === "fulfilled") {
+					dataValues.push(...result.value);
+				}
+			}
 
-		return dataValues.map((dataValue) => this._formatDataValue(dataValue));
+			return dataValues.map((dataValue) => this._formatDataValue(dataValue));
+		}).finally(async () => {
+			await this.disconnect();
+		})
 
 	}
 
 	public async writeNode(node: IOPCNode, value: any): Promise<any> {
-		if (!this.session) {
-			await this._createSession();
-		}
-
-		// const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
+		if (!this.session) throw noSessionError;
 
 		const PossibleDataType = await this._getPossibleDataType(value);
 
 		try {
 
-			let statusCode: StatusCode;
+			let statusCode: StatusCode = StatusCodes.BadTypeMismatch;
 			let isGood: boolean = false; // check we found a data type
 
 			// test each data type until we find a good one
@@ -210,16 +336,12 @@ export class OPCUAService extends EventEmitter {
 			return statusCode;
 
 		} catch (error) {
-			// console.log("error writing value", error);
-			// return StatusCodes.BadInternalError;
 			throw error;
 		}
 	}
 
 	public async monitorItem(nodeIds: string | string[], callback: CovCallbackType, isReconnection: boolean = false): Promise<void> {
-		if (!this.subscription) {
-			await this.createSubscription();
-		};
+		if (!this.subscription) throw noSubscriptionError;
 
 		nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
 
@@ -250,16 +372,16 @@ export class OPCUAService extends EventEmitter {
 	}
 
 
-
-
-	public async getNodeIdByPath(path?: string): Promise<string> {
+	public async getNodeIdByPath(nodePath: string = ""): Promise<string | void> {
 
 		try {
-			if (!path.startsWith("/Objects")) path = "/Objects" + path;
+			if (!this.session) throw noSessionError;
 
-			if (path.endsWith("/")) path = path.slice(0, -1); // remove trailing slash
+			if (!nodePath.startsWith("/Objects")) nodePath = "/Objects/" + nodePath;
 
-			const browsePaths = makeBrowsePath("RootFolder", path);
+			nodePath = normalizePath(nodePath)
+			const browsePaths = makeBrowsePath("RootFolder", nodePath);
+
 			const nodesFound = await this.session.translateBrowsePath(browsePaths);
 
 			if (!nodesFound.targets || nodesFound.targets.length === 0) return;
@@ -273,13 +395,13 @@ export class OPCUAService extends EventEmitter {
 	}
 
 
-	public async getNodeByPath(path?: string): Promise<IOPCNode> {
+	public async getNodeByPath(nodePath: string = ""): Promise<IOPCNode | void> {
 
 		try {
-			const startNodeId = await this.getNodeIdByPath(path);
+			const startNodeId = await this.getNodeIdByPath(nodePath);
 			if (!startNodeId) return;
 
-			const startNode = await this.readNodeDescription(startNodeId, path);
+			const startNode = await this.readNodeDescription(startNodeId, nodePath);
 
 			return startNode; // return the node with its children and path
 
@@ -306,95 +428,20 @@ export class OPCUAService extends EventEmitter {
 		return Promise.all(promises).then((result) => {
 			const res = []
 			for (let i = 0; i < result.length; i++) {
-				if (!result[i]) {
+				const element = result[i];
+				if (!element) {
 					console.log(`Node with path ${nodes[i].path} not found anymore, it may have been deleted`);
 					continue;
 				}
 
-				res.push(result[i]);
+				res.push(element);
 			}
+
 			return res;
 		})
 	}
 
 	///////////////////////////////////////////////////////////////////////////
-
-
-
-	private async createClient(): Promise<OPCUAClient> {
-
-		if (!this.client) {
-			const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
-
-			this.client = OPCUAClient.create({
-				securityMode: MessageSecurityMode.None,
-				securityPolicy: SecurityPolicy.None,
-				endpointMustExist: false,
-				defaultSecureTokenLifetime: 30 * 1000,
-				requestedSessionTimeout: 50 * 1000,
-				keepSessionAlive: true,
-				transportTimeout: 5 * 60 * 1000,
-				connectionStrategy: {
-					maxRetry: 3,
-					initialDelay: 1000,
-					// maxDelay: 10 * 1000,
-				},
-			});
-
-			this._listenClientEvents();
-		}
-
-		return this.client;
-	}
-
-	private async createSubscription() {
-		if (!this.session) {
-			await this._createSession();
-		}
-
-		try {
-			const parameters = {
-				requestedPublishingInterval: 10 * 1000, // interval auquel on veut recevoir les notifications
-				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée 
-				requestedMaxKeepAliveCount: 4, // Nombre de notification avant que le serveur envoie un keep alive
-				maxNotificationsPerPublish: 10, // Nombre de valueur (DataChange) maximum par notification
-				publishingEnabled: true, // Activer ou desactiver l'envoi de notification
-				priority: 1 // Donne une priorité à la subscription
-			};
-
-			this.subscription = await this.session.createSubscription2(parameters);
-		} catch (error) {
-			console.log("cannot create subscription !", error.message);
-		}
-	}
-
-	private async connect(userIdentity?: UserIdentityInfo) {
-		try {
-			this.userIdentity = userIdentity || { type: UserTokenType.Anonymous };
-			await this.client.connect(this.endpointUrl);
-			await this._createSession();
-			await this.createSubscription();
-		} catch (error) {
-			throw error;
-		}
-	}
-
-	private async reconnect() {
-		try {
-			if (this.isReconnecting) return;
-			this.isReconnecting = true;
-
-			await this.client.disconnect();
-			await this.connect();
-
-			this.isReconnecting = false;
-		} catch (error) {
-			console.log(`Reconnection failed to ${this.endpointUrl}`, error);
-			this.isReconnecting = false;
-			// OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
-		}
-	}
-
 
 	private _listenMonitoredItemEvents(monitoredItem: ClientMonitoredItemBase, callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any) {
 		console.log(`Monitor ${monitoredItem.itemToMonitor.nodeId.toString()} with COV`);
@@ -419,22 +466,24 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async _browseUsingBrowseDescription(descriptions: BrowseDescriptionLike[]): Promise<IOPCNode[]> {
+		if (!this.session) throw noSessionError;
+
 		const browseResults = await this.session.browse(descriptions);
 
-		return browseResults.reduce((children: IOPCNode[], browseResult: BrowseResult, index: number) => {
-			const parentId = (descriptions[index] as any)?.nodeId?.toString();
+		const children: IOPCNode[] = [];
+		for (let i = 0; i < browseResults.length; i++) {
+			const browseResult = browseResults[i];
+			const parentId = (descriptions[i] as any)?.nodeId?.toString();
 
-			for (const ref of browseResult.references) {
+			const refs = browseResult.references ?? [];
+			for (let j = 0; j < refs.length; j++) {
+				const ref = refs[j];
 				const refName = ref.displayName.text || ref.browseName?.toString();
-				if (!refName || refName.startsWith(".") || NAMES_TO_IGNORE.includes(refName.toLowerCase()))
-					continue; // skip unwanted nodes
-
-				const formatted = this._formatReference(ref, "", parentId);
-				children.push(formatted);
+				if (!refName || refName.startsWith(".") || NAMES_TO_IGNORE.includes(refName.toLowerCase())) continue;
+				children.push(this._formatReference(ref, "", parentId));
 			}
-
-			return children;
-		}, []);
+		}
+		return children;
 	}
 
 
@@ -443,9 +492,9 @@ export class OPCUAService extends EventEmitter {
 			const parent = nodesObj[child.parentId];
 
 			// create the path based on the parent node
-			const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
+			const nodePath = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
 
-			child.path = normalizePath(path);
+			child.path = normalizePath(nodePath);
 			nodesObj[child.nodeId.toString()] = child;
 		}
 
@@ -481,6 +530,9 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async readNodeDescription(nodeId: string, path: string = ""): Promise<IOPCNode> {
+
+		if (!this.session) throw noSessionError;
+
 		const attributesToRead = [
 			{ nodeId, attributeId: AttributeIds.BrowseName },
 			{ nodeId, attributeId: AttributeIds.DisplayName },
@@ -506,6 +558,9 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async _getNodeParent(nodeId: NodeId): Promise<{ sep: string; parentNodeId: NodeId } | null> {
+
+		if (!this.session) throw noSessionError;
+
 		let browseResult = await this.session.browse({
 			browseDirection: BrowseDirection.Inverse,
 			includeSubtypes: true,
@@ -540,6 +595,8 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async _getDiscoverStarterData(entryPointPath: string, useLastResult: boolean) {
+		if (!this.session) throw noSessionError;
+
 		let queue, nodesObj;
 
 		let browseMode = "unicast"; //always use unicast browsing
@@ -574,7 +631,10 @@ export class OPCUAService extends EventEmitter {
 				const parent = obj[node.parentId];
 				if (this.isVariable(node)) variables.push(node.nodeId.toString());
 
-				if (parent) parent.children.push(node);
+				if (parent) {
+					if (!parent.children) parent.children = [];
+					parent.children.push(node);
+				}
 			}
 		}
 
@@ -617,7 +677,7 @@ export class OPCUAService extends EventEmitter {
 
 
 
-	private _formatDataValue(dataValue: any): { value: any; dataType: string } {
+	private _formatDataValue(dataValue: any): { value: any; dataType: string } | null {
 
 
 		// if dataValue.value is not a Variant, return the value and dataType
@@ -643,7 +703,7 @@ export class OPCUAService extends EventEmitter {
 		return null;
 	}
 
-	private _formatRealValue(value) {
+	private _formatRealValue(value: QualifiedName | LocalizedText | any): any {
 		if (value instanceof QualifiedName) value = value.name; // if the value is a QualifiedName, get the name
 		if (value instanceof LocalizedText) value = value.text; // if the value is a LocalizedText, get the text
 
@@ -653,85 +713,11 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async _readBrowseName(nodeId: NodeId): Promise<QualifiedName> {
+		if (!this.session) throw noSessionError;
+
 		const node = await this.session.read({ nodeId, attributeId: AttributeIds.BrowseName });
 		return node.value.value;
 	}
-
-	////////////////////////////////////////////////////////////
-	//                       Client                           //
-	////////////////////////////////////////////////////////////
-
-	private async _createSession(client?: OPCUAClient): Promise<ClientSession> {
-		try {
-			const session = await (client || this.client)!.createSession(this.userIdentity);
-			if (!client) { // if no client is provided, set the session to the instance variable
-				this.session = session;
-				this._listenSessionEvent();
-			}
-
-			return session;
-		} catch (err) {
-			console.log(" Cannot create session ", err.toString());
-		}
-	}
-
-	private _listenClientEvents(): void {
-		this.client.on("backoff", (number, delay) => {
-			// if (number === 1) return this.client.disconnect();
-			// console.log(`connection failed, retrying attempt ${number + 1}`)
-		});
-
-		// this.client.on("start_reconnection", () => console.log("Starting reconnection to" + this.endpointUrl));
-
-		this.client.on("after_reconnection", () => {
-			const isReconnection = true;
-			for (const { ids, callback } of this.monitoredItemsData) {
-				this.monitorItem(ids, callback, isReconnection);
-			}
-		});
-
-		this.client.on("connection_lost", () => {
-			this.reconnect();
-		});
-
-		// this.client.on("connection_reestablished", () => console.log("CONNECTION RE-ESTABLISHED !! " + this.endpointUrl));
-
-		// // monitoring des lifetimes
-		// this.client.on("lifetime_75", (token) => {
-		// 	if (this.verbose) console.log("received lifetime_75 on " + this.endpointUrl);
-		// });
-
-		// this.client.on("security_token_renewed", () => {
-		// 	if (this.verbose) console.log(" security_token_renewed on " + this.endpointUrl);
-		// });
-
-		// this.client.on("timed_out_request", (request) => {
-		// 	this.emit("timed_out_request", request);
-		// });
-	}
-
-	private _listenSessionEvent(): void {
-		this.session.on("session_closed", () => {
-			// console.log(" Warning => Session closed");
-			this.reconnect();
-		})
-		// this.session.on("keepalive", () => {
-		// 	// console.log("session keepalive");
-		// })
-		this.session.on("keepalive_failure", () => {
-			this.reconnect();
-		})
-	}
-
-	// private _restartConnection = async () => {
-	// 	try {
-	// 		await this.client.disconnect()
-	// 		await this.client.connect(this.endpointUrl)
-	// 	} catch (error) {
-	// 		console.log("OpcUa: restartConnection", error)
-	// 	}
-	// }
-
 
 }
 

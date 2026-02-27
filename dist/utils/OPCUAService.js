@@ -33,23 +33,142 @@ class OPCUAService extends events_1.EventEmitter {
         this.endpointUrl = url;
         this._discoverModel = model;
     }
+    //////////////////////////// Client connection management ////////////////////////////
+    createClient() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (this.client)
+                return this.client; // if the client already exists, return it
+            const { certificateFile, clientCertificateManager, applicationUri, applicationName } = yield make_certificate_1.default;
+            const client = node_opcua_1.OPCUAClient.create({
+                securityMode: node_opcua_1.MessageSecurityMode.None,
+                securityPolicy: node_opcua_1.SecurityPolicy.None,
+                endpointMustExist: false,
+                defaultSecureTokenLifetime: 30 * 1000,
+                requestedSessionTimeout: 50 * 1000,
+                keepSessionAlive: true,
+                transportTimeout: 5 * 60 * 1000,
+                connectionStrategy: {
+                    maxRetry: 3,
+                    initialDelay: 1000,
+                    // maxDelay: 10 * 1000,
+                },
+            });
+            this._listenClientEvents(client);
+            return client;
+        });
+    }
+    _listenClientEvents(client) {
+        client.on("backoff", (number, delay) => {
+            // if (number === 1) return client.disconnect();
+            // console.log(`connection failed, retrying attempt ${number + 1}`)
+        });
+        client.on("after_reconnection", () => {
+            const isReconnection = true;
+            for (const { ids, callback } of this.monitoredItemsData) {
+                this.monitorItem(ids, callback, isReconnection);
+            }
+        });
+        client.on("connection_lost", () => {
+            this.reconnect();
+        });
+    }
     checkAndRetablishConnection() {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.client && this.session)
                 return;
-            yield this.createClient();
+            this.client = yield this.createClient();
             yield this.connect(userIdentity);
         });
     }
     disconnect() {
         return __awaiter(this, void 0, void 0, function* () {
-            if (this.session) {
-                const session = this.session;
-                this.session = undefined;
-                yield session.close();
-            }
+            if (this.session)
+                this.session.close();
             OPCUAFactory_1.default.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
-            yield this.client.disconnect();
+            if (this.client)
+                yield this.client.disconnect();
+        });
+    }
+    _createSession() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                if (!this.client)
+                    this.client = yield this.createClient();
+                const session = yield this.client.createSession(this.userIdentity);
+                this._listenSessionEvent(session);
+                return session;
+            }
+            catch (err) {
+                console.log(" Cannot create session ", err.toString());
+                throw err;
+            }
+        });
+    }
+    _listenSessionEvent(session) {
+        session.on("session_closed", () => {
+            // console.log(" Warning => Session closed");
+            this.reconnect();
+        });
+        // session.on("keepalive", () => {
+        // 	// console.log("session keepalive");
+        // })
+        session.on("keepalive_failure", () => {
+            this.reconnect();
+        });
+    }
+    createSubscription() {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                this.session = yield this._createSession();
+            try {
+                const parameters = {
+                    requestedPublishingInterval: 10 * 1000,
+                    requestedLifetimeCount: 100,
+                    requestedMaxKeepAliveCount: 4,
+                    maxNotificationsPerPublish: 10,
+                    publishingEnabled: true,
+                    priority: 1 // Donne une priorité à la subscription
+                };
+                return this.session.createSubscription2(parameters);
+            }
+            catch (error) {
+                console.log("cannot create subscription !", error.message);
+                throw error;
+            }
+        });
+    }
+    connect(userIdentity) {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                this.userIdentity = userIdentity || { type: node_opcua_1.UserTokenType.Anonymous };
+                if (!this.client)
+                    this.client = yield this.createClient();
+                yield this.client.connect(this.endpointUrl);
+                this.session = yield this._createSession();
+                this.subscription = yield this.createSubscription();
+            }
+            catch (error) {
+                throw error;
+            }
+        });
+    }
+    reconnect() {
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                if (this.isReconnecting)
+                    return;
+                if (!this.client)
+                    this.client = yield this.createClient();
+                this.isReconnecting = true;
+                yield this.client.disconnect();
+                yield this.connect();
+                this.isReconnecting = false;
+            }
+            catch (error) {
+                console.log(`Reconnection failed to ${this.endpointUrl}`, error);
+                this.isReconnecting = false;
+                // OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
+            }
         });
     }
     ///////////////////////////////////////////////////////////////////////////
@@ -58,8 +177,9 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
-            yield this.createClient();
-            yield this.connect(userIdentity);
+            // await this.connect(userIdentity);
+            if (!this.session)
+                throw constants_1.noSessionError;
             // get the queue and nodesObj from the last discover or create a new one
             let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
@@ -99,6 +219,8 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     readNode(node) {
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                throw constants_1.noSessionError;
             if (!Array.isArray(node))
                 node = [node];
             return this.session.read(node);
@@ -107,6 +229,8 @@ class OPCUAService extends events_1.EventEmitter {
     getNodePath(nodeId) {
         var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                throw constants_1.noSessionError;
             if (typeof nodeId === "string")
                 nodeId = (0, node_opcua_1.coerceNodeId)(nodeId);
             const browseName = yield this._readBrowseName(nodeId);
@@ -123,39 +247,41 @@ class OPCUAService extends events_1.EventEmitter {
             }
             const browsePath = "/" + pathElements.join("");
             // verification
-            const a = yield this.session.translateBrowsePath((0, node_opcua_1.makeBrowsePath)("i=84", browsePath));
-            return browsePath + " (" + ((_b = (_a = a.targets[0]) === null || _a === void 0 ? void 0 : _a.targetId) === null || _b === void 0 ? void 0 : _b.toString()) + ")";
+            const translation = yield this.session.translateBrowsePath((0, node_opcua_1.makeBrowsePath)("i=84", browsePath));
+            if (!translation.targets || translation.targets.length === 0)
+                return "";
+            return `${browsePath}/${(_b = (_a = translation.targets[0]) === null || _a === void 0 ? void 0 : _a.targetId) === null || _b === void 0 ? void 0 : _b.toString()}`;
         });
     }
     readNodeValue(node) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.checkAndRetablishConnection();
-            if (!this.session) {
-                this._createSession();
-            }
+            if (!this.session)
+                throw constants_1.noSessionError;
             node = Array.isArray(node) ? node : [node];
             const chunckSize = 100; // read 100 nodes at a time to avoid timeout errors
             const nodesChunk = lodash.chunk(node, chunckSize);
-            const _promise = nodesChunk.reduce((prom, chunk) => __awaiter(this, void 0, void 0, function* () {
-                let list = yield prom;
-                const values = yield this.readNode(chunk);
-                list.push(...values);
-                return list;
-            }), Promise.resolve([]));
-            const dataValues = yield _promise;
-            yield this.disconnect();
-            return dataValues.map((dataValue) => this._formatDataValue(dataValue));
+            const promises = nodesChunk.map((chunk) => this.readNode(chunk));
+            return Promise.allSettled(promises).then((results) => {
+                const dataValues = [];
+                for (const result of results) {
+                    if (result.status === "fulfilled") {
+                        dataValues.push(...result.value);
+                    }
+                }
+                return dataValues.map((dataValue) => this._formatDataValue(dataValue));
+            }).finally(() => __awaiter(this, void 0, void 0, function* () {
+                yield this.disconnect();
+            }));
         });
     }
     writeNode(node, value) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.session) {
-                yield this._createSession();
-            }
-            // const { dataType, arrayDimension, valueRank } = await this._getNodesDetails(node);
+            if (!this.session)
+                throw constants_1.noSessionError;
             const PossibleDataType = yield this._getPossibleDataType(value);
             try {
-                let statusCode;
+                let statusCode = node_opcua_1.StatusCodes.BadTypeMismatch;
                 let isGood = false; // check we found a data type
                 // test each data type until we find a good one
                 while (!isGood && PossibleDataType.length) {
@@ -175,18 +301,14 @@ class OPCUAService extends events_1.EventEmitter {
                 return statusCode;
             }
             catch (error) {
-                // console.log("error writing value", error);
-                // return StatusCodes.BadInternalError;
                 throw error;
             }
         });
     }
     monitorItem(nodeIds, callback, isReconnection = false) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.subscription) {
-                yield this.createSubscription();
-            }
-            ;
+            if (!this.subscription)
+                throw constants_1.noSubscriptionError;
             nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
             // if not reconnection save the monitored items for reconnexion}
             if (!isReconnection) {
@@ -210,15 +332,16 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    getNodeIdByPath(path) {
+    getNodeIdByPath(nodePath = "") {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                if (!path.startsWith("/Objects"))
-                    path = "/Objects" + path;
-                if (path.endsWith("/"))
-                    path = path.slice(0, -1); // remove trailing slash
-                const browsePaths = (0, node_opcua_1.makeBrowsePath)("RootFolder", path);
+                if (!this.session)
+                    throw constants_1.noSessionError;
+                if (!nodePath.startsWith("/Objects"))
+                    nodePath = "/Objects/" + nodePath;
+                nodePath = (0, utils_1.normalizePath)(nodePath);
+                const browsePaths = (0, node_opcua_1.makeBrowsePath)("RootFolder", nodePath);
                 const nodesFound = yield this.session.translateBrowsePath(browsePaths);
                 if (!nodesFound.targets || nodesFound.targets.length === 0)
                     return;
@@ -229,13 +352,13 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    getNodeByPath(path) {
+    getNodeByPath(nodePath = "") {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                const startNodeId = yield this.getNodeIdByPath(path);
+                const startNodeId = yield this.getNodeIdByPath(nodePath);
                 if (!startNodeId)
                     return;
-                const startNode = yield this.readNodeDescription(startNodeId, path);
+                const startNode = yield this.readNodeDescription(startNodeId, nodePath);
                 return startNode; // return the node with its children and path
             }
             catch (error) {
@@ -256,90 +379,17 @@ class OPCUAService extends events_1.EventEmitter {
         return Promise.all(promises).then((result) => {
             const res = [];
             for (let i = 0; i < result.length; i++) {
-                if (!result[i]) {
+                const element = result[i];
+                if (!element) {
                     console.log(`Node with path ${nodes[i].path} not found anymore, it may have been deleted`);
                     continue;
                 }
-                res.push(result[i]);
+                res.push(element);
             }
             return res;
         });
     }
     ///////////////////////////////////////////////////////////////////////////
-    createClient() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!this.client) {
-                const { certificateFile, clientCertificateManager, applicationUri, applicationName } = yield make_certificate_1.default;
-                this.client = node_opcua_1.OPCUAClient.create({
-                    securityMode: node_opcua_1.MessageSecurityMode.None,
-                    securityPolicy: node_opcua_1.SecurityPolicy.None,
-                    endpointMustExist: false,
-                    defaultSecureTokenLifetime: 30 * 1000,
-                    requestedSessionTimeout: 50 * 1000,
-                    keepSessionAlive: true,
-                    transportTimeout: 5 * 60 * 1000,
-                    connectionStrategy: {
-                        maxRetry: 3,
-                        initialDelay: 1000,
-                        // maxDelay: 10 * 1000,
-                    },
-                });
-                this._listenClientEvents();
-            }
-            return this.client;
-        });
-    }
-    createSubscription() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!this.session) {
-                yield this._createSession();
-            }
-            try {
-                const parameters = {
-                    requestedPublishingInterval: 10 * 1000,
-                    requestedLifetimeCount: 100,
-                    requestedMaxKeepAliveCount: 4,
-                    maxNotificationsPerPublish: 10,
-                    publishingEnabled: true,
-                    priority: 1 // Donne une priorité à la subscription
-                };
-                this.subscription = yield this.session.createSubscription2(parameters);
-            }
-            catch (error) {
-                console.log("cannot create subscription !", error.message);
-            }
-        });
-    }
-    connect(userIdentity) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                this.userIdentity = userIdentity || { type: node_opcua_1.UserTokenType.Anonymous };
-                yield this.client.connect(this.endpointUrl);
-                yield this._createSession();
-                yield this.createSubscription();
-            }
-            catch (error) {
-                throw error;
-            }
-        });
-    }
-    reconnect() {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                if (this.isReconnecting)
-                    return;
-                this.isReconnecting = true;
-                yield this.client.disconnect();
-                yield this.connect();
-                this.isReconnecting = false;
-            }
-            catch (error) {
-                console.log(`Reconnection failed to ${this.endpointUrl}`, error);
-                this.isReconnecting = false;
-                // OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
-            }
-        });
-    }
     _listenMonitoredItemEvents(monitoredItem, callback) {
         console.log(`Monitor ${monitoredItem.itemToMonitor.nodeId.toString()} with COV`);
         monitoredItem.on("changed", (dataValue) => {
@@ -356,20 +406,25 @@ class OPCUAService extends events_1.EventEmitter {
         return this._browseUsingBrowseDescription(nodeToBrowse);
     }
     _browseUsingBrowseDescription(descriptions) {
+        var _a, _b, _c, _d;
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                throw constants_1.noSessionError;
             const browseResults = yield this.session.browse(descriptions);
-            return browseResults.reduce((children, browseResult, index) => {
-                var _a, _b, _c;
-                const parentId = (_b = (_a = descriptions[index]) === null || _a === void 0 ? void 0 : _a.nodeId) === null || _b === void 0 ? void 0 : _b.toString();
-                for (const ref of browseResult.references) {
-                    const refName = ref.displayName.text || ((_c = ref.browseName) === null || _c === void 0 ? void 0 : _c.toString());
+            const children = [];
+            for (let i = 0; i < browseResults.length; i++) {
+                const browseResult = browseResults[i];
+                const parentId = (_b = (_a = descriptions[i]) === null || _a === void 0 ? void 0 : _a.nodeId) === null || _b === void 0 ? void 0 : _b.toString();
+                const refs = (_c = browseResult.references) !== null && _c !== void 0 ? _c : [];
+                for (let j = 0; j < refs.length; j++) {
+                    const ref = refs[j];
+                    const refName = ref.displayName.text || ((_d = ref.browseName) === null || _d === void 0 ? void 0 : _d.toString());
                     if (!refName || refName.startsWith(".") || constants_1.NAMES_TO_IGNORE.includes(refName.toLowerCase()))
-                        continue; // skip unwanted nodes
-                    const formatted = this._formatReference(ref, "", parentId);
-                    children.push(formatted);
+                        continue;
+                    children.push(this._formatReference(ref, "", parentId));
                 }
-                return children;
-            }, []);
+            }
+            return children;
         });
     }
     _addNodeToNodesObject(nodes, nodesObj = {}) {
@@ -377,8 +432,8 @@ class OPCUAService extends events_1.EventEmitter {
             for (const child of nodes) {
                 const parent = nodesObj[child.parentId];
                 // create the path based on the parent node
-                const path = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
-                child.path = (0, utils_1.normalizePath)(path);
+                const nodePath = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
+                child.path = (0, utils_1.normalizePath)(nodePath);
                 nodesObj[child.nodeId.toString()] = child;
             }
             return nodes;
@@ -404,6 +459,8 @@ class OPCUAService extends events_1.EventEmitter {
     }
     readNodeDescription(nodeId, path = "") {
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                throw constants_1.noSessionError;
             const attributesToRead = [
                 { nodeId, attributeId: node_opcua_1.AttributeIds.BrowseName },
                 { nodeId, attributeId: node_opcua_1.AttributeIds.DisplayName },
@@ -429,6 +486,8 @@ class OPCUAService extends events_1.EventEmitter {
     _getNodeParent(nodeId) {
         var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                throw constants_1.noSessionError;
             let browseResult = yield this.session.browse({
                 browseDirection: node_opcua_1.BrowseDirection.Inverse,
                 includeSubtypes: true,
@@ -459,6 +518,8 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _getDiscoverStarterData(entryPointPath, useLastResult) {
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                throw constants_1.noSessionError;
             let queue, nodesObj;
             let browseMode = "unicast"; //always use unicast browsing
             try {
@@ -487,8 +548,11 @@ class OPCUAService extends events_1.EventEmitter {
                     const parent = obj[node.parentId];
                     if (this.isVariable(node))
                         variables.push(node.nodeId.toString());
-                    if (parent)
+                    if (parent) {
+                        if (!parent.children)
+                            parent.children = [];
                         parent.children.push(node);
+                    }
                 }
             }
             tree = obj[tree.nodeId.toString()];
@@ -556,65 +620,10 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _readBrowseName(nodeId) {
         return __awaiter(this, void 0, void 0, function* () {
+            if (!this.session)
+                throw constants_1.noSessionError;
             const node = yield this.session.read({ nodeId, attributeId: node_opcua_1.AttributeIds.BrowseName });
             return node.value.value;
-        });
-    }
-    ////////////////////////////////////////////////////////////
-    //                       Client                           //
-    ////////////////////////////////////////////////////////////
-    _createSession(client) {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const session = yield (client || this.client).createSession(this.userIdentity);
-                if (!client) { // if no client is provided, set the session to the instance variable
-                    this.session = session;
-                    this._listenSessionEvent();
-                }
-                return session;
-            }
-            catch (err) {
-                console.log(" Cannot create session ", err.toString());
-            }
-        });
-    }
-    _listenClientEvents() {
-        this.client.on("backoff", (number, delay) => {
-            // if (number === 1) return this.client.disconnect();
-            // console.log(`connection failed, retrying attempt ${number + 1}`)
-        });
-        // this.client.on("start_reconnection", () => console.log("Starting reconnection to" + this.endpointUrl));
-        this.client.on("after_reconnection", () => {
-            const isReconnection = true;
-            for (const { ids, callback } of this.monitoredItemsData) {
-                this.monitorItem(ids, callback, isReconnection);
-            }
-        });
-        this.client.on("connection_lost", () => {
-            this.reconnect();
-        });
-        // this.client.on("connection_reestablished", () => console.log("CONNECTION RE-ESTABLISHED !! " + this.endpointUrl));
-        // // monitoring des lifetimes
-        // this.client.on("lifetime_75", (token) => {
-        // 	if (this.verbose) console.log("received lifetime_75 on " + this.endpointUrl);
-        // });
-        // this.client.on("security_token_renewed", () => {
-        // 	if (this.verbose) console.log(" security_token_renewed on " + this.endpointUrl);
-        // });
-        // this.client.on("timed_out_request", (request) => {
-        // 	this.emit("timed_out_request", request);
-        // });
-    }
-    _listenSessionEvent() {
-        this.session.on("session_closed", () => {
-            // console.log(" Warning => Session closed");
-            this.reconnect();
-        });
-        // this.session.on("keepalive", () => {
-        // 	// console.log("session keepalive");
-        // })
-        this.session.on("keepalive_failure", () => {
-            this.reconnect();
         });
     }
 }

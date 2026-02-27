@@ -7,7 +7,7 @@ import OPCUAService from "./OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { normalizePath } from "./utils";
 
-export async function _transformTreeToGraphRecursively(context: SpinalContext, opcNode: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0) {
+export async function _transformTreeToGraphRecursively(context: SpinalContext, opcNode: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
 
 	const { node, relation, alreadyExist } = await getNodeAndRelation(opcNode, nodesAlreadyCreated, values, depth);
 
@@ -36,8 +36,9 @@ export async function getNodeAlreadyCreated(context: SpinalContext, network: Spi
 	const device = devices.find((el) => {
 		const serverIsMatch = el.info.server?.address?.get() == serverInfo?.address && el.info.server?.port?.get() == serverInfo?.port;
 		if (!serverIsMatch) return false;
+
 		const key = el.info?.path?.get() || el.info?.idNetwork?.get();
-		return normalizePath(opcNode.path) === key || opcNode.nodeId.toString() === key;
+		return normalizePath(opcNode.path || "") === key || opcNode.nodeId.toString() === key;
 	});
 
 
@@ -61,7 +62,7 @@ export async function getNodeAlreadyCreated(context: SpinalContext, network: Spi
 }
 
 async function getNodeAndRelation(opcNode: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, values: { [key: string]: any } = {}, depth: number = 0): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
-	const key = normalizePath(opcNode.path) || opcNode.nodeId.toString();
+	const key = normalizePath(opcNode.path || "") || opcNode.nodeId.toString();
 	let spinalNode: SpinalNode = nodesAlreadyCreated[key];
 
 	if (!spinalNode) { // If the node does not exist, create it
@@ -80,7 +81,7 @@ async function getNodeAndRelation(opcNode: IOPCNode, nodesAlreadyCreated: { [key
 function _updateNodeInfo(spinalNode: SpinalNode, opcNode: IOPCNode): SpinalNode {
 	spinalNode.info.name.set(opcNode.displayName || opcNode.browseName);
 	spinalNode.info.idNetwork.set(opcNode.nodeId.toString());
-	spinalNode.info.path.set(normalizePath(opcNode.path) || "");
+	spinalNode.info.path.set(normalizePath(opcNode.path || ""));
 
 	if (spinalNode.info.displayName) spinalNode.info.displayName.set(opcNode.displayName || opcNode.browseName);
 	if (spinalNode.info.browseName) spinalNode.info.browseName.set(opcNode.browseName || spinalNode.info.browseName);
@@ -94,13 +95,13 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 	let param: any = {
 		id: node.nodeId.toString(),
 		name: node.displayName,
-		path: node.path,
+		path: normalizePath(node.path || ""),
 		displayName: node.displayName || node.browseName,
 		browseName: node.browseName || node.displayName
 	};
 
 	if (OPCUAService.isVariable(node)) {
-		const key = normalizePath(node.path) || node.nodeId.toString();
+		const key = normalizePath(node.path || "") || node.nodeId.toString();
 		const dataValue = values[key];
 		param = {
 			...param,
@@ -129,7 +130,7 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 		idNetwork: element.id,
 		displayName: element.displayName || "",
 		browseName: element.browseName || "",
-		path: element.path
+		path: normalizePath(element.path || "")
 	});
 
 	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
@@ -182,57 +183,43 @@ function _getNodeRelationName(type: string) {
 
 		case SpinalBmsNetwork.nodeTypeName:
 			return SpinalBmsNetwork.relationName;
+		default:
+			throw new Error(`Unknown type ${type}`);
 	}
 }
 
 function _formatTree(tree: IOPCNode) {
 	if (tree.nodeClass != NodeClass.Variable) return { children: tree.children, attributes: [] };
+	const result: { children: IOPCNode[]; attributes: IOPCNode[] } = { children: [], attributes: [] }
 
-	return tree.children.reduce(
-		(obj, item) => {
-			if (item.nodeClass == NodeClass.Variable && (!item?.children || item?.children?.length == 0)) {
-				obj.attributes.push(item);
-			} else {
-				obj.children.push(item);
-			}
+	for (const item of (tree.children || [])) {
+		if (item.nodeClass == NodeClass.Variable && (!item?.children || item?.children?.length == 0)) {
+			result.attributes.push(item);
+		} else {
+			result.children.push(item);
+		}
+	}
 
-			return obj;
-		},
-		{ children: [], attributes: [] }
-	);
+	return result;
 }
 
 function _createNodeAttributes(node: SpinalNode, attributes: IOPCNode[], values: { [key: string]: any } = {}) {
 	const categoryName: string = "OPC Attributes";
 
 	//[TODO] use createOrUpdateAttrsAndCategories
-	const formatted = attributes.reduce((obj, el) => {
-		const key = normalizePath(el.path) || el.nodeId.toString();
+	const formatted: { [name: string]: any } = {};
+
+	for (const attr of attributes) {
+
+		const key = normalizePath(attr.path || "") || attr.nodeId.toString();
 		const value = values[key]?.value || "";
-		obj[el.displayName] = value;
-		return obj;
-	}, {});
+
+		if (attr.displayName) formatted[attr.displayName] = value;
+	}
 
 	return serviceDocumentation.createOrUpdateAttrsAndCategories(node, categoryName, formatted).then((result) => {
 		return result;
 	})
-
-	// return serviceDocumentation.addCategoryAttribute(node, categoryName).then((attributeCategory) => {
-	// 	const promises = [];
-	// 	const formatted = attributes.map((el) => {
-	// 		const key = normalizePath(el.path) || el.nodeId.toString();
-	// 		return {
-	// 			name: el.displayName,
-	// 			value: values[key]?.value || ""
-	// 		};
-	// 	});
-
-	// 	for (const { name, value } of formatted) {
-	// promises.push(serviceDocumentation.addAttributeByCategory(node, attributeCategory, name, value));
-	// 	}
-
-	// 	return Promise.all(promises);
-	// });
 }
 
 async function _changeValueAndDataType(node: SpinalNode, data: { value: any; dataType: string }) {

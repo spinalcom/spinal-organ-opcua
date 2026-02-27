@@ -1,29 +1,13 @@
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
-import { SpinalOPCUAListener } from "spinal-model-opcua";
 import { OPCUAProfileService } from "./profile_service";
 import { SpinalDevice } from "../modules/SpinalDevice";
 import { EventEmitter } from "stream";
 import { Process } from "spinal-core-connectorjs_type";
-import { IServer } from "spinal-model-opcua";
-export interface IProfile {
-    modificationDate: number;
-    node: SpinalNode;
-    intervals: {
-        [key: string]: any;
-        children: {
-            [key: string]: any;
-        };
-    }[];
-}
+import { IServer, SpinalOPCUAListener } from "spinal-model-opcua";
+import { IProfile } from "../interfaces/IProfile";
 
-export interface IDeviceInfo {
-    context: SpinalContext;
-    spinalDevice: SpinalDevice;
-    profile: IProfile;
-    spinalModel: SpinalOPCUAListener;
-    network: SpinalNode;
-    serverinfo: IServer
-}
+
+
 
 export class SpinalNetworkUtils extends EventEmitter {
     static instance: SpinalNetworkUtils;
@@ -63,9 +47,10 @@ export class SpinalNetworkUtils extends EventEmitter {
 
     public async initProfile(profile: SpinalNode, deviceId: string): Promise<IProfile> {
         const profileId = profile.getId().get();
+        const profileInfo = this.profiles.get(profileId);
 
-        if (this.profiles.has(profileId) && this.profiles.get(profileId).modificationDate === profile.info.indirectModificationDate.get()) {
-            return this.profiles.get(profileId)
+        if (profileInfo && profileInfo.modificationDate === profile.info.indirectModificationDate.get()) {
+            return profileInfo;
         }
 
         const intervals = await OPCUAProfileService.getIntervals(profile);
@@ -76,7 +61,6 @@ export class SpinalNetworkUtils extends EventEmitter {
         }
 
         this.profiles.set(profileId, data);
-
 
         const ids = this.profileToDevices.get(profileId) || new Set();
         ids.add(deviceId);
@@ -93,7 +77,8 @@ export class SpinalNetworkUtils extends EventEmitter {
         if (this.profileBinded.has(profileId)) return;
 
         const bindProcess = profile.info.indirectModificationDate.bind(() => {
-            const devicesIds = this.profileToDevices.get(profileId);
+            const devicesIds: Set<string> | undefined = this.profileToDevices.get(profileId) || new Set();
+
             console.log(`profile changed`)
             this.emit("profileUpdated", { profileId: profileId, devicesIds: Array.from(devicesIds) });
         }, false);

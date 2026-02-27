@@ -11,7 +11,7 @@ export class SpinalQueuing extends EventEmitter {
 	private queueList: Array<any> = [];
 
 	public percent: number = 0;
-	private length: number;
+	private length: number = 0;
 	public isProcessing: boolean = false;
 
 	private debounceStart = lodash.debounce(this.begin, 3000);

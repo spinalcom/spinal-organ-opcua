@@ -76,7 +76,7 @@ class SpinalDevice extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             const promises = [];
             for (const opcNode of nodes) {
-                const key = (0, utils_1.normalizePath)(opcNode.path) || opcNode.nodeId.toString();
+                const key = (0, utils_1.normalizePath)(opcNode.path || "") || opcNode.nodeId.toString();
                 const spinalnode = this.endpoints[key];
                 if (!spinalnode)
                     continue;

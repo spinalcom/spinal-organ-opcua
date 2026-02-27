@@ -30,17 +30,16 @@ import { NodeClass } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
 import { spinalMonitoring } from "../modules/SpinalMonitoring";
 import { spinalPilot } from "../modules/SpinalPilot";
-
+import * as pm2 from "pm2";
 // import { SpinalDevice } from "../modules/SpinalDevice";
 // import { SpinalNetworkServiceUtilities } from "./SpinalNetworkServiceUtilities";
 // import { spinalMonitoring } from "../modules/SpinalMonitoring";
 
 const Q = require("q");
-const pm2 = require("pm2");
 
 export const WaitModelReady = (): Promise<any> => {
 	const deferred = Q.defer();
-	const WaitModelReadyLoop = (defer) => {
+	const WaitModelReadyLoop = (defer: any) => {
 		if (FileSystem._sig_server === false) {
 			setTimeout(() => {
 				defer.resolve(WaitModelReadyLoop(defer));
@@ -59,9 +58,9 @@ export const connectionErrorCallback = (err?: Error): void => {
 	process.exit(0);
 };
 
-export const CreateOrganConfigFile = (spinalConnection: any, path: string, connectorName: string): Promise<SpinalOrganOPCUA> => {
+export const CreateOrganConfigFile = (spinalConnection: spinal.FileSystem, path: string, connectorName: string): Promise<SpinalOrganOPCUA> => {
 	return new Promise((resolve) => {
-		spinalConnection.load_or_make_dir(`${path}`, async (directory) => {
+		spinalConnection.load_or_make_dir(`${path}`, async (directory: spinal.Directory) => {
 			const found = await findFileInDirectory(directory, connectorName);
 			if (found) {
 				console.log("organ found !");
@@ -82,7 +81,7 @@ export const CreateOrganConfigFile = (spinalConnection: any, path: string, conne
 
 export const GetPm2Instance = (organName: string) => {
 	return new Promise((resolve, reject) => {
-		pm2.list((err, apps) => {
+		pm2.list((err: Error, apps: pm2.ProcessDescription[]) => {
 			if (err) {
 				console.error(err);
 				return reject(err);
@@ -101,7 +100,7 @@ function findFileInDirectory(directory: spinal.Directory, fileName: string): Pro
 			const element = directory[index];
 			const elementName = element.name.get();
 			if (elementName.toLowerCase() === `${fileName}.conf`.toLowerCase()) {
-				return element.load((file) => {
+				return element.load((file: SpinalOrganOPCUA) => {
 					WaitModelReady().then(() => {
 						resolve(file);
 					});
@@ -202,7 +201,7 @@ export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, or
 };
 
 export function getVariablesList(tree: IOPCNode): IOPCNode[] {
-	const variables = [];
+	const variables: IOPCNode[] = [];
 
 	addToObj(tree);
 

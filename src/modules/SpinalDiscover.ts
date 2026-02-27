@@ -86,6 +86,8 @@ class SpinalDiscover extends EventEmitter {
 			while (index < servers.length && !discoverIsCancelled(model)) {
 				try {
 					const tree = await this._discoverDevice(servers[index], model);
+					if (!tree || !tree.children) throw new Error("No tree discovered");
+
 					discovered.push(...tree.children);
 					const count = model.progress.finished.get();
 					model.progress.finished.set(count + 1);
@@ -126,11 +128,11 @@ class SpinalDiscover extends EventEmitter {
 
 
 		console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
-		const { tree } = await this._getOPCUATree(server, useLastResult, model, true);
-		if (!tree) return;
+		const discoverResult = await this._getOPCUATree(server, useLastResult, model, true);
+		if (!discoverResult) return;
 
 
-		return tree;
+		return discoverResult.tree;
 		// return this._getOPCUATree(model, useLastResult, true)
 		// 	.then(async ({ tree }: any) => {
 		// 		if (!tree) return;
@@ -185,29 +187,15 @@ class SpinalDiscover extends EventEmitter {
 		let err;
 		return opcuaService.getTree(entryPointPath, options)
 			.then(async (result) => {
+				if (!result || !result.tree || !result.tree.children) throw new Error("No tree discovered");
+
 				result.tree.children.map((el) => {
 					el.server = server;
 					return el;
 				})
 
 				return result;
-			})
-			// .catch(async (err) => {
-			// 	if (!tryTree2) throw err;
-
-			// 	console.log(`[${server.address}] - failed to use multi browsing, trying with unique browsing`);
-			// 	options.useBroadCast = false;
-			// 	const result = await opcuaService.getTree(entryPointPath, options);
-
-			// 	result.tree.children.map((el) => {
-			// 		el.server = server;
-			// 		return el;
-			// 	})
-
-			// 	return result;
-
-			// })
-			.catch(async (err) => {
+			}).catch(async (err) => {
 				console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
 				throw err;
 				// model.changeState(OPCUA_ORGAN_STATES.error);
@@ -242,9 +230,9 @@ class SpinalDiscover extends EventEmitter {
 				const gatewayData = (dataObject[nodeTocreate.server?.address] || []);
 				if (!gatewayData || gatewayData.length <= 0) continue;
 
-				const deviceData = gatewayData.find((el) => {
-					const key = normalizePath(nodeTocreate.path) || nodeTocreate.nodeId.toString();
-					return normalizePath(el.node.path) === key || el.node.nodeId.toString() === key;
+				const deviceData = gatewayData.find((el: { node: IOPCNode }) => {
+					const key = normalizePath(nodeTocreate.path || "") || nodeTocreate.nodeId.toString();
+					return normalizePath(el.node.path || "") === key || el.node.nodeId.toString() === key;
 				});
 
 				if (!deviceData) continue;
@@ -269,6 +257,8 @@ class SpinalDiscover extends EventEmitter {
 		const obj: { [key: string]: any } = {};
 
 		for (const node of nodes) {
+			if (!node.server) continue;
+
 			const variables = getVariablesList(node);
 			const url = getServerUrl(node.server);
 			const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, node);
@@ -279,48 +269,22 @@ class SpinalDiscover extends EventEmitter {
 		}
 
 		return obj;
-		// const promises = nodes.map(async (el) => {
-		// 	const variables = getVariablesList(el);
-		// 	const url = getServerUrl(el.server);
-		// 	const values = await this._getVariablesValues(url, variables);
-		// 	const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, el.server);
-
-		// 	return { variables, values, nodesAlreadyCreated, server: el.server, node: el };
-		// })
-
-		// return Promise.all(promises);
 	}
-
-	// private _formatGateway() {
-
-	// }
-
-	// private convertToBase64(tree: any) {
-	// 	return new Promise((resolve, reject) => {
-	// 		const treeString = JSON.stringify(tree);
-	// 		zlib.deflate(treeString, (err, buffer) => {
-	// 			if (!err) {
-	// 				const base64 = buffer.toString("base64");
-	// 				return resolve(base64);
-	// 			}
-	// 		});
-	// 	});
-	// }
 
 	private async _getVariablesValues(url: string, variables: IOPCNode[]) {
 		// const endpointUrl = getServerUrl(server);
 		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
 
 		return opcuaService.readNodeValue(variables).then((result) => {
-			const obj = {};
+			const obj: { [key: string]: { dataType: string, value: any } } = {};
+
 			for (let index = 0; index < result.length; index++) {
 				const element = result[index];
-				const key = normalizePath(variables[index].path) || variables[index].nodeId.toString();
+				const variable = variables[index];
+				const key = normalizePath(variable.path || "") || variable.nodeId.toString();
 				obj[key] = element;
 			}
 
-			// Disable disconnect to keep the connection alive for future operations
-			// opcuaService.disconnect();
 			return obj;
 		});
 	}

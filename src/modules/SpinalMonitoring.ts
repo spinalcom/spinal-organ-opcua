@@ -5,7 +5,7 @@ import { MinPriorityQueue, PriorityQueue, PriorityQueueItem } from "@datastructu
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalDevice } from "./SpinalDevice";
 import * as lodash from "lodash";
-import { IProfile, SpinalNetworkUtils } from "../utils/SpinalNetworkUtils";
+import { SpinalNetworkUtils } from "../utils/SpinalNetworkUtils";
 import { ClientMonitoredItemBase, coerceNodeId, UserIdentityInfo, UserTokenType } from "node-opcua";
 import OPCUAService from "../utils/OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
@@ -13,6 +13,7 @@ import { getServerUrl } from "../utils/Functions";
 import { ISpinalInterval } from "../interfaces/IntervalTypes";
 import { normalizePath } from "../utils/utils";
 import OPCUAFactory from "../utils/OPCUAFactory";
+import { IProfile } from "../interfaces/IProfile";
 
 class SpinalMonitoring {
     private queue: SpinalQueuing = new SpinalQueuing();
@@ -64,7 +65,7 @@ class SpinalMonitoring {
 
 
     public async initAllListenersModels(spinalListenerModels: SpinalOPCUAListener[]): Promise<SpinalDevice[]> {
-        const devices = [];
+        const devices: SpinalDevice[] = [];
         for (const model of spinalListenerModels) {
             const modelData = await this.spinalNetworkUtils.initSpinalListenerModel(model);
             devices.push(modelData);
@@ -89,6 +90,7 @@ class SpinalMonitoring {
                 continue;
             }
 
+            //@ts-ignore
             const { priority, element: intervalData } = this.priorityQueue.dequeue();
             const data = this.intervalTimesMap.get(intervalData.interval);
 
@@ -134,7 +136,7 @@ class SpinalMonitoring {
             // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
         }
 
-        this.priorityQueue.enqueue({ interval }, Date.now() + interval);
+        this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
     }
 
 
@@ -203,16 +205,13 @@ class SpinalMonitoring {
         let intervalObj = this.intervalTimesMap.get(interval) || {};
         let intervalList = intervalObj[url] || [];
 
-        const nodeToUpdate = intervalData.children.map((child) => {
+        const nodeToUpdate = intervalData.children.map((child: any) => {
             const key = normalizePath(child.path) || child.idNetwork;
             this.idNetworkToSpinalDevice.set(key, spinalDevice); // save the device in the map to be able to retrieve it later
             return { path: normalizePath(child.path) };
         })
 
         intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate })
-
-        // const data: { id: string; nodeToUpdate: { displayName: string; path: string }[] }[];
-
 
         intervalObj[url] = intervalList;
 
@@ -221,7 +220,7 @@ class SpinalMonitoring {
     }
 
     private _addItemToPriorityQueue(interval: number) {
-        const priorityQueueData: PriorityQueueItem<{ interval }>[] = this.priorityQueue.toArray();
+        const priorityQueueData: PriorityQueueItem<{ interval: number }>[] = this.priorityQueue.toArray();
 
         const intervalFound = priorityQueueData.find((priority: any) => priority.element?.interval == interval);
         console.log("Interval found in priority queue:", !!intervalFound, interval);
@@ -267,11 +266,11 @@ class SpinalMonitoring {
     }
 
 
-    private _getOPCValues(obj: { [key: string]: ISpinalInterval[] }) {
+    private _getOPCValues(obj: { [key: string]: ISpinalInterval[] }): Promise<{ [key: string]: IOPCNode[] }> {
 
         const urls = Object.keys(obj);
         const promises = [];
-        if (!urls.length) return Promise.resolve([]);
+        if (!urls.length) return Promise.resolve({});
 
         for (const url of urls) {
             const nodesToUpdate = obj[url].map((el) => el.nodeToUpdate).flat() || [];
@@ -286,7 +285,7 @@ class SpinalMonitoring {
 
                 if (!opcNode || !opcNode.nodeId) continue; // skip if no nodeId
 
-                const key = normalizePath(opcNode.path) || opcNode.nodeId.toString();
+                const key = normalizePath(opcNode.path || "") || opcNode.nodeId.toString();
                 const device = this.idNetworkToSpinalDevice.get(key);
                 if (!device) continue;
 
@@ -345,7 +344,7 @@ class SpinalMonitoring {
         // get new ids from opcNodes and save the path to be able to retrieve it later
         const ids = opcNodes.map((el) => {
             const nodeId = el.nodeId.toString();
-            idsToPaths[nodeId] = normalizePath(el.path) || nodeId; // save the path to be able to retrieve it later
+            idsToPaths[nodeId] = normalizePath(el.path || "") || nodeId; // save the path to be able to retrieve it later
             return nodeId;
         });
 

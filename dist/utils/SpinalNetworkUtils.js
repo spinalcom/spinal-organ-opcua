@@ -42,8 +42,9 @@ class SpinalNetworkUtils extends stream_1.EventEmitter {
     initProfile(profile, deviceId) {
         return __awaiter(this, void 0, void 0, function* () {
             const profileId = profile.getId().get();
-            if (this.profiles.has(profileId) && this.profiles.get(profileId).modificationDate === profile.info.indirectModificationDate.get()) {
-                return this.profiles.get(profileId);
+            const profileInfo = this.profiles.get(profileId);
+            if (profileInfo && profileInfo.modificationDate === profile.info.indirectModificationDate.get()) {
+                return profileInfo;
             }
             const intervals = yield profile_service_1.OPCUAProfileService.getIntervals(profile);
             const data = {
@@ -64,7 +65,7 @@ class SpinalNetworkUtils extends stream_1.EventEmitter {
         if (this.profileBinded.has(profileId))
             return;
         const bindProcess = profile.info.indirectModificationDate.bind(() => {
-            const devicesIds = this.profileToDevices.get(profileId);
+            const devicesIds = this.profileToDevices.get(profileId) || new Set();
             console.log(`profile changed`);
             this.emit("profileUpdated", { profileId: profileId, devicesIds: Array.from(devicesIds) });
         }, false);

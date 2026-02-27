@@ -7,3 +7,8 @@ export const NAMES_TO_IGNORE = [
     "networkset",
     "devicetopology",
 ] as readonly string[];
+
+
+
+export const noSessionError = new Error("No session available, please connect first");
+export const noSubscriptionError = new Error("No subscription available, please connect first");

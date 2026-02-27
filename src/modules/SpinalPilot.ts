@@ -44,26 +44,6 @@ class SpinalPilot {
             } catch (error) {
                pilot.setErrorMode();
             }
-
-            // if (pilot?.isNormal()) {
-            //    pilot.setProcessMode();
-            //    try {
-            //       await this.writeProperties(pilot?.requests.get())
-            //       console.log("success");
-            //       pilot.setSuccessMode();
-            //       await pilot.removeToNode();
-            //    } catch (error) {
-            //       console.error(error.message);
-            //       pilot.setErrorMode();
-            //       await pilot.removeToNode();
-            //    }
-
-            // } else {
-            //    console.log("remove");
-            //    await pilot.removeToNode();
-            // }
-
-            // // console.log("pilot",pilot)
          }
 
          this.isProcessing = false;
@@ -95,7 +75,7 @@ class SpinalPilot {
          console.log(`[${request.nodeId}] updated successfully`);
 
       } catch (error) {
-         console.log(`the update of [${request.nodeId}] failed due to error: ${error.message}`);
+         console.log(`the update of [${request.nodeId}] failed due to error: ${(error as Error).message}`);
          pilot.setErrorMode();
       }
 

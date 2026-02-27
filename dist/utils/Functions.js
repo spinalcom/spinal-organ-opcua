@@ -40,11 +40,11 @@ const node_opcua_1 = require("node-opcua");
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
 const SpinalMonitoring_1 = require("../modules/SpinalMonitoring");
 const SpinalPilot_1 = require("../modules/SpinalPilot");
+const pm2 = require("pm2");
 // import { SpinalDevice } from "../modules/SpinalDevice";
 // import { SpinalNetworkServiceUtilities } from "./SpinalNetworkServiceUtilities";
 // import { spinalMonitoring } from "../modules/SpinalMonitoring";
 const Q = require("q");
-const pm2 = require("pm2");
 const WaitModelReady = () => {
     const deferred = Q.defer();
     const WaitModelReadyLoop = (defer) => {

@@ -84,6 +84,7 @@ class SpinalMonitoring {
                     yield this.waitFct(900);
                     continue;
                 }
+                //@ts-ignore
                 const { priority, element: intervalData } = this.priorityQueue.dequeue();
                 const data = this.intervalTimesMap.get(intervalData.interval);
                 if (!data)
@@ -120,7 +121,7 @@ class SpinalMonitoring {
                 console.error(error);
                 // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
             }
-            this.priorityQueue.enqueue({ interval }, Date.now() + interval);
+            this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
         });
     }
     _bindDevices(devices) {
@@ -184,7 +185,6 @@ class SpinalMonitoring {
             return { path: (0, utils_1.normalizePath)(child.path) };
         });
         intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate });
-        // const data: { id: string; nodeToUpdate: { displayName: string; path: string }[] }[];
         intervalObj[url] = intervalList;
         this.intervalTimesMap.set(interval, intervalObj);
         return { interval, intervalObj };
@@ -233,7 +233,7 @@ class SpinalMonitoring {
         const urls = Object.keys(obj);
         const promises = [];
         if (!urls.length)
-            return Promise.resolve([]);
+            return Promise.resolve({});
         for (const url of urls) {
             const nodesToUpdate = obj[url].map((el) => el.nodeToUpdate).flat() || [];
             promises.push(this._getVariablesValues(url, nodesToUpdate));
@@ -244,7 +244,7 @@ class SpinalMonitoring {
             for (const opcNode of result.flat()) {
                 if (!opcNode || !opcNode.nodeId)
                     continue; // skip if no nodeId
-                const key = (0, utils_1.normalizePath)(opcNode.path) || opcNode.nodeId.toString();
+                const key = (0, utils_1.normalizePath)(opcNode.path || "") || opcNode.nodeId.toString();
                 const device = this.idNetworkToSpinalDevice.get(key);
                 if (!device)
                     continue;
@@ -292,7 +292,7 @@ class SpinalMonitoring {
             // get new ids from opcNodes and save the path to be able to retrieve it later
             const ids = opcNodes.map((el) => {
                 const nodeId = el.nodeId.toString();
-                idsToPaths[nodeId] = (0, utils_1.normalizePath)(el.path) || nodeId; // save the path to be able to retrieve it later
+                idsToPaths[nodeId] = (0, utils_1.normalizePath)(el.path || "") || nodeId; // save the path to be able to retrieve it later
                 return nodeId;
             });
             // connect to the OPCUA server and monitor the items

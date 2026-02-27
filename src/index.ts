@@ -1,5 +1,5 @@
 // import { config as dotenvConfig } from "dotenv";
-import { spinalCore } from "spinal-core-connectorjs_type";
+import { SpinalCallBackError, spinalCore } from "spinal-core-connectorjs_type";
 import * as pm2 from "pm2";
 import * as nodepath from "path";
 import { getConfig } from "./utils/utils";
@@ -60,6 +60,6 @@ const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA
 
 };
 
-const loadTypeInSpinalCore = (connect, type, callback, errorCallback) => {
+const loadTypeInSpinalCore = (connect: spinal.FileSystem, type: string, callback: (model: any) => void, errorCallback: SpinalCallBackError) => {
 	spinalCore.load_type(connect, type, callback, errorCallback);
 };

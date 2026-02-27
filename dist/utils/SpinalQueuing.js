@@ -14,6 +14,7 @@ class SpinalQueuing extends events_1.EventEmitter {
         this.processed = [];
         this.queueList = [];
         this.percent = 0;
+        this.length = 0;
         this.isProcessing = false;
         this.debounceStart = lodash.debounce(this.begin, 3000);
     }

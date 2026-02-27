@@ -1,6 +1,6 @@
 import { IOPCNode } from "../interfaces/OPCNode";
 import { IConfig } from "../interfaces/IConfig";
-import { BrowseDescription, BrowseDirection, DataType, ReferenceTypeIds, ResultMask } from "node-opcua";
+import { BrowseDescription, BrowseDirection, DataType, ReferenceTypeIds, ResultMask, VariantArrayType } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
 import * as nodePath from "path";
 import { config as dotenvConfig } from "dotenv";
@@ -92,7 +92,7 @@ export const coerceFunc = (dataType: DataType) => {
 };
 
 
-export function coerceStringToDataType(dataType, arrayType, VariantArrayType, data: any) {
+export function coerceStringToDataType(dataType: DataType, arrayType: number, VariantArrayType: any, data: any) {
 	const c = coerceFunc(dataType);
 	if (arrayType === VariantArrayType.Scalar) {
 		return c(data);
@@ -106,7 +106,8 @@ export function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): b
 }
 
 export function normalizePath(path: string): string {
-	if (!path) return null;
+	if (!path) return "";
+
 	if (path.endsWith("/")) path = path.slice(0, -1);
 
 	return path.replace(/([^:]\/)\/+/g, "$1");

@@ -1,12 +1,11 @@
 /// <reference types="node" />
 import { EventEmitter } from "events";
 import { SpinalNode, SpinalContext } from "spinal-env-viewer-graph-service";
-import { IServer } from "spinal-model-opcua";
-import { SpinalOPCUAListener } from "spinal-model-opcua";
-import { IProfile } from "../utils/SpinalNetworkUtils";
+import { IProfile } from "../interfaces/IProfile";
 import { IOPCNode } from "../interfaces/OPCNode";
+import { SpinalOPCUAListener, IServer } from "spinal-model-opcua";
 export declare class SpinalDevice extends EventEmitter {
-    private isInit;
+    isInit: boolean;
     context: SpinalContext;
     network: SpinalNode;
     device: SpinalNode;

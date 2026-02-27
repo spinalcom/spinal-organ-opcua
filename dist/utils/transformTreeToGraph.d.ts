@@ -4,7 +4,11 @@ export declare function _transformTreeToGraphRecursively(context: SpinalContext,
     [key: string]: SpinalNode;
 }, parent?: SpinalNode, values?: {
     [key: string]: any;
-}, depth?: number): any;
+}, depth?: number): Promise<{
+    node: SpinalNode;
+    relation: string;
+    alreadyExist: boolean;
+}>;
 export declare function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, opcNode: IOPCNode): Promise<{
     [key: string]: SpinalNode;
 }>;

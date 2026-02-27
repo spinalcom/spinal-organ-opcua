@@ -25,22 +25,22 @@
 import { SpinalBmsEndpoint } from "spinal-model-bmsnetwork";
 import { EventEmitter } from "events";
 import { SpinalNode, SpinalContext } from "spinal-env-viewer-graph-service";
-import { IServer } from "spinal-model-opcua";
 import { MessageSecurityMode, SecurityPolicy } from "node-opcua-client";
 import { UserTokenType, UserIdentityInfo } from "node-opcua";
 import { SpinalServiceTimeseries } from "spinal-model-timeseries";
 import { SpinalGraphService } from "spinal-env-viewer-graph-service";
-import { SpinalOPCUAListener } from "spinal-model-opcua";
-import { IProfile } from "../utils/SpinalNetworkUtils";
+import { IProfile } from "../interfaces/IProfile";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { normalizePath } from "../utils/utils";
+import { SpinalOPCUAListener, IServer } from "spinal-model-opcua";
+
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
 export class SpinalDevice extends EventEmitter {
-	private isInit: boolean = false;
+	public isInit: boolean = false;
 	public context: SpinalContext;
 	public network: SpinalNode;
 	public device: SpinalNode;
@@ -82,7 +82,7 @@ export class SpinalDevice extends EventEmitter {
 		const promises = [];
 
 		for (const opcNode of nodes) {
-			const key = normalizePath(opcNode.path) || opcNode.nodeId.toString();
+			const key = normalizePath(opcNode.path || "") || opcNode.nodeId.toString();
 			const spinalnode = this.endpoints[key];
 			if (!spinalnode) continue;
 

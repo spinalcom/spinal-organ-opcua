@@ -1,28 +1,10 @@
 /// <reference types="node" />
-import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
-import { SpinalOPCUAListener } from "spinal-model-opcua";
+import { SpinalNode } from "spinal-env-viewer-graph-service";
 import { SpinalDevice } from "../modules/SpinalDevice";
 import { EventEmitter } from "stream";
 import { Process } from "spinal-core-connectorjs_type";
-import { IServer } from "spinal-model-opcua";
-export interface IProfile {
-    modificationDate: number;
-    node: SpinalNode;
-    intervals: {
-        [key: string]: any;
-        children: {
-            [key: string]: any;
-        };
-    }[];
-}
-export interface IDeviceInfo {
-    context: SpinalContext;
-    spinalDevice: SpinalDevice;
-    profile: IProfile;
-    spinalModel: SpinalOPCUAListener;
-    network: SpinalNode;
-    serverinfo: IServer;
-}
+import { SpinalOPCUAListener } from "spinal-model-opcua";
+import { IProfile } from "../interfaces/IProfile";
 export declare class SpinalNetworkUtils extends EventEmitter {
     static instance: SpinalNetworkUtils;
     profiles: Map<string, IProfile>;

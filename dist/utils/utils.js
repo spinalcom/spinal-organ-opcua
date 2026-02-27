@@ -103,7 +103,7 @@ function discoverIsCancelled(_discoverModel) {
 exports.discoverIsCancelled = discoverIsCancelled;
 function normalizePath(path) {
     if (!path)
-        return null;
+        return "";
     if (path.endsWith("/"))
         path = path.slice(0, -1);
     return path.replace(/([^:]\/)\/+/g, "$1");

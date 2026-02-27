@@ -21,12 +21,19 @@ export declare class OPCUAService extends EventEmitter {
     isVariable: typeof OPCUAService.isVariable;
     private isReconnecting;
     constructor(url: string, model?: SpinalOPCUADiscoverModel);
+    private createClient;
+    private _listenClientEvents;
     checkAndRetablishConnection(): Promise<void>;
     disconnect(): Promise<void>;
-    getTree(entryPointPath?: string, options?: ITreeOption): Promise<{
+    private _createSession;
+    private _listenSessionEvent;
+    private createSubscription;
+    private connect;
+    private reconnect;
+    getTree(entryPointPath: string, options?: ITreeOption): Promise<{
         tree: IOPCNode;
         variables: string[];
-    }>;
+    } | void>;
     readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
     getNodePath(nodeId: string | NodeId): Promise<string>;
     readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{
@@ -35,15 +42,11 @@ export declare class OPCUAService extends EventEmitter {
     }[]>;
     writeNode(node: IOPCNode, value: any): Promise<any>;
     monitorItem(nodeIds: string | string[], callback: CovCallbackType, isReconnection?: boolean): Promise<void>;
-    getNodeIdByPath(path?: string): Promise<string>;
-    getNodeByPath(path?: string): Promise<IOPCNode>;
+    getNodeIdByPath(nodePath?: string): Promise<string | void>;
+    getNodeByPath(nodePath?: string): Promise<IOPCNode | void>;
     static isVariable(node: IOPCNode): boolean;
     isObject(node: IOPCNode): boolean;
     getNodesNewInfoByPath(nodes: IOPCNode | IOPCNode[]): Promise<IOPCNode[]>;
-    private createClient;
-    private createSubscription;
-    private connect;
-    private reconnect;
     private _listenMonitoredItemEvents;
     private _browseNode;
     private _browseUsingBrowseDescription;
@@ -58,8 +61,5 @@ export declare class OPCUAService extends EventEmitter {
     private _formatDataValue;
     private _formatRealValue;
     private _readBrowseName;
-    private _createSession;
-    private _listenClientEvents;
-    private _listenSessionEvent;
 }
 export default OPCUAService;

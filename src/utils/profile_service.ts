@@ -1,4 +1,5 @@
 import { SPINAL_RELATION_PTR_LST_TYPE, SpinalGraphService, SpinalNode } from "spinal-env-viewer-graph-service";
+import { IIntervalInfo } from "../interfaces/INodeInfo";
 
 // NAMES
 export const CONTEXT_NAME = "OPCdeviceProfileContext";
@@ -28,27 +29,28 @@ class OPCUAProfileService {
     constructor() { }
 
 
-    static async getItems(profile: SpinalNode) {
+    static async getItems(profile: SpinalNode): Promise<SpinalNode[]> {
         const itemListNode = await this.getItemListNode(profile);
         if (itemListNode) return itemListNode.getChildren(ITEM_LIST_TO_ITEM);
 
         return [];
     }
 
-    static async getItemListNode(profile: SpinalNode) {
+    static async getItemListNode(profile: SpinalNode): Promise<SpinalNode | undefined> {
         const children = await profile.getChildren([]);
         return children.find(el => el.getName().get() === ITEMS_GROUP_NAME);
     }
 
 
 
-    static async getIntervals(profile: SpinalNode) {
+    static async getIntervals(profile: SpinalNode): Promise<IIntervalInfo[]> {
         const supervisionNode = await this.getSupervisionNode(profile);
 
         if (supervisionNode) {
-            const intervals = await supervisionNode.getChildren(SUPERVISION_TO_INTERVAL);
+            const intervals: SpinalNode[] = await supervisionNode.getChildren(SUPERVISION_TO_INTERVAL);
             const promises = intervals.map(async node => {
-                const children = await node.getChildren(INTERVAL_TO_ITEM)
+                const children: SpinalNode[] = await node.getChildren(INTERVAL_TO_ITEM);
+
                 return {
                     ...(node.info.get()),
                     children: children.map(el => el.info.get())
@@ -63,7 +65,7 @@ class OPCUAProfileService {
 
 
 
-    static async getSupervisionNode(profile) {
+    static async getSupervisionNode(profile: SpinalNode): Promise<SpinalNode | undefined> {
         const children = await profile.getChildren();
         return children.find(el => el.getName().get() === SUPERVISION_NAME);
     }
