@@ -42,7 +42,7 @@ class SpinalPilot {
                 while (!this.queue.isEmpty()) {
                     const pilot = this.queue.dequeue();
                     try {
-                        const requests = pilot === null || pilot === void 0 ? void 0 : pilot.request.get();
+                        const requests = pilot === null || pilot === void 0 ? void 0 : pilot.requests.get();
                         yield this._sendPilotToServer(pilot, requests);
                     }
                     catch (error) {
