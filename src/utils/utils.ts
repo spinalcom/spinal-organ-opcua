@@ -1,13 +1,13 @@
 import { IOPCNode } from "../interfaces/OPCNode";
 import { IConfig } from "../interfaces/IConfig";
-import { BrowseDescription, BrowseDirection, DataType, ReferenceTypeIds, ResultMask, VariantArrayType } from "node-opcua";
+import { BrowseDirection, DataType, ReferenceTypeIds } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
-import * as nodePath from "path";
+import * as path from "path";
 import { config as dotenvConfig } from "dotenv";
 import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 
 
-dotenvConfig({ path: nodePath.resolve(__dirname, "../../.env"), override: true });
+dotenvConfig({ path: path.resolve(__dirname, "../../.env"), override: true });
 
 
 export function getConfig(): IConfig {
@@ -102,13 +102,26 @@ export function coerceStringToDataType(dataType: DataType, arrayType: number, Va
 }
 
 export function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): boolean {
-	return !_discoverModel || _discoverModel.state?.get() !== OPCUA_ORGAN_STATES.discovering;
+	return !_discoverModel || _discoverModel.state?.get() == OPCUA_ORGAN_STATES.cancelled;
 }
 
-export function normalizePath(path: string): string {
-	if (!path) return "";
+export function normalizePath(nodePath: string): string {
+	if (!nodePath) return "";
 
-	if (path.endsWith("/")) path = path.slice(0, -1);
+	const protocolMath = nodePath.match(/^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)/);
+	let protocol = "";
 
-	return path.replace(/([^:]\/)\/+/g, "$1");
+	// If a protocol is found, separate it from the path
+	if (protocolMath) {
+		protocol = protocolMath[1];
+		nodePath = nodePath.slice(protocol.length); // Remove the protocol from the path for further processing
+	}
+
+	nodePath = nodePath.replace(/\/+/g, "/"); // Replace multiple slashes with a single slash
+
+	if (nodePath.length > 1 && nodePath.endsWith("/")) nodePath = nodePath.slice(0, -1); // Remove trailing slash if it exists
+
+	if (protocol && nodePath.startsWith("/")) nodePath = nodePath.slice(1); // Remove leading slash if protocol exists
+
+	return protocol + nodePath;
 }

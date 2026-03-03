@@ -2,10 +2,10 @@
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
-const nodePath = require("path");
+const path = require("path");
 const dotenv_1 = require("dotenv");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
-(0, dotenv_1.config)({ path: nodePath.resolve(__dirname, "../../.env"), override: true });
+(0, dotenv_1.config)({ path: path.resolve(__dirname, "../../.env"), override: true });
 function getConfig() {
     return {
         name: process.env.ORGAN_NAME || "EDIT_ME",
@@ -98,15 +98,25 @@ function coerceStringToDataType(dataType, arrayType, VariantArrayType, data) {
 exports.coerceStringToDataType = coerceStringToDataType;
 function discoverIsCancelled(_discoverModel) {
     var _a;
-    return !_discoverModel || ((_a = _discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) !== spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering;
+    return !_discoverModel || ((_a = _discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) == spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled;
 }
 exports.discoverIsCancelled = discoverIsCancelled;
-function normalizePath(path) {
-    if (!path)
+function normalizePath(nodePath) {
+    if (!nodePath)
         return "";
-    if (path.endsWith("/"))
-        path = path.slice(0, -1);
-    return path.replace(/([^:]\/)\/+/g, "$1");
+    const protocolMath = nodePath.match(/^([a-zA-Z][a-zA-Z0-9+.-]*:\/\/)/);
+    let protocol = "";
+    // If a protocol is found, separate it from the path
+    if (protocolMath) {
+        protocol = protocolMath[1];
+        nodePath = nodePath.slice(protocol.length); // Remove the protocol from the path for further processing
+    }
+    nodePath = nodePath.replace(/\/+/g, "/"); // Replace multiple slashes with a single slash
+    if (nodePath.length > 1 && nodePath.endsWith("/"))
+        nodePath = nodePath.slice(0, -1); // Remove trailing slash if it exists
+    if (protocol && nodePath.startsWith("/"))
+        nodePath = nodePath.slice(1); // Remove leading slash if protocol exists
+    return protocol + nodePath;
 }
 exports.normalizePath = normalizePath;
 //# sourceMappingURL=utils.js.map

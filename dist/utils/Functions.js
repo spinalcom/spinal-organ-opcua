@@ -32,15 +32,17 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.GetPm2Instance = exports.CreateOrganConfigFile = exports.connectionErrorCallback = exports.WaitModelReady = void 0;
+exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindModels = exports.GetPm2Instance = exports.CreateOrganConfigFile = exports.WaitModelReady = void 0;
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
-const SpinalDiscover_1 = require("../modules/SpinalDiscover");
 const node_opcua_1 = require("node-opcua");
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
+const spinal_connector_service_1 = require("spinal-connector-service");
+const SpinalDiscover_1 = require("../modules/SpinalDiscover");
 const SpinalMonitoring_1 = require("../modules/SpinalMonitoring");
 const SpinalPilot_1 = require("../modules/SpinalPilot");
 const pm2 = require("pm2");
+const utils_1 = require("./utils");
 // import { SpinalDevice } from "../modules/SpinalDevice";
 // import { SpinalNetworkServiceUtilities } from "./SpinalNetworkServiceUtilities";
 // import { spinalMonitoring } from "../modules/SpinalMonitoring";
@@ -61,14 +63,11 @@ const WaitModelReady = () => {
     return WaitModelReadyLoop(deferred);
 };
 exports.WaitModelReady = WaitModelReady;
-const connectionErrorCallback = (err) => {
-    if (!err)
-        console.error("Error Connect");
-    else
-        console.error("Error Connect", err);
-    process.exit(0);
-};
-exports.connectionErrorCallback = connectionErrorCallback;
+// export const connectionErrorCallback = (err?: Error): void => {
+// 	if (!err) console.error("Error Connect");
+// 	else console.error("Error Connect", err);
+// 	process.exit(0);
+// };
 const CreateOrganConfigFile = (spinalConnection, path, connectorName) => {
     return new Promise((resolve) => {
         spinalConnection.load_or_make_dir(`${path}`, (directory) => __awaiter(void 0, void 0, void 0, function* () {
@@ -121,25 +120,48 @@ function findFileInDirectory(directory, fileName) {
 ////////////////////////////////////////////////
 ////                 CALLBACKS                //
 ////////////////////////////////////////////////
-// export const SpinalBacnetValueModelCallback = async (spinalBacnetValueModel: SpinalBacnetValueModel, organModel: SpinalOrganConfigModel): Promise<void | boolean> => {
-// 	await WaitModelReady();
-// 	try {
-// 		spinalBacnetValueModel.organ.load(async (organ) => {
-// 			if (organ && (<any>organ).id?.get() !== organModel.id?.get()) return;
-// 			const { networkService, device, node } = <any>await SpinalNetworkServiceUtilities.initSpinalBacnetValueModel(spinalBacnetValueModel);
-// 			if (spinalBacnetValueModel.state.get() === "wait") {
-// 				const spinalDevice = new SpinalDevice(device);
-// 				await spinalDevice.createDeviceItemList(networkService, node, spinalBacnetValueModel);
-// 			} else {
-// 				return spinalBacnetValueModel.remToNode();
-// 			}
-// 		});
-// 	} catch (error) {
-// 		// console.error(error);
-// 		await spinalBacnetValueModel.setErrorState();
-// 		return spinalBacnetValueModel.remToNode();
-// 	}
-// };
+function bindModels(organModel) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const { discover, listener, pilot } = yield organModel.getModels();
+        const listenerAlreadyBinded = new Set();
+        const discoverAlreadyBinded = new Set();
+        //////////////// 
+        //bind discover model[discover]
+        ////////////////
+        discover.modification_date.bind(() => __awaiter(this, void 0, void 0, function* () {
+            const discoverList = yield organModel.getDiscoverModelFromGraph();
+            for (const spinalDiscoverModel of discoverList) {
+                if (discoverAlreadyBinded.has(spinalDiscoverModel._server_id))
+                    continue;
+                (0, exports.SpinalDiscoverCallback)(spinalDiscoverModel, organModel);
+                discoverAlreadyBinded.add(spinalDiscoverModel._server_id);
+            }
+        }));
+        ///////////////
+        //  bind pilot model [write value to bacnet device]
+        ///////////////
+        pilot.modification_date.bind(() => __awaiter(this, void 0, void 0, function* () {
+            const pilotList = yield organModel.getPilotModelFromGraph();
+            for (const spinalPilotModel of pilotList) {
+                (0, exports.SpinalPilotCallback)(spinalPilotModel, organModel);
+            }
+        }), true);
+        ////////////
+        //  bind listener model [monitoring bacnet device]
+        ////////////
+        listener.modification_date.bind(() => __awaiter(this, void 0, void 0, function* () {
+            const listenerList = yield organModel.getListenerModelFromGraph();
+            for (let i = 0; i < listenerList.length; i++) {
+                const spinalListenerModel = listenerList[i];
+                if (listenerAlreadyBinded.has(spinalListenerModel._server_id))
+                    continue;
+                yield (0, exports.SpinalListnerCallback)(spinalListenerModel, organModel);
+                listenerAlreadyBinded.add(spinalListenerModel._server_id);
+            }
+        }), true);
+    });
+}
+exports.bindModels = bindModels;
 function checkOrgan(spinalOrgan, organId) {
     var _a;
     return __awaiter(this, void 0, void 0, function* () {
@@ -176,13 +198,13 @@ const SpinalDiscoverCallback = (spinalDisoverModel, organModel) => __awaiter(voi
             const state = spinalDisoverModel.state.get();
             const timeout = time - creation >= minute;
             // Check if model is not timeout.
-            if (timeout || [spinal_model_opcua_1.OPCUA_ORGAN_STATES.created, spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled].includes(state))
+            if (timeout || [spinal_connector_service_1.STATES.created, spinal_connector_service_1.STATES.cancelled].includes(state))
                 throw "Time out !";
             SpinalDiscover_1.discover.addToQueue(spinalDisoverModel);
         }
     }
     catch (error) {
-        spinalDisoverModel.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.timeout);
+        spinalDisoverModel.changeState(spinal_connector_service_1.STATES.timeout);
         return spinalDisoverModel.removeFromGraph();
     }
 });
@@ -191,10 +213,15 @@ const SpinalPilotCallback = (spinalPilotModel, organModel) => __awaiter(void 0, 
     var _d;
     try {
         const itsForme = yield checkOrgan(spinalPilotModel, (_d = organModel.id) === null || _d === void 0 ? void 0 : _d.get());
-        if (itsForme)
-            SpinalPilot_1.spinalPilot.addToPilotList(spinalPilotModel);
+        if (itsForme) {
+            const spinalPilot = new SpinalPilot_1.SpinalPilot(spinalPilotModel);
+            yield spinalPilot.sendPilotToServer();
+        }
     }
-    catch (error) { }
+    catch (error) {
+        spinalPilotModel === null || spinalPilotModel === void 0 ? void 0 : spinalPilotModel.setErrorMode();
+        yield (spinalPilotModel === null || spinalPilotModel === void 0 ? void 0 : spinalPilotModel.removeFromNode());
+    }
 });
 exports.SpinalPilotCallback = SpinalPilotCallback;
 function getVariablesList(tree) {
@@ -213,13 +240,22 @@ function getVariablesList(tree) {
 }
 exports.getVariablesList = getVariablesList;
 function getServerUrl(serverInfo) {
+    const prefix = "opc.tcp://";
     let endpoint = serverInfo.endpoint || "";
-    if (endpoint.substring(0, 1) !== "/")
-        endpoint = `/${endpoint}`;
-    if (endpoint.substring(endpoint.length - 1) === "/")
-        endpoint = endpoint.substring(0, endpoint.length - 1);
+    // if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
+    // if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
     const ip = serverInfo.address || serverInfo.ip;
-    return `opc.tcp://${ip}:${serverInfo.port}${endpoint}`;
+    return (0, utils_1.normalizePath)(`${prefix}/${ip}:${serverInfo.port}/${endpoint}`);
 }
 exports.getServerUrl = getServerUrl;
+function restartProcessById(instanceId) {
+    return new Promise((resolve, reject) => {
+        pm2.restart(instanceId, (err) => {
+            if (err)
+                return resolve(false);
+            resolve(true);
+        });
+    });
+}
+exports.restartProcessById = restartProcessById;
 //# sourceMappingURL=Functions.js.map

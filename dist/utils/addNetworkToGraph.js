@@ -9,9 +9,10 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getOrganNode = exports.getOrGenNetworkNode = exports.addNetworkToGraph = void 0;
+exports.getOrGenNetworkNode = exports.addNetworkToGraph = void 0;
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
 const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
+// import { SpinalOrganOPCUA } from "spinal-model-opcua";
 function addNetworkToGraph(nodes, context, network, organ) {
     return __awaiter(this, void 0, void 0, function* () {
         const result = [];
@@ -36,8 +37,8 @@ exports.addNetworkToGraph = addNetworkToGraph;
 function getOrGenNetworkNode(model, context) {
     return __awaiter(this, void 0, void 0, function* () {
         context = context || (yield model.getContext());
-        const organElement = yield model.getOrgan();
-        const organ = yield getOrganNode(organElement, context.getId().get());
+        const organ = yield model.getOrgan();
+        // const organ = await getOrganNode(organElement, context.getId().get());
         const serverName = model.network.name.get();
         // delete server.address;
         const children = yield organ.getChildrenInContext(context);
@@ -52,20 +53,16 @@ function getOrGenNetworkNode(model, context) {
     });
 }
 exports.getOrGenNetworkNode = getOrGenNetworkNode;
-function getOrganNode(organ, contextId) {
-    return new Promise((resolve, reject) => {
-        try {
-            organ.references[contextId].load((node) => {
-                if (node instanceof spinal_env_viewer_graph_service_1.SpinalNode)
-                    resolve(node);
-                else
-                    reject("Error: getOrganNode");
-            });
-        }
-        catch (error) {
-            reject(error);
-        }
-    });
-}
-exports.getOrganNode = getOrganNode;
+// export function getOrganNode(organ: SpinalOrganOPCUA, contextId: string): Promise<SpinalNode> {
+// 	return new Promise((resolve, reject) => {
+// 		try {
+// 			organ.references[contextId].load((node) => {
+// 				if (node instanceof SpinalNode) resolve(node);
+// 				else reject("Error: getOrganNode");
+// 			});
+// 		} catch (error) {
+// 			reject(error);
+// 		}
+// 	});
+// }
 //# sourceMappingURL=addNetworkToGraph.js.map

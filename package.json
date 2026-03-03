@@ -41,6 +41,7 @@
     "spinal-model-bmsnetwork": "spinal-model-bmsnetwork@bacnet",
     "spinal-model-opcua": "spinal-model-opcua",
     "spinal-model-timeseries": "spinal-model-timeseries",
-    "spinal-models-documentation": "spinal-models-documentation"
+    "spinal-models-documentation": "spinal-models-documentation",
+    "spinal-connector-service": "spinal-connector-service"
   }
 }

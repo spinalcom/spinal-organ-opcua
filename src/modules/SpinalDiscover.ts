@@ -120,6 +120,7 @@ class SpinalDiscover extends EventEmitter {
 
 		let useLastResult = false;
 
+		// if file exist we ask the user if he wants to use the last result or start from scratch
 		if (discoveringStore.fileExist(_url)) {
 			// 	console.log("inside file exist");
 			// 	useLastResult = await this.askToContinueDiscovery(model);
@@ -219,13 +220,6 @@ class SpinalDiscover extends EventEmitter {
 
 			const dataObject = await this._getDataByGateway(treeToCreate.children, context, network);
 
-			// const promises = treeToCreate.children.map((el: IOPCNode) => {
-			// 	const gatewayData = dataObject[el.server?.address];
-			// 	if (!gatewayData) return;
-
-			// 	return _transformTreeToGraphRecursively(context, el, gatewayData.nodesAlreadyCreated, network, gatewayData.values);
-			// })
-
 			for (const nodeTocreate of treeToCreate.children) {
 				const gatewayData = (dataObject[nodeTocreate.server?.address] || []);
 				if (!gatewayData || gatewayData.length <= 0) continue;
@@ -272,21 +266,33 @@ class SpinalDiscover extends EventEmitter {
 	}
 
 	private async _getVariablesValues(url: string, variables: IOPCNode[]) {
-		// const endpointUrl = getServerUrl(server);
-		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
 
-		return opcuaService.readNodeValue(variables).then((result) => {
-			const obj: { [key: string]: { dataType: string, value: any } } = {};
+		//TODO: Remove the code bellow
+		const obj: { [key: string]: { dataType: string, value: any } } = {};
 
-			for (let index = 0; index < result.length; index++) {
-				const element = result[index];
-				const variable = variables[index];
-				const key = normalizePath(variable.path || "") || variable.nodeId.toString();
-				obj[key] = element;
-			}
+		for (let index = 0; index < variables.length; index++) {
+			const variable = variables[index];
+			const key = normalizePath(variable.path || "") || variable.nodeId.toString();
+			obj[key] = variable.value || { dataType: "Null", value: "null" };
+		}
 
-			return obj;
-		});
+		return obj;
+
+		//TODO: Uncomment the code bellow
+		// const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
+
+		// return opcuaService.readNodeValue(variables).then((result) => {
+		// 	const obj: { [key: string]: { dataType: string, value: any } } = {};
+
+		// 	for (let index = 0; index < result.length; index++) {
+		// 		const element = result[index];
+		// 		const variable = variables[index];
+		// 		const key = normalizePath(variable.path || "") || variable.nodeId.toString();
+		// 		obj[key] = element;
+		// 	}
+
+		// 	return obj;
+		// });
 	}
 
 	private delay(ms: number) {

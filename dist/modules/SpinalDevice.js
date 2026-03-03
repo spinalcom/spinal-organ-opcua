@@ -85,7 +85,12 @@ class SpinalDevice extends events_1.EventEmitter {
                 const value = (_a = opcNode.value) === null || _a === void 0 ? void 0 : _a.value;
                 promises.push(this._updateEndpoint(spinalnode, value, isCov));
             }
-            return Promise.all(promises);
+            return Promise.all(promises).then((result) => {
+                console.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
+            }).catch((err) => {
+                console.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
+            });
+            ;
         });
     }
     stopMonitoring() {

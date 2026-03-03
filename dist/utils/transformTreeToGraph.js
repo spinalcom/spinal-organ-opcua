@@ -120,7 +120,7 @@ function _generateNodeAndRelation(node, values = {}) {
         idNetwork: element.id,
         displayName: element.displayName || "",
         browseName: element.browseName || "",
-        path: (0, utils_1.normalizePath)(element.path || "")
+        path: (0, utils_1.normalizePath)(element.path.get() || "")
     });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }

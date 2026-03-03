@@ -22,7 +22,7 @@ export declare class SpinalDevice extends EventEmitter {
     private endpoints;
     constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener, profile: IProfile);
     init(): Promise<void | SpinalNode<any>[]>;
-    updateEndpoints(nodes: IOPCNode[], isCov?: boolean): Promise<any[]>;
+    updateEndpoints(nodes: IOPCNode[], isCov?: boolean): Promise<void>;
     stopMonitoring(): void;
     startMonitoring(): void;
     restartMonitoring(): void;

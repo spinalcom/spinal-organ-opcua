@@ -1,6 +1,6 @@
 import { SpinalNode, SPINAL_RELATION_PTR_LST_TYPE, SpinalContext } from "spinal-env-viewer-graph-service";
 import { SpinalBmsNetwork } from "spinal-model-bmsnetwork";
-import { SpinalOrganOPCUA } from "spinal-model-opcua";
+// import { SpinalOrganOPCUA } from "spinal-model-opcua";
 
 export async function addNetworkToGraph(nodes: { node: SpinalNode; relation: string; attributes: any }[], context: SpinalContext, network: SpinalNode, organ: SpinalNode) {
 
@@ -28,8 +28,8 @@ export async function addNetworkToGraph(nodes: { node: SpinalNode; relation: str
 
 export async function getOrGenNetworkNode(model: any, context: SpinalContext) {
 	context = context || (await model.getContext());
-	const organElement = await model.getOrgan();
-	const organ = await getOrganNode(organElement, context.getId().get());
+	const organ: SpinalNode = await model.getOrgan();
+	// const organ = await getOrganNode(organElement, context.getId().get());
 	const serverName = model.network.name.get();
 	// delete server.address;
 
@@ -46,15 +46,15 @@ export async function getOrGenNetworkNode(model: any, context: SpinalContext) {
 	return { network, organ, context };
 }
 
-export function getOrganNode(organ: SpinalOrganOPCUA, contextId: string): Promise<SpinalNode> {
-	return new Promise((resolve, reject) => {
-		try {
-			organ.references[contextId].load((node) => {
-				if (node instanceof SpinalNode) resolve(node);
-				else reject("Error: getOrganNode");
-			});
-		} catch (error) {
-			reject(error);
-		}
-	});
-}
+// export function getOrganNode(organ: SpinalOrganOPCUA, contextId: string): Promise<SpinalNode> {
+// 	return new Promise((resolve, reject) => {
+// 		try {
+// 			organ.references[contextId].load((node) => {
+// 				if (node instanceof SpinalNode) resolve(node);
+// 				else reject("Error: getOrganNode");
+// 			});
+// 		} catch (error) {
+// 			reject(error);
+// 		}
+// 	});
+// }

@@ -92,7 +92,11 @@ export class SpinalDevice extends EventEmitter {
 			promises.push(this._updateEndpoint(spinalnode, value, isCov));
 		}
 
-		return Promise.all(promises);
+		return Promise.all(promises).then((result) => {
+			console.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
+		}).catch((err) => {
+			console.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
+		});;
 	}
 
 

@@ -130,7 +130,7 @@ function _generateNodeAndRelation(node: IOPCNode, values: { [key: string]: any }
 		idNetwork: element.id,
 		displayName: element.displayName || "",
 		browseName: element.browseName || "",
-		path: normalizePath(element.path || "")
+		path: normalizePath(element.path.get() || "")
 	});
 
 	return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };

@@ -9,54 +9,25 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.spinalPilot = void 0;
+exports.SpinalPilot = void 0;
 const Functions_1 = require("../utils/Functions");
-const SpinalQueuing_1 = require("../utils/SpinalQueuing");
 const OPCUAFactory_1 = require("../utils/OPCUAFactory");
 class SpinalPilot {
-    constructor() {
-        this.queue = new SpinalQueuing_1.SpinalQueuing();
-        this.isProcessing = false;
+    constructor(spinalPilotModel) {
+        // private queue: SpinalQueuing = new SpinalQueuing();
+        // private isProcessing: boolean = false;
+        // private static instance: SpinalPilot;
+        this.spinalPilotModel = null;
+        this.spinalPilotModel = spinalPilotModel;
     }
-    static getInstance() {
-        if (!this.instance) {
-            this.instance = new SpinalPilot();
-            this.instance.init();
-        }
-        return this.instance;
-    }
-    init() {
-        this.queue.on("start", () => {
-            this.pilot();
-        });
-    }
-    addToPilotList(spinalPilotModel) {
+    sendPilotToServer() {
+        var _a, _b, _c, _d;
         return __awaiter(this, void 0, void 0, function* () {
-            this.queue.addToQueue(spinalPilotModel);
-        });
-    }
-    pilot() {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!this.isProcessing) {
-                this.isProcessing = true;
-                while (!this.queue.isEmpty()) {
-                    const pilot = this.queue.dequeue();
-                    try {
-                        const requests = pilot === null || pilot === void 0 ? void 0 : pilot.requests.get();
-                        yield this._sendPilotToServer(pilot, requests);
-                    }
-                    catch (error) {
-                        pilot.setErrorMode();
-                    }
-                }
-                this.isProcessing = false;
-            }
-        });
-    }
-    _sendPilotToServer(pilot, requests) {
-        return __awaiter(this, void 0, void 0, function* () {
+            const requests = ((_a = this.spinalPilotModel) === null || _a === void 0 ? void 0 : _a.requests.get()) || [];
             const request = requests[0];
             try {
+                if (!request)
+                    throw new Error("No requests found in the pilot model");
                 console.log(`send update request to ${request.nodeId} with value ${request.value}`);
                 const url = (0, Functions_1.getServerUrl)(request.networkInfo);
                 const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
@@ -67,18 +38,22 @@ class SpinalPilot {
                 yield opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
                 // Disable disconnect to keep the connection alive for future requests
                 // await opcuaService.disconnect(); // disconnect after the write operation
-                pilot.setSuccessMode();
+                (_b = this.spinalPilotModel) === null || _b === void 0 ? void 0 : _b.setSuccessMode();
                 console.log(`[${request.nodeId}] updated successfully`);
             }
             catch (error) {
                 console.log(`the update of [${request.nodeId}] failed due to error: ${error.message}`);
-                pilot.setErrorMode();
+                (_c = this.spinalPilotModel) === null || _c === void 0 ? void 0 : _c.setErrorMode();
             }
-            yield pilot.removeFromNode();
+            yield ((_d = this.spinalPilotModel) === null || _d === void 0 ? void 0 : _d.removeFromNode());
         });
     }
 }
-const spinalPilot = SpinalPilot.getInstance();
-exports.spinalPilot = spinalPilot;
-exports.default = spinalPilot;
+exports.SpinalPilot = SpinalPilot;
+exports.default = SpinalPilot;
+// const spinalPilot = SpinalPilot.getInstance();
+// export default spinalPilot;
+// export {
+// spinalPilot
+// }
 //# sourceMappingURL=SpinalPilot.js.map

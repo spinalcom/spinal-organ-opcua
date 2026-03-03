@@ -108,20 +108,31 @@ class SpinalMonitoring {
                     yield this.waitFct(date - Date.now());
                 }
                 const valuesObj = yield this._getOPCValues(data);
-                const promises = Object.keys(valuesObj).map((deviceId) => {
-                    const device = this.spinalDevicesStore.get(deviceId);
-                    if (!device)
-                        return;
-                    return device.updateEndpoints(valuesObj[deviceId]);
-                });
-                yield Promise.all(promises);
+                const deviceIds = Object.keys(valuesObj);
+                for (const deviceId of deviceIds) {
+                    if (this.spinalDevicesStore.has(deviceId)) {
+                        const device = this.spinalDevicesStore.get(deviceId);
+                        device === null || device === void 0 ? void 0 : device.updateEndpoints(valuesObj[deviceId]);
+                    }
+                }
+                // const promises = Object.keys(valuesObj).map((deviceId) => {
+                //     const device = this.spinalDevicesStore.get(deviceId);
+                //     try {
+                //         if (!device) return;
+                //         return device.updateEndpoints(valuesObj[deviceId]);
+                //     } catch (error) {
+                //         console.error(`Error updating endpoints for device ${deviceId}:`, error);
+                //     }
+                // });
+                // await Promise.all(promises);
                 // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
             }
             catch (error) {
                 console.error(error);
-                // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
             }
-            this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
+            finally {
+                this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
+            }
         });
     }
     _bindDevices(devices) {

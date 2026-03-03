@@ -56,11 +56,11 @@ export class OPCUAService extends EventEmitter {
 			defaultSecureTokenLifetime: 30 * 1000,
 			requestedSessionTimeout: 50 * 1000,
 			keepSessionAlive: true,
-			transportTimeout: 5 * 60 * 1000,
+			transportTimeout: 30 * 1000,
 			connectionStrategy: {
 				maxRetry: 3,
 				initialDelay: 1000,
-				// maxDelay: 10 * 1000,
+				// maxDelay: 5 * 1000,
 			},
 		});
 
@@ -161,6 +161,7 @@ export class OPCUAService extends EventEmitter {
 			this.session = await this._createSession();
 			this.subscription = await this.createSubscription();
 		} catch (error) {
+			console.log(`Cannot connect to ${this.endpointUrl} with userIdentity ${JSON.stringify(this.userIdentity)} !`, (error as Error).message);
 			throw error;
 		}
 	}
@@ -191,8 +192,11 @@ export class OPCUAService extends EventEmitter {
 
 	public async getTree(entryPointPath: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] } | void> {
 
-		// await this.connect(userIdentity);
-		if (!this.session) throw noSessionError;
+		//TODO: remove the line bellow
+		options.useLastResult = true;
+
+		//TODO: uncomment the lines bellow
+		// if (!this.session) await this.connect(userIdentity);
 
 		// get the queue and nodesObj from the last discover or create a new one
 		let { nodesObj, queue, browseMode } = await this._getDiscoverStarterData(entryPointPath, options.useLastResult);
@@ -229,6 +233,7 @@ export class OPCUAService extends EventEmitter {
 
 			if (_error) throw _error; // if an error occurs, throw it to stop the process
 		}
+
 
 
 		// if the discovering process is interrupted by user, stop the process
@@ -595,8 +600,6 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private async _getDiscoverStarterData(entryPointPath: string, useLastResult: boolean) {
-		if (!this.session) throw noSessionError;
-
 		let queue, nodesObj;
 
 		let browseMode = "unicast"; //always use unicast browsing
@@ -622,7 +625,7 @@ export class OPCUAService extends EventEmitter {
 
 
 	private async _convertObjToTree(entryPointPath: string, obj: { [key: string]: IOPCNode }): Promise<{ tree: IOPCNode, variables: string[] }> {
-		let tree = await this._getEntryPoint(entryPointPath);
+		let entryPoint = await this._getEntryPoint(entryPointPath);
 		const variables = [];
 
 		for (const key in obj) {
@@ -638,7 +641,7 @@ export class OPCUAService extends EventEmitter {
 			}
 		}
 
-		tree = obj[tree.nodeId.toString()];
+		let tree = obj[entryPoint.nodeId.toString()];
 		return { tree, variables }
 	}
 
@@ -648,13 +651,27 @@ export class OPCUAService extends EventEmitter {
 	///////////////////////////////////////////////////////
 
 	private async _getEntryPoint(entryPointPath?: string): Promise<IOPCNode> {
-		if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
-		if (!entryPointPath.startsWith("/")) entryPointPath = "/" + entryPointPath;
 
-		const node = await this.getNodeByPath(entryPointPath);
-		if (node) return node;
+		//TODO: Remove the object bellow
+		return {
+			displayName: "DeviceSet",
+			browseName: "DeviceSet",
+			nodeId: "ns=2;i=5001" as any,
+			nodeClass: 1,
+			children: [],
+			path: "/2:DeviceSet",
+		}
 
-		throw `No node found with entry point : ${entryPointPath}`;
+
+		//TODO: Uncomment the code bellow
+		// if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
+
+		// entryPointPath = normalizePath(`/${entryPointPath}`); // make sure the path starts with a slash and is normalized
+
+		// const node = await this.getNodeByPath(entryPointPath);
+		// if (node) return node;
+
+		// throw new Error(`No node found with entry point : ${entryPointPath}`);
 	}
 
 

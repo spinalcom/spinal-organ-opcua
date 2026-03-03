@@ -23,14 +23,17 @@
  */
 
 import { FileSystem, File as SpinalFile } from "spinal-core-connectorjs_type";
-import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
-import { discover } from "../modules/SpinalDiscover";
-import { IOPCNode, IServer } from "../interfaces/OPCNode";
-import { NodeClass } from "node-opcua";
+import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
+import { NodeClass, s } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
+import { STATES } from "spinal-connector-service";
+import { IOPCNode, IServer } from "../interfaces/OPCNode";
+
+import { discover } from "../modules/SpinalDiscover";
 import { spinalMonitoring } from "../modules/SpinalMonitoring";
-import { spinalPilot } from "../modules/SpinalPilot";
+import { SpinalPilot } from "../modules/SpinalPilot";
 import * as pm2 from "pm2";
+import { normalizePath } from "./utils";
 // import { SpinalDevice } from "../modules/SpinalDevice";
 // import { SpinalNetworkServiceUtilities } from "./SpinalNetworkServiceUtilities";
 // import { spinalMonitoring } from "../modules/SpinalMonitoring";
@@ -52,11 +55,11 @@ export const WaitModelReady = (): Promise<any> => {
 	return WaitModelReadyLoop(deferred);
 };
 
-export const connectionErrorCallback = (err?: Error): void => {
-	if (!err) console.error("Error Connect");
-	else console.error("Error Connect", err);
-	process.exit(0);
-};
+// export const connectionErrorCallback = (err?: Error): void => {
+// 	if (!err) console.error("Error Connect");
+// 	else console.error("Error Connect", err);
+// 	process.exit(0);
+// };
 
 export const CreateOrganConfigFile = (spinalConnection: spinal.FileSystem, path: string, connectorName: string): Promise<SpinalOrganOPCUA> => {
 	return new Promise((resolve) => {
@@ -116,30 +119,55 @@ function findFileInDirectory(directory: spinal.Directory, fileName: string): Pro
 ////                 CALLBACKS                //
 ////////////////////////////////////////////////
 
-// export const SpinalBacnetValueModelCallback = async (spinalBacnetValueModel: SpinalBacnetValueModel, organModel: SpinalOrganConfigModel): Promise<void | boolean> => {
-// 	await WaitModelReady();
+export async function bindModels(organModel: SpinalOrganOPCUA): Promise<void> {
 
-// 	try {
-// 		spinalBacnetValueModel.organ.load(async (organ) => {
-// 			if (organ && (<any>organ).id?.get() !== organModel.id?.get()) return;
+	const { discover, listener, pilot } = await organModel.getModels();
 
-// 			const { networkService, device, node } = <any>await SpinalNetworkServiceUtilities.initSpinalBacnetValueModel(spinalBacnetValueModel);
+	const listenerAlreadyBinded = new Set<number>();
+	const discoverAlreadyBinded = new Set<number>();
 
-// 			if (spinalBacnetValueModel.state.get() === "wait") {
-// 				const spinalDevice = new SpinalDevice(device);
+	//////////////// 
+	//bind discover model[discover]
+	////////////////
+	discover.modification_date.bind(async () => {
+		const discoverList = await organModel.getDiscoverModelFromGraph();
 
-// 				await spinalDevice.createDeviceItemList(networkService, node, spinalBacnetValueModel);
-// 			} else {
-// 				return spinalBacnetValueModel.remToNode();
-// 			}
-// 		});
-// 	} catch (error) {
-// 		// console.error(error);
+		for (const spinalDiscoverModel of discoverList) {
+			if (discoverAlreadyBinded.has(spinalDiscoverModel._server_id)) continue;
 
-// 		await spinalBacnetValueModel.setErrorState();
-// 		return spinalBacnetValueModel.remToNode();
-// 	}
-// };
+			SpinalDiscoverCallback(spinalDiscoverModel, organModel)
+			discoverAlreadyBinded.add(spinalDiscoverModel._server_id);
+		}
+	})
+
+	///////////////
+	//  bind pilot model [write value to bacnet device]
+	///////////////
+	pilot.modification_date.bind(async () => {
+		const pilotList = await organModel.getPilotModelFromGraph();
+
+		for (const spinalPilotModel of pilotList) {
+			SpinalPilotCallback(spinalPilotModel, organModel);
+		}
+	}, true);
+
+
+	////////////
+	//  bind listener model [monitoring bacnet device]
+	////////////
+	listener.modification_date.bind(async () => {
+		const listenerList = await organModel.getListenerModelFromGraph();
+
+		for (let i = 0; i < listenerList.length; i++) {
+			const spinalListenerModel = listenerList[i];
+
+			if (listenerAlreadyBinded.has(spinalListenerModel._server_id)) continue;
+
+			await SpinalListnerCallback(spinalListenerModel, organModel);
+			listenerAlreadyBinded.add(spinalListenerModel._server_id);
+		}
+	}, true);
+}
 
 async function checkOrgan(spinalOrgan: SpinalOPCUAListener | SpinalOPCUADiscoverModel | SpinalOPCUAPilot, organId: string): Promise<boolean> {
 	try {
@@ -179,12 +207,12 @@ export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADisc
 			const timeout = time - creation >= minute;
 
 			// Check if model is not timeout.
-			if (timeout || [OPCUA_ORGAN_STATES.created, OPCUA_ORGAN_STATES.cancelled].includes(state)) throw "Time out !"
+			if (timeout || [STATES.created, STATES.cancelled].includes(state)) throw "Time out !"
 
 			discover.addToQueue(spinalDisoverModel);
 		}
 	} catch (error) {
-		spinalDisoverModel.changeState(OPCUA_ORGAN_STATES.timeout);
+		spinalDisoverModel.changeState(STATES.timeout);
 		return spinalDisoverModel.removeFromGraph();
 	}
 
@@ -194,9 +222,15 @@ export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, or
 	try {
 		const itsForme = await checkOrgan(spinalPilotModel, organModel.id?.get());
 
-		if (itsForme) spinalPilot.addToPilotList(spinalPilotModel);
+		if (itsForme) {
+			const spinalPilot = new SpinalPilot(spinalPilotModel);
+			await spinalPilot.sendPilotToServer();
+		}
 
-	} catch (error) { }
+	} catch (error) {
+		spinalPilotModel?.setErrorMode();
+		await spinalPilotModel?.removeFromNode();
+	}
 
 };
 
@@ -220,16 +254,24 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 	}
 }
 
-
-
-
-
 export function getServerUrl(serverInfo: IServer): string {
+	const prefix = "opc.tcp://";
 	let endpoint = serverInfo.endpoint || "";
 
-	if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
-	if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
+	// if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
+	// if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
 
 	const ip = serverInfo.address || serverInfo.ip;
-	return `opc.tcp://${ip}:${serverInfo.port}${endpoint}`;
+
+	return normalizePath(`${prefix}/${ip}:${serverInfo.port}/${endpoint}`);
+}
+
+export function restartProcessById(instanceId: string | number): Promise<boolean> {
+
+	return new Promise((resolve, reject) => {
+		pm2.restart(instanceId, (err) => {
+			if (err) return resolve(false);
+			resolve(true);
+		});
+	});
 }

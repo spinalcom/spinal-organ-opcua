@@ -118,25 +118,36 @@ class SpinalMonitoring {
             }
 
             const valuesObj = await this._getOPCValues(data);
+            const deviceIds = Object.keys(valuesObj);
 
-            const promises = Object.keys(valuesObj).map((deviceId) => {
+            for (const deviceId of deviceIds) {
+                if (this.spinalDevicesStore.has(deviceId)) {
+                    const device = this.spinalDevicesStore.get(deviceId);
+                    device?.updateEndpoints(valuesObj[deviceId]);
+                }
+            }
 
-                const device = this.spinalDevicesStore.get(deviceId);
-                if (!device) return;
+            // const promises = Object.keys(valuesObj).map((deviceId) => {
+            //     const device = this.spinalDevicesStore.get(deviceId);
+            //     try {
+            //         if (!device) return;
 
-                return device.updateEndpoints(valuesObj[deviceId]);
-            });
+            //         return device.updateEndpoints(valuesObj[deviceId]);
+            //     } catch (error) {
+            //         console.error(`Error updating endpoints for device ${deviceId}:`, error);
+            //     }
+            // });
 
-            await Promise.all(promises);
+            // await Promise.all(promises);
 
             // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
         } catch (error) {
             console.error(error);
 
-            // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
+        } finally {
+            this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
         }
 
-        this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
     }
 
 
