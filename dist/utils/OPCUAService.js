@@ -50,7 +50,7 @@ class OPCUAService extends events_1.EventEmitter {
                 connectionStrategy: {
                     maxRetry: 3,
                     initialDelay: 1000,
-                    maxDelay: 5 * 1000,
+                    // maxDelay: 5 * 1000,
                 },
             });
             this._listenClientEvents(client);
@@ -178,10 +178,8 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
-            //TODO: remove the line bellow
-            options.useLastResult = true;
-            //TODO: uncomment the lines bellow
-            // if (!this.session) await this.connect(userIdentity);
+            if (!this.session)
+                yield this.connect(userIdentity);
             // get the queue and nodesObj from the last discover or create a new one
             let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(entryPointPath, options.useLastResult);
             console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
@@ -564,21 +562,13 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////
     _getEntryPoint(entryPointPath) {
         return __awaiter(this, void 0, void 0, function* () {
-            //TODO: Remove the object bellow
-            return {
-                displayName: "DeviceSet",
-                browseName: "DeviceSet",
-                nodeId: "ns=2;i=5001",
-                nodeClass: 1,
-                children: [],
-                path: "/2:DeviceSet",
-            };
-            //TODO: Uncomment the code bellow
-            // if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
-            // entryPointPath = normalizePath(`/${entryPointPath}`); // make sure the path starts with a slash and is normalized
-            // const node = await this.getNodeByPath(entryPointPath);
-            // if (node) return node;
-            // throw new Error(`No node found with entry point : ${entryPointPath}`);
+            if (!entryPointPath || entryPointPath === "/")
+                entryPointPath = "/Objects";
+            entryPointPath = (0, utils_1.normalizePath)(`/${entryPointPath}`); // make sure the path starts with a slash and is normalized
+            const node = yield this.getNodeByPath(entryPointPath);
+            if (node)
+                return node;
+            throw new Error(`No node found with entry point : ${entryPointPath}`);
         });
     }
     _formatReference(reference, parentPath, parentId) {

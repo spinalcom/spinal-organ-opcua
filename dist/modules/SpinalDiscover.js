@@ -228,26 +228,17 @@ class SpinalDiscover extends events_1.EventEmitter {
     }
     _getVariablesValues(url, variables) {
         return __awaiter(this, void 0, void 0, function* () {
-            //TODO: Remove the code bellow
-            const obj = {};
-            for (let index = 0; index < variables.length; index++) {
-                const variable = variables[index];
-                const key = (0, utils_1.normalizePath)(variable.path || "") || variable.nodeId.toString();
-                obj[key] = variable.value || { dataType: "Null", value: "null" };
-            }
-            return obj;
-            //TODO: Uncomment the code bellow
-            // const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
-            // return opcuaService.readNodeValue(variables).then((result) => {
-            // 	const obj: { [key: string]: { dataType: string, value: any } } = {};
-            // 	for (let index = 0; index < result.length; index++) {
-            // 		const element = result[index];
-            // 		const variable = variables[index];
-            // 		const key = normalizePath(variable.path || "") || variable.nodeId.toString();
-            // 		obj[key] = element;
-            // 	}
-            // 	return obj;
-            // });
+            const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
+            return opcuaService.readNodeValue(variables).then((result) => {
+                const obj = {};
+                for (let index = 0; index < result.length; index++) {
+                    const element = result[index];
+                    const variable = variables[index];
+                    const key = (0, utils_1.normalizePath)(variable.path || "") || variable.nodeId.toString();
+                    obj[key] = element;
+                }
+                return obj;
+            });
         });
     }
     delay(ms) {

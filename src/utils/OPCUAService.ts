@@ -192,11 +192,9 @@ export class OPCUAService extends EventEmitter {
 
 	public async getTree(entryPointPath: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] } | void> {
 
-		//TODO: remove the line bellow
-		options.useLastResult = true;
 
-		//TODO: uncomment the lines bellow
-		// if (!this.session) await this.connect(userIdentity);
+
+		if (!this.session) await this.connect(userIdentity);
 
 		// get the queue and nodesObj from the last discover or create a new one
 		let { nodesObj, queue, browseMode } = await this._getDiscoverStarterData(entryPointPath, options.useLastResult);
@@ -652,26 +650,14 @@ export class OPCUAService extends EventEmitter {
 
 	private async _getEntryPoint(entryPointPath?: string): Promise<IOPCNode> {
 
-		//TODO: Remove the object bellow
-		return {
-			displayName: "DeviceSet",
-			browseName: "DeviceSet",
-			nodeId: "ns=2;i=5001" as any,
-			nodeClass: 1,
-			children: [],
-			path: "/2:DeviceSet",
-		}
+		if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
 
+		entryPointPath = normalizePath(`/${entryPointPath}`); // make sure the path starts with a slash and is normalized
 
-		//TODO: Uncomment the code bellow
-		// if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
+		const node = await this.getNodeByPath(entryPointPath);
+		if (node) return node;
 
-		// entryPointPath = normalizePath(`/${entryPointPath}`); // make sure the path starts with a slash and is normalized
-
-		// const node = await this.getNodeByPath(entryPointPath);
-		// if (node) return node;
-
-		// throw new Error(`No node found with entry point : ${entryPointPath}`);
+		throw new Error(`No node found with entry point : ${entryPointPath}`);
 	}
 
 

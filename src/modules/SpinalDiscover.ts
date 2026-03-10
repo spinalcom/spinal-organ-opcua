@@ -266,33 +266,20 @@ class SpinalDiscover extends EventEmitter {
 	}
 
 	private async _getVariablesValues(url: string, variables: IOPCNode[]) {
+		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
 
-		//TODO: Remove the code bellow
-		const obj: { [key: string]: { dataType: string, value: any } } = {};
+		return opcuaService.readNodeValue(variables).then((result) => {
+			const obj: { [key: string]: { dataType: string, value: any } } = {};
 
-		for (let index = 0; index < variables.length; index++) {
-			const variable = variables[index];
-			const key = normalizePath(variable.path || "") || variable.nodeId.toString();
-			obj[key] = variable.value || { dataType: "Null", value: "null" };
-		}
+			for (let index = 0; index < result.length; index++) {
+				const element = result[index];
+				const variable = variables[index];
+				const key = normalizePath(variable.path || "") || variable.nodeId.toString();
+				obj[key] = element;
+			}
 
-		return obj;
-
-		//TODO: Uncomment the code bellow
-		// const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
-
-		// return opcuaService.readNodeValue(variables).then((result) => {
-		// 	const obj: { [key: string]: { dataType: string, value: any } } = {};
-
-		// 	for (let index = 0; index < result.length; index++) {
-		// 		const element = result[index];
-		// 		const variable = variables[index];
-		// 		const key = normalizePath(variable.path || "") || variable.nodeId.toString();
-		// 		obj[key] = element;
-		// 	}
-
-		// 	return obj;
-		// });
+			return obj;
+		});
 	}
 
 	private delay(ms: number) {
