@@ -323,7 +323,8 @@ export class OPCUAService extends EventEmitter {
 			// test each data type until we find a good one
 			while (!isGood && PossibleDataType.length) {
 				const dataType = PossibleDataType.shift();
-				if (!dataType) throw new Error("No data type found for value: " + value);
+				if (!dataType) break;
+
 				let tempValue = value;
 
 				if (dataType == DataType.Boolean) tempValue = value == 0 ? false : true; // convert 1 and 0 to boolean
@@ -506,7 +507,7 @@ export class OPCUAService extends EventEmitter {
 
 	private _getPossibleDataType(value: any): DataType[] {
 
-		if (!isNaN(value)) { // if the value is a number
+		if (!isNaN(value) && typeof value != "boolean") { // if the value is a number
 
 			const numerics = [DataType.Float, DataType.Double, DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64]
 			if (value == 0 || value == 1)

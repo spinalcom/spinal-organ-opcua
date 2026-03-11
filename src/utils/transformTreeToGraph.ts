@@ -227,6 +227,8 @@ async function _changeValueAndDataType(node: SpinalNode, data: { value: any; dat
 	// element.mod_attr("currentValue", data?.value || "null"); // may be bad if value is boolean
 	// element.mod_attr("currentValue", data?.value);
 	if (typeof element.currentValue === "undefined") element.add_attr({ currentValue: data?.value });
+
+
 	else element.currentValue.set(data?.value);
 
 	// element.mod_attr("dataType", data?.dataType || "");

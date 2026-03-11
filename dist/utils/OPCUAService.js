@@ -287,7 +287,7 @@ class OPCUAService extends events_1.EventEmitter {
                 while (!isGood && PossibleDataType.length) {
                     const dataType = PossibleDataType.shift();
                     if (!dataType)
-                        throw new Error("No data type found for value: " + value);
+                        break;
                     let tempValue = value;
                     if (dataType == node_opcua_1.DataType.Boolean)
                         tempValue = value == 0 ? false : true; // convert 1 and 0 to boolean
@@ -440,7 +440,7 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     _getPossibleDataType(value) {
-        if (!isNaN(value)) { // if the value is a number
+        if (!isNaN(value) && typeof value != "boolean") { // if the value is a number
             const numerics = [node_opcua_1.DataType.Float, node_opcua_1.DataType.Double, node_opcua_1.DataType.Int16, node_opcua_1.DataType.Int32, node_opcua_1.DataType.Int64, node_opcua_1.DataType.UInt16, node_opcua_1.DataType.UInt32, node_opcua_1.DataType.UInt64];
             if (value == 0 || value == 1)
                 return [...numerics, node_opcua_1.DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
