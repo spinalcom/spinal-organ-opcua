@@ -55,32 +55,6 @@ export const WaitModelReady = (): Promise<any> => {
 	return WaitModelReadyLoop(deferred);
 };
 
-// export const connectionErrorCallback = (err?: Error): void => {
-// 	if (!err) console.error("Error Connect");
-// 	else console.error("Error Connect", err);
-// 	process.exit(0);
-// };
-
-export const CreateOrganConfigFile = (spinalConnection: spinal.FileSystem, path: string, connectorName: string): Promise<SpinalOrganOPCUA> => {
-	return new Promise((resolve) => {
-		spinalConnection.load_or_make_dir(`${path}`, async (directory: spinal.Directory) => {
-			const found = await findFileInDirectory(directory, connectorName);
-			if (found) {
-				console.log("organ found !");
-				return resolve(found);
-			}
-
-			console.log("organ not found");
-			const model = new SpinalOrganOPCUA(connectorName);
-			WaitModelReady().then(() => {
-				const file = new SpinalFile(`${connectorName}.conf`, model, { model_type: model.type.get() });
-				directory.push(file);
-				console.log("organ created");
-				return resolve(model);
-			});
-		});
-	});
-};
 
 export const GetPm2Instance = (organName: string) => {
 	return new Promise((resolve, reject) => {

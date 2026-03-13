@@ -201,9 +201,7 @@ function _createNodeAttributes(node, attributes, values = {}) {
 }
 function _changeValueAndDataType(node, data) {
     return __awaiter(this, void 0, void 0, function* () {
-        const element = yield node.getElement();
-        // element.mod_attr("currentValue", data?.value || "null"); // may be bad if value is boolean
-        // element.mod_attr("currentValue", data?.value);
+        const element = yield node.getElement(true);
         if (typeof element.currentValue === "undefined")
             element.add_attr({ currentValue: data === null || data === void 0 ? void 0 : data.value });
         else

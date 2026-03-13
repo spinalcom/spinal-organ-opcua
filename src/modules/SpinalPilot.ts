@@ -25,7 +25,7 @@ class SpinalPilot {
          if (!request) throw new Error("No requests found in the pilot model");
 
 
-         console.log(`send update request to ${request.nodeId} with value ${request.value}`);
+         console.log(`sending update request to ${request.path} with value ${request.value}`);
 
          const url = getServerUrl(request.networkInfo);
 
@@ -41,89 +41,16 @@ class SpinalPilot {
          // await opcuaService.disconnect(); // disconnect after the write operation
 
          this.spinalPilotModel?.setSuccessMode();
-         console.log(`[${request.nodeId}] updated successfully`);
+         console.log(`[${request.path}] updated successfully`);
 
       } catch (error) {
-         console.log(`the update of [${request.nodeId}] failed due to error: ${(error as Error).message}`);
+         console.log(`the update of [${request.path}] failed due to error: ${(error as Error).message}`);
          this.spinalPilotModel?.setErrorMode();
       }
 
-      await this.spinalPilotModel?.removeFromNode();
+      await this.spinalPilotModel?.removeFromGraph();
 
    }
-
-
-
-   // public static getInstance(): SpinalPilot {
-   //    if (!this.instance) {
-   //       this.instance = new SpinalPilot();
-   //       this.instance.init();
-   //    }
-   //    return this.instance;
-   // }
-
-   // private init() {
-   //    this.queue.on("start", () => {
-   //       this.pilot();
-   //    })
-   // }
-
-   // public async addToPilotList(spinalPilotModel: SpinalOPCUAPilot): Promise<void> {
-   //    this.queue.addToQueue(spinalPilotModel);
-   // }
-
-   // private async pilot() {
-   //    if (!this.isProcessing) {
-   //       this.isProcessing = true;
-   //       while (!this.queue.isEmpty()) {
-   //          const pilot = this.queue.dequeue();
-   //          try {
-   //             const requests = pilot?.requests.get();
-   //             await this._sendPilotToServer(pilot, requests);
-
-   //          } catch (error) {
-   //             pilot.setErrorMode();
-   //          }
-   //       }
-
-   //       this.isProcessing = false;
-   //    }
-   // }
-
-
-   // private async _sendPilotToServer(pilot: SpinalOPCUAPilot, requests: IRequest[]) {
-   //    const request = requests[0];
-
-   //    try {
-
-   //       console.log(`send update request to ${request.nodeId} with value ${request.value}`);
-
-   //       const url = getServerUrl(request.networkInfo);
-
-   //       const opcuaService = OPCUAFactory.getOPCUAInstance(url);
-   //       await opcuaService.checkAndRetablishConnection();
-
-   //       const newNodeId = await opcuaService.getNodeIdByPath(request.path); // in case the nodeId has changed
-   //       if (newNodeId) request.nodeId = newNodeId; // update the nodeId
-
-   //       await opcuaService.writeNode({ nodeId: request.nodeId }, request.value);
-
-   //       // Disable disconnect to keep the connection alive for future requests
-   //       // await opcuaService.disconnect(); // disconnect after the write operation
-
-   //       pilot.setSuccessMode();
-   //       console.log(`[${request.nodeId}] updated successfully`);
-
-   //    } catch (error) {
-   //       console.log(`the update of [${request.nodeId}] failed due to error: ${(error as Error).message}`);
-   //       pilot.setErrorMode();
-   //    }
-
-   //    await pilot.removeFromNode();
-
-   // }
-
-
 
 }
 

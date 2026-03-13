@@ -1,4 +1,13 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
 // import { config as dotenvConfig } from "dotenv";
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
@@ -18,7 +27,10 @@ const organInfo = {
     model: new spinal_model_opcua_1.SpinalOrganOPCUA(name, spinal_model_opcua_1.OPCUA_ORGAN_TYPE)
 };
 const spinalConnectorService = spinal_connector_service_1.SpinalConnectorService.getInstance();
-spinalConnectorService.initialize(connect, organInfo).then(({ alreadyExists, node }) => {
+spinalConnectorService.initialize(connect, organInfo).then(({ alreadyExists, node }) => __awaiter(void 0, void 0, void 0, function* () {
+    // initialize the list of models to bind with the organ, 
+    // this is necessary to be able to bind the models with the organ when it is created or when it is found in the graph
+    yield spinal_model_opcua_1.SpinalOrganOPCUA.initializeModelsList();
     // Bind the restart function to PM2 events
     const pm2_instance = (0, Functions_1.GetPm2Instance)(name);
     const pm2_id = pm2_instance ? pm2_instance.pm_id : null;
@@ -28,43 +40,7 @@ spinalConnectorService.initialize(connect, organInfo).then(({ alreadyExists, nod
     const message = alreadyExists ? "organ found !" : "organ not found, creating new organ !";
     console.log(message);
     (0, Functions_1.bindModels)(node);
-}).catch((err) => {
+})).catch((err) => {
     console.error(err);
 });
-// CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) => {
-// 	organModel.restart.bind(() => {
-// 		GetPm2Instance(name).then(async (app: any) => {
-// 			const restart = organModel.restart.get();
-// 			if (!restart) {
-// 				listenLoadType(connect, organModel);
-// 				return;
-// 			}
-// 			if (app) {
-// 				console.log("restart organ", app.pm_id);
-// 				organModel.restart.set(false);
-// 				pm2.restart(app.pm_id, (err) => {
-// 					if (err) {
-// 						console.error(err);
-// 						return;
-// 					}
-// 					console.log("organ restarted with success !");
-// 				});
-// 			}
-// 		});
-// 	});
-// });
-// const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA) => {
-// 	loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel: SpinalOPCUADiscoverModel) => {
-// 		SpinalDiscoverCallback(spinalDisoverModel, organModel);
-// 	}, connectionErrorCallback);
-// 	loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel: SpinalOPCUAListener) => {
-// 		SpinalListnerCallback(spinalListenerModel, organModel);
-// 	}, connectionErrorCallback);
-// 	loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel: SpinalOPCUAPilot) => {
-// 		SpinalPilotCallback(spinalPilotModel, organModel);
-// 	}, connectionErrorCallback);
-// };
-// const loadTypeInSpinalCore = (connect: spinal.FileSystem, type: string, callback: (model: any) => void, errorCallback: SpinalCallBackError) => {
-// 	spinalCore.load_type(connect, type, callback, errorCallback);
-// };
 //# sourceMappingURL=index.js.map

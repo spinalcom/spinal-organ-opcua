@@ -48,7 +48,7 @@ class OPCUAService extends events_1.EventEmitter {
                 keepSessionAlive: true,
                 transportTimeout: 30 * 1000,
                 connectionStrategy: {
-                    maxRetry: 3,
+                    // maxRetry: 3,
                     initialDelay: 1000,
                     // maxDelay: 5 * 1000,
                 },
@@ -64,8 +64,8 @@ class OPCUAService extends events_1.EventEmitter {
         });
         client.on("after_reconnection", () => {
             const isReconnection = true;
-            for (const { ids, callback } of this.monitoredItemsData) {
-                this.monitorItem(ids, callback, isReconnection);
+            for (const { nodes, callback } of this.monitoredItemsData) {
+                this.monitorItem(nodes, callback, isReconnection);
             }
         });
         client.on("connection_lost", () => {
@@ -305,14 +305,20 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    monitorItem(nodeIds, callback, isReconnection = false) {
+    monitorItem(nodes, callback, isReconnection = false) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!this.subscription)
                 throw constants_1.noSubscriptionError;
-            nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
+            nodes = Array.isArray(nodes) ? nodes : [nodes];
+            const nodeIdToNode = {};
+            const nodeIds = nodes.map((n) => {
+                const nodeId = n.nodeId.toString();
+                nodeIdToNode[nodeId] = n;
+                return nodeId;
+            });
             // if not reconnection save the monitored items for reconnexion}
             if (!isReconnection) {
-                const data = { ids: nodeIds, callback };
+                const data = { nodes, callback };
                 this.monitoredItemsData.push(data);
             }
             const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: node_opcua_1.AttributeIds.Value }));
@@ -328,7 +334,7 @@ class OPCUAService extends events_1.EventEmitter {
             };
             const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, parameters, node_opcua_1.TimestampsToReturn.Both);
             for (const monitoredItem of monitoredItemGroup.monitoredItems) {
-                this._listenMonitoredItemEvents(monitoredItem, callback);
+                this._listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNode);
             }
         });
     }
@@ -390,14 +396,21 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ///////////////////////////////////////////////////////////////////////////
-    _listenMonitoredItemEvents(monitoredItem, callback) {
-        console.log(`Monitor ${monitoredItem.itemToMonitor.nodeId.toString()} with COV`);
+    _listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNode) {
+        const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
+        const node = nodeIdToNode[nodeId];
+        console.log(`Monitor ${node.path} with COV`);
         monitoredItem.on("changed", (dataValue) => {
+            const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
+            const node = nodeIdToNode[nodeId];
             const value = this._formatDataValue(dataValue);
-            callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
+            callback(node, value, monitoredItem);
         });
+        //@ts-ignore
         monitoredItem.on("err", (err) => {
-            console.log(`[Error - COV] - ${monitoredItem.itemToMonitor.nodeId.toString()} : ${err}`);
+            const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
+            const node = nodeIdToNode[nodeId];
+            console.log(`[Error - COV] - ${node.path} due to: ${err.message}`);
         });
     }
     _browseNode(node) {
@@ -441,7 +454,7 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _getPossibleDataType(value) {
         if (!isNaN(value) && typeof value != "boolean") { // if the value is a number
-            const numerics = [node_opcua_1.DataType.Float, node_opcua_1.DataType.Double, node_opcua_1.DataType.Int16, node_opcua_1.DataType.Int32, node_opcua_1.DataType.Int64, node_opcua_1.DataType.UInt16, node_opcua_1.DataType.UInt32, node_opcua_1.DataType.UInt64];
+            const numerics = [node_opcua_1.DataType.Float, node_opcua_1.DataType.Double, node_opcua_1.DataType.Int16, node_opcua_1.DataType.Int32, node_opcua_1.DataType.Int64, node_opcua_1.DataType.UInt16, node_opcua_1.DataType.UInt32, node_opcua_1.DataType.UInt64, node_opcua_1.DataType.Byte];
             if (value == 0 || value == 1)
                 return [...numerics, node_opcua_1.DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
             return numerics; // if the value is a number, it can be a numeric type

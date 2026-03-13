@@ -343,41 +343,51 @@ class SpinalMonitoring {
         });
     }
 
-    private async monitorWithCov(url: string, spinalDevice: SpinalDevice, nodes: IOPCNode[]) {
 
+    private async monitorWithCov(url: string, spinalDevice: SpinalDevice, nodes: IOPCNode[]) {
         const isCov = true;
-        const idsToPaths: { [key: string]: string } = {};
+        // const idsToPaths: { [key: string]: string } = {};
 
         const opcNodes = await this._getVariablesValues(url, nodes);
         await spinalDevice.updateEndpoints(opcNodes, isCov); // update the endpoints node with the new values (name, path, value)
 
 
-        // get new ids from opcNodes and save the path to be able to retrieve it later
-        const ids = opcNodes.map((el) => {
-            const nodeId = el.nodeId.toString();
-            idsToPaths[nodeId] = normalizePath(el.path || "") || nodeId; // save the path to be able to retrieve it later
-            return nodeId;
-        });
+        // // get new ids from opcNodes and save the path to be able to retrieve it later
+        // const ids = opcNodes.map((el) => {
+        //     const nodeId = el.nodeId.toString();
+        //     idsToPaths[nodeId] = normalizePath(el.path || "") || nodeId; // save the path to be able to retrieve it later
+        //     return nodeId;
+        // });
 
         // connect to the OPCUA server and monitor the items
         const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
         await opcuaService.checkAndRetablishConnection();
 
 
-        // call monitorItem with the ids and a callback function
-        opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
-            if (!dataValue || typeof dataValue?.value == "undefined") return;
-            const value = ["string", "number", "boolean"].includes(typeof dataValue?.value) ? dataValue?.value : null;
+        const chunked = lodash.chunk(opcNodes, 100);
 
-            console.log(`[COV] - ${id} has changed to ${value}`);
+        for (const itemsChunked of chunked) {
+            opcuaService.monitorItem(itemsChunked, (node, dataValue, monitorItem) => {
+                this._monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov)
+            });
+        }
 
-            const temp_id = `${spinalDevice.deviceInfo.id}_${id}`;
+    }
 
-            if (!this.covItemToMonitoring.has(temp_id)) this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
+    private _monitorCallback(node: IOPCNode, dataValue: any, monitorItem: ClientMonitoredItemBase, spinalDevice: SpinalDevice, isCov: boolean) {
+        if (!dataValue || typeof dataValue?.value == "undefined") return;
+        // const value = ["string", "number", "boolean"].includes(typeof dataValue?.value) ? dataValue?.value : null;
+        const value = dataValue?.value ?? null;
+        const nodePath = normalizePath(node.path || "") || node.nodeId.toString();
+        const nodeId = node.nodeId.toString();
 
-            spinalDevice.updateEndpoints([{ path: idsToPaths[id], nodeId: coerceNodeId(id), value: { value: value, dataType: typeof value } }], isCov);
-        });
+        console.log(`[COV] - ${nodePath} has changed value to ${value}`);
 
+        const temp_id = `${spinalDevice.deviceInfo.id}_${nodeId}`;
+
+        if (!this.covItemToMonitoring.has(temp_id)) this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
+
+        spinalDevice.updateEndpoints([{ path: nodePath, nodeId: coerceNodeId(nodeId), value: { value: value, dataType: typeof value } }], isCov);
     }
 }
 

@@ -15,10 +15,7 @@ import * as path from "path";
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
-type CovCallbackType = (id: string, data: {
-	value: any;
-	dataType: string;
-}, monitorItem: ClientMonitoredItemBase) => void;
+type CovCallbackType = (node: IOPCNode, data: { value: any; dataType: string; }, monitorItem: ClientMonitoredItemBase) => void;
 
 export class OPCUAService extends EventEmitter {
 	private client?: OPCUAClient;
@@ -27,7 +24,7 @@ export class OPCUAService extends EventEmitter {
 	private userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 	public verbose: boolean = false;
 	private endpointUrl: string = "";
-	private monitoredItemsData: { ids: string[]; callback: CovCallbackType }[] = [];
+	private monitoredItemsData: { nodes: IOPCNode[]; callback: CovCallbackType }[] = [];
 
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
 	private _discoverModel: SpinalOPCUADiscoverModel;
@@ -58,7 +55,7 @@ export class OPCUAService extends EventEmitter {
 			keepSessionAlive: true,
 			transportTimeout: 30 * 1000,
 			connectionStrategy: {
-				maxRetry: 3,
+				// maxRetry: 3,
 				initialDelay: 1000,
 				// maxDelay: 5 * 1000,
 			},
@@ -78,8 +75,8 @@ export class OPCUAService extends EventEmitter {
 
 		client.on("after_reconnection", () => {
 			const isReconnection = true;
-			for (const { ids, callback } of this.monitoredItemsData) {
-				this.monitorItem(ids, callback, isReconnection);
+			for (const { nodes, callback } of this.monitoredItemsData) {
+				this.monitorItem(nodes, callback, isReconnection);
 			}
 		});
 
@@ -284,7 +281,7 @@ export class OPCUAService extends EventEmitter {
 	}
 
 
-	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{ dataType: string; value: any }[]> {
+	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<({ dataType: string; value: any } | null)[]> {
 		await this.checkAndRetablishConnection();
 
 		if (!this.session) throw noSessionError;
@@ -344,14 +341,21 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	public async monitorItem(nodeIds: string | string[], callback: CovCallbackType, isReconnection: boolean = false): Promise<void> {
+	public async monitorItem(nodes: IOPCNode | IOPCNode[], callback: CovCallbackType, isReconnection: boolean = false): Promise<void> {
 		if (!this.subscription) throw noSubscriptionError;
 
-		nodeIds = Array.isArray(nodeIds) ? nodeIds : [nodeIds];
+		nodes = Array.isArray(nodes) ? nodes : [nodes];
+		const nodeIdToNode: { [key: string]: IOPCNode } = {};
+
+		const nodeIds = nodes.map((n) => {
+			const nodeId = n.nodeId.toString();
+			nodeIdToNode[nodeId] = n;
+			return nodeId;
+		});
 
 		// if not reconnection save the monitored items for reconnexion}
 		if (!isReconnection) {
-			const data = { ids: nodeIds, callback };
+			const data = { nodes, callback };
 			this.monitoredItemsData.push(data);
 		}
 
@@ -371,7 +375,7 @@ export class OPCUAService extends EventEmitter {
 		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, parameters, TimestampsToReturn.Both);
 
 		for (const monitoredItem of monitoredItemGroup.monitoredItems) {
-			this._listenMonitoredItemEvents(monitoredItem, callback);
+			this._listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNode);
 		}
 	}
 
@@ -447,18 +451,25 @@ export class OPCUAService extends EventEmitter {
 
 	///////////////////////////////////////////////////////////////////////////
 
-	private _listenMonitoredItemEvents(monitoredItem: ClientMonitoredItemBase, callback: (id: string, data: { value: any, dataType: string }, monitorItem: ClientMonitoredItemBase) => any) {
-		console.log(`Monitor ${monitoredItem.itemToMonitor.nodeId.toString()} with COV`);
+	private _listenMonitoredItemEvents(monitoredItem: ClientMonitoredItemBase, callback: CovCallbackType, nodeIdToNode: { [key: string]: IOPCNode }) {
+		const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
+		const node = nodeIdToNode[nodeId];
+
+		console.log(`Monitor ${node.path} with COV`);
 
 		monitoredItem.on("changed", (dataValue: DataValue) => {
-			const value = this._formatDataValue(dataValue);
-			callback(monitoredItem.itemToMonitor.nodeId.toString(), value, monitoredItem);
+			const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
+			const node = nodeIdToNode[nodeId];
+			const value: any = this._formatDataValue(dataValue);
+			callback(node, value, monitoredItem);
 		});
 
-		monitoredItem.on("err", (err) => {
-			console.log(`[Error - COV] - ${monitoredItem.itemToMonitor.nodeId.toString()} : ${err}`);
+		//@ts-ignore
+		monitoredItem.on("err", (err: Error) => {
+			const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
+			const node = nodeIdToNode[nodeId];
+			console.log(`[Error - COV] - ${node.path} due to: ${err.message}`);
 		});
-
 	}
 
 	private _browseNode(node: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
@@ -508,8 +519,7 @@ export class OPCUAService extends EventEmitter {
 	private _getPossibleDataType(value: any): DataType[] {
 
 		if (!isNaN(value) && typeof value != "boolean") { // if the value is a number
-
-			const numerics = [DataType.Float, DataType.Double, DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64]
+			const numerics = [DataType.Float, DataType.Double, DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64, DataType.Byte]
 			if (value == 0 || value == 1)
 				return [...numerics, DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
 

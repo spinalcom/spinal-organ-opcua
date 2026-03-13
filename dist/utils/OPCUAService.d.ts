@@ -4,7 +4,7 @@ import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 import { ITreeOption } from "../interfaces/ITreeOption";
-type CovCallbackType = (id: string, data: {
+type CovCallbackType = (node: IOPCNode, data: {
     value: any;
     dataType: string;
 }, monitorItem: ClientMonitoredItemBase) => void;
@@ -36,12 +36,12 @@ export declare class OPCUAService extends EventEmitter {
     } | void>;
     readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
     getNodePath(nodeId: string | NodeId): Promise<string>;
-    readNodeValue(node: IOPCNode | IOPCNode[]): Promise<{
+    readNodeValue(node: IOPCNode | IOPCNode[]): Promise<({
         dataType: string;
         value: any;
-    }[]>;
+    } | null)[]>;
     writeNode(node: IOPCNode, value: any): Promise<any>;
-    monitorItem(nodeIds: string | string[], callback: CovCallbackType, isReconnection?: boolean): Promise<void>;
+    monitorItem(nodes: IOPCNode | IOPCNode[], callback: CovCallbackType, isReconnection?: boolean): Promise<void>;
     getNodeIdByPath(nodePath?: string): Promise<string | void>;
     getNodeByPath(nodePath?: string): Promise<IOPCNode | void>;
     static isVariable(node: IOPCNode): boolean;

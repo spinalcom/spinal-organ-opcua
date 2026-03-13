@@ -104,7 +104,7 @@ class SpinalDiscover extends EventEmitter {
 			if (discovered.length === 0) throw "No Device found";
 
 			await model.setTreeDiscovered({ nodeId: "root", displayName: "Root", children: discovered });
-			console.log(model.network?.name?.get(), "discovered !!");
+			console.log(`${model.network?.name?.get()} discovered !!`);
 			model.changeState(OPCUA_ORGAN_STATES.discovered);
 			return discovered;
 

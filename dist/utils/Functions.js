@@ -32,9 +32,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindModels = exports.GetPm2Instance = exports.CreateOrganConfigFile = exports.WaitModelReady = void 0;
+exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindModels = exports.GetPm2Instance = exports.WaitModelReady = void 0;
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
-const spinal_model_opcua_1 = require("spinal-model-opcua");
 const node_opcua_1 = require("node-opcua");
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
 const spinal_connector_service_1 = require("spinal-connector-service");
@@ -63,31 +62,6 @@ const WaitModelReady = () => {
     return WaitModelReadyLoop(deferred);
 };
 exports.WaitModelReady = WaitModelReady;
-// export const connectionErrorCallback = (err?: Error): void => {
-// 	if (!err) console.error("Error Connect");
-// 	else console.error("Error Connect", err);
-// 	process.exit(0);
-// };
-const CreateOrganConfigFile = (spinalConnection, path, connectorName) => {
-    return new Promise((resolve) => {
-        spinalConnection.load_or_make_dir(`${path}`, (directory) => __awaiter(void 0, void 0, void 0, function* () {
-            const found = yield findFileInDirectory(directory, connectorName);
-            if (found) {
-                console.log("organ found !");
-                return resolve(found);
-            }
-            console.log("organ not found");
-            const model = new spinal_model_opcua_1.SpinalOrganOPCUA(connectorName);
-            (0, exports.WaitModelReady)().then(() => {
-                const file = new spinal_core_connectorjs_type_1.File(`${connectorName}.conf`, model, { model_type: model.type.get() });
-                directory.push(file);
-                console.log("organ created");
-                return resolve(model);
-            });
-        }));
-    });
-};
-exports.CreateOrganConfigFile = CreateOrganConfigFile;
 const GetPm2Instance = (organName) => {
     return new Promise((resolve, reject) => {
         pm2.list((err, apps) => {

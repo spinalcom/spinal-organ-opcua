@@ -8,7 +8,7 @@ export interface IOPCNode {
 	children?: IOPCNode[];
 	path?: string;
 	server?: IServer;
-	value?: { dataType: string; value: any };
+	value?: { dataType: string; value: any } | null;
 	[key: string]: any;
 }
 

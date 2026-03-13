@@ -28,7 +28,7 @@ class SpinalPilot {
             try {
                 if (!request)
                     throw new Error("No requests found in the pilot model");
-                console.log(`send update request to ${request.nodeId} with value ${request.value}`);
+                console.log(`sending update request to ${request.path} with value ${request.value}`);
                 const url = (0, Functions_1.getServerUrl)(request.networkInfo);
                 const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
                 yield opcuaService.checkAndRetablishConnection();
@@ -39,13 +39,13 @@ class SpinalPilot {
                 // Disable disconnect to keep the connection alive for future requests
                 // await opcuaService.disconnect(); // disconnect after the write operation
                 (_b = this.spinalPilotModel) === null || _b === void 0 ? void 0 : _b.setSuccessMode();
-                console.log(`[${request.nodeId}] updated successfully`);
+                console.log(`[${request.path}] updated successfully`);
             }
             catch (error) {
-                console.log(`the update of [${request.nodeId}] failed due to error: ${error.message}`);
+                console.log(`the update of [${request.path}] failed due to error: ${error.message}`);
                 (_c = this.spinalPilotModel) === null || _c === void 0 ? void 0 : _c.setErrorMode();
             }
-            yield ((_d = this.spinalPilotModel) === null || _d === void 0 ? void 0 : _d.removeFromNode());
+            yield ((_d = this.spinalPilotModel) === null || _d === void 0 ? void 0 : _d.removeFromGraph());
         });
     }
 }

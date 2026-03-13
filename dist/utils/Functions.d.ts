@@ -1,8 +1,6 @@
-import { FileSystem } from "spinal-core-connectorjs_type";
 import { SpinalOrganOPCUA } from "spinal-model-opcua";
 import { IOPCNode, IServer } from "../interfaces/OPCNode";
 export declare const WaitModelReady: () => Promise<any>;
-export declare const CreateOrganConfigFile: (spinalConnection: spinal.FileSystem, path: string, connectorName: string) => Promise<SpinalOrganOPCUA>;
 export declare const GetPm2Instance: (organName: string) => Promise<unknown>;
 export declare function bindModels(organModel: SpinalOrganOPCUA): Promise<void>;
 export declare const SpinalListnerCallback: (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA) => Promise<void>;

@@ -99,7 +99,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 if (discovered.length === 0)
                     throw "No Device found";
                 yield model.setTreeDiscovered({ nodeId: "root", displayName: "Root", children: discovered });
-                console.log((_b = (_a = model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get(), "discovered !!");
+                console.log(`${(_b = (_a = model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get()} discovered !!`);
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered);
                 return discovered;
             }

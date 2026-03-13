@@ -21,7 +21,11 @@ const organInfo: IConnectorInfo = {
 }
 
 const spinalConnectorService = SpinalConnectorService.getInstance();
-spinalConnectorService.initialize(connect, organInfo).then(({ alreadyExists, node }) => {
+spinalConnectorService.initialize(connect, organInfo).then(async ({ alreadyExists, node }: { alreadyExists: boolean, node: SpinalOrganOPCUA }) => {
+
+	// initialize the list of models to bind with the organ, 
+	// this is necessary to be able to bind the models with the organ when it is created or when it is found in the graph
+	await SpinalOrganOPCUA.initializeModelsList();
 
 	// Bind the restart function to PM2 events
 	const pm2_instance = GetPm2Instance(name);
@@ -37,49 +41,3 @@ spinalConnectorService.initialize(connect, organInfo).then(({ alreadyExists, nod
 }).catch((err) => {
 	console.error(err);
 });
-
-// CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) => {
-// 	organModel.restart.bind(() => {
-// 		GetPm2Instance(name).then(async (app: any) => {
-// 			const restart = organModel.restart.get();
-
-// 			if (!restart) {
-// 				listenLoadType(connect, organModel);
-
-// 				return;
-// 			}
-
-// 			if (app) {
-// 				console.log("restart organ", app.pm_id);
-// 				organModel.restart.set(false);
-
-// 				pm2.restart(app.pm_id, (err) => {
-// 					if (err) {
-// 						console.error(err);
-// 						return;
-// 					}
-// 					console.log("organ restarted with success !");
-// 				});
-// 			}
-// 		});
-// 	});
-// });
-
-// const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA) => {
-// 	loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel: SpinalOPCUADiscoverModel) => {
-// 		SpinalDiscoverCallback(spinalDisoverModel, organModel);
-// 	}, connectionErrorCallback);
-
-// 	loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel: SpinalOPCUAListener) => {
-// 		SpinalListnerCallback(spinalListenerModel, organModel);
-// 	}, connectionErrorCallback);
-
-// 	loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel: SpinalOPCUAPilot) => {
-// 		SpinalPilotCallback(spinalPilotModel, organModel);
-// 	}, connectionErrorCallback);
-
-// };
-
-// const loadTypeInSpinalCore = (connect: spinal.FileSystem, type: string, callback: (model: any) => void, errorCallback: SpinalCallBackError) => {
-// 	spinalCore.load_type(connect, type, callback, errorCallback);
-// };
