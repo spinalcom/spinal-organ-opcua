@@ -56,7 +56,7 @@ class SpinalPilot {
 
       try {
 
-         console.log(`send update request to ${request.nodeId} with value ${request.value}`);
+         console.log(`send update request to ${request.path} with value ${request.value}`);
 
          const url = getServerUrl(request.networkInfo);
 
@@ -72,10 +72,10 @@ class SpinalPilot {
          // await opcuaService.disconnect(); // disconnect after the write operation
 
          pilot.setSuccessMode();
-         console.log(`[${request.nodeId}] updated successfully`);
+         console.log(`[${request.path}] updated successfully`);
 
       } catch (error) {
-         console.log(`the update of [${request.nodeId}] failed due to error: ${(error as Error).message}`);
+         console.log(`the update of [${request.path}] failed due to error: ${(error as Error).message}`);
          pilot.setErrorMode();
       }
 

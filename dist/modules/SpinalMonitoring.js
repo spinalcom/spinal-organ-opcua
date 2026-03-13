@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.spinalMonitoring = void 0;
 const priority_queue_1 = require("@datastructures-js/priority-queue");
 const SpinalQueuing_1 = require("../utils/SpinalQueuing");
+const lodash = require("lodash");
 const SpinalNetworkUtils_1 = require("../utils/SpinalNetworkUtils");
 const node_opcua_1 = require("node-opcua");
 const Functions_1 = require("../utils/Functions");
@@ -286,30 +287,39 @@ class SpinalMonitoring {
     monitorWithCov(url, spinalDevice, nodes) {
         return __awaiter(this, void 0, void 0, function* () {
             const isCov = true;
-            const idsToPaths = {};
+            // const idsToPaths: { [key: string]: string } = {};
             const opcNodes = yield this._getVariablesValues(url, nodes);
             yield spinalDevice.updateEndpoints(opcNodes, isCov); // update the endpoints node with the new values (name, path, value)
-            // get new ids from opcNodes and save the path to be able to retrieve it later
-            const ids = opcNodes.map((el) => {
-                const nodeId = el.nodeId.toString();
-                idsToPaths[nodeId] = (0, utils_1.normalizePath)(el.path || "") || nodeId; // save the path to be able to retrieve it later
-                return nodeId;
-            });
+            // // get new ids from opcNodes and save the path to be able to retrieve it later
+            // const ids = opcNodes.map((el) => {
+            //     const nodeId = el.nodeId.toString();
+            //     idsToPaths[nodeId] = normalizePath(el.path || "") || nodeId; // save the path to be able to retrieve it later
+            //     return nodeId;
+            // });
             // connect to the OPCUA server and monitor the items
             const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
             yield opcuaService.checkAndRetablishConnection();
-            // call monitorItem with the ids and a callback function
-            opcuaService.monitorItem(ids, (id, dataValue, monitorItem) => {
-                if (!dataValue || typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) == "undefined")
-                    return;
-                const value = ["string", "number", "boolean"].includes(typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value)) ? dataValue === null || dataValue === void 0 ? void 0 : dataValue.value : null;
-                console.log(`[COV] - ${id} has changed to ${value}`);
-                const temp_id = `${spinalDevice.deviceInfo.id}_${id}`;
-                if (!this.covItemToMonitoring.has(temp_id))
-                    this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
-                spinalDevice.updateEndpoints([{ path: idsToPaths[id], nodeId: (0, node_opcua_1.coerceNodeId)(id), value: { value: value, dataType: typeof value } }], isCov);
-            });
+            const chunked = lodash.chunk(opcNodes, 100);
+            for (const itemsChunked of chunked) {
+                opcuaService.monitorItem(itemsChunked, (node, dataValue, monitorItem) => {
+                    this._monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov);
+                });
+            }
         });
+    }
+    _monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov) {
+        var _a;
+        if (!dataValue || typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) == "undefined")
+            return;
+        // const value = ["string", "number", "boolean"].includes(typeof dataValue?.value) ? dataValue?.value : null;
+        const value = (_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) !== null && _a !== void 0 ? _a : null;
+        const nodePath = (0, utils_1.normalizePath)(node.path || "") || node.nodeId.toString();
+        const nodeId = node.nodeId.toString();
+        console.log(`[COV] - ${nodePath} has changed value to ${value}`);
+        const temp_id = `${spinalDevice.deviceInfo.id}_${nodeId}`;
+        if (!this.covItemToMonitoring.has(temp_id))
+            this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
+        spinalDevice.updateEndpoints([{ path: nodePath, nodeId: (0, node_opcua_1.coerceNodeId)(nodeId), value: { value: value, dataType: typeof value } }], isCov);
     }
 }
 const spinalMonitoring = new SpinalMonitoring();

@@ -57,7 +57,7 @@ class SpinalPilot {
         return __awaiter(this, void 0, void 0, function* () {
             const request = requests[0];
             try {
-                console.log(`send update request to ${request.nodeId} with value ${request.value}`);
+                console.log(`send update request to ${request.path} with value ${request.value}`);
                 const url = (0, Functions_1.getServerUrl)(request.networkInfo);
                 const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
                 yield opcuaService.checkAndRetablishConnection();
@@ -68,10 +68,10 @@ class SpinalPilot {
                 // Disable disconnect to keep the connection alive for future requests
                 // await opcuaService.disconnect(); // disconnect after the write operation
                 pilot.setSuccessMode();
-                console.log(`[${request.nodeId}] updated successfully`);
+                console.log(`[${request.path}] updated successfully`);
             }
             catch (error) {
-                console.log(`the update of [${request.nodeId}] failed due to error: ${error.message}`);
+                console.log(`the update of [${request.path}] failed due to error: ${error.message}`);
                 pilot.setErrorMode();
             }
             yield pilot.removeFromNode();

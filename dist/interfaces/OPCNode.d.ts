@@ -10,7 +10,7 @@ export interface IOPCNode {
     value?: {
         dataType: string;
         value: any;
-    };
+    } | null;
     [key: string]: any;
 }
 export interface IServer {

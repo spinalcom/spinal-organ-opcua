@@ -33,6 +33,7 @@ declare class SpinalMonitoring {
     private _getVariablesValues;
     private _updateProfile;
     private monitorWithCov;
+    private _monitorCallback;
 }
 declare const spinalMonitoring: SpinalMonitoring;
 export default spinalMonitoring;

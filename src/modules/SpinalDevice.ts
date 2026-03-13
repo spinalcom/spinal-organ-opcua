@@ -92,7 +92,11 @@ export class SpinalDevice extends EventEmitter {
 			promises.push(this._updateEndpoint(spinalnode, value, isCov));
 		}
 
-		return Promise.all(promises);
+		return Promise.all(promises).then((result) => {
+			if (!isCov) console.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated.`);
+		}).catch((err) => {
+			if (!isCov) console.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
+		});
 	}
 
 
@@ -132,8 +136,8 @@ export class SpinalDevice extends EventEmitter {
 			else element.currentValue.set(value);
 
 			// avertir du changement de valeur, le log du cov est fait dans son callback
-			// if (!cov) console.log(`[${this.deviceInfo.name}] - ${endpointNode.info?.idNetwork?.get()} changed value to`, value);
-			if (!cov) console.log(`[${endpointNode.info?.path?.get().replace("/Objects", "")}] changed value to`, value);
+			const prefix = cov ? "[COV]" : "[PULLING]";
+			console.log(`${prefix} [${endpointNode.info?.path?.get().replace("/Objects", "")}] changed value to`, value);
 
 			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
 				const spinalServiceTimeseries = new SpinalServiceTimeseries();
