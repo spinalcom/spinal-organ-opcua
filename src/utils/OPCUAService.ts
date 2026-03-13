@@ -58,7 +58,7 @@ export class OPCUAService extends EventEmitter {
 			keepSessionAlive: true,
 			transportTimeout: 5 * 60 * 1000,
 			connectionStrategy: {
-				maxRetry: 3,
+				// maxRetry: 3,
 				initialDelay: 1000,
 				// maxDelay: 10 * 1000,
 			},
