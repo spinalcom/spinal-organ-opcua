@@ -48,7 +48,6 @@
 // 	return children.find((el) => el.getName().get() === organName);
 // }
 
-
 // (async function () {
 // 	const { protocol, host, port, userId, password, path, name } = getConfig();
 // 	const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
@@ -67,7 +66,6 @@
 // 	// const tree = await spinalOPCUADiscoverModel.getTreeDiscovered();
 // 	// console.log(tree);
 
-
 // 	//////////////		 	COV		 //////////////
 
 // 	const ex_path = `opc.tcp://spinalcom:5011/IcoFwxServer`;
@@ -80,3 +78,28 @@
 // 	});
 
 // }())
+
+import { ObjectIds } from "node-opcua";
+import { IOPCNode } from "./interfaces/OPCNode";
+import { OPCUAFactory } from "./utils/OPCUAFactory";
+
+function getNodePaht(ip: string, port: number, nodePath: string) {
+	const opcuaService = OPCUAFactory.getOPCUAInstance(`opc.tcp://${ip}:${port}`);
+	opcuaService
+		.checkAndRetablishConnection()
+		.then(() => {
+			// opcuaService
+			// 	.getNodeIdByPath(nodePath)
+			opcuaService
+				._browToGetNodeByPath(nodePath)
+				.then((nodeId) => {
+					console.log(`Node id for path ${nodePath}: ${nodeId}`);
+				})
+				.catch((err) => {
+					console.error(`Error getting node id for path ${nodePath}:`, err);
+				});
+		})
+		.catch((err) => {
+			console.error(err);
+		});
+}
