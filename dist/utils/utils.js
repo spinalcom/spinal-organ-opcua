@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
+exports.getNodeKey = exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
 const path = require("path");
 const dotenv_1 = require("dotenv");
@@ -15,7 +15,7 @@ function getConfig() {
         host: process.env.HOST || "EDIT_ME",
         port: process.env.PORT || "EDIT_ME",
         path: process.env.ORGAN_FOLDER_PATH || "EDIT_ME",
-        entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || ""
+        entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || "",
     };
 }
 exports.getConfig = getConfig;
@@ -98,6 +98,8 @@ function coerceStringToDataType(dataType, arrayType, VariantArrayType, data) {
 exports.coerceStringToDataType = coerceStringToDataType;
 function discoverIsCancelled(_discoverModel) {
     var _a;
+    if (!_discoverModel)
+        return true; // if no model is provided, we consider that the discover is not cancelled, as we have no way to know
     return !_discoverModel || ((_a = _discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) == spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled;
 }
 exports.discoverIsCancelled = discoverIsCancelled;
@@ -119,4 +121,9 @@ function normalizePath(nodePath) {
     return protocol + nodePath;
 }
 exports.normalizePath = normalizePath;
+function getNodeKey(opcNode) {
+    var _a, _b;
+    return normalizePath(opcNode.path || "") || ((_a = opcNode.nodeId) === null || _a === void 0 ? void 0 : _a.toString()) || ((_b = opcNode.idNetwork) === null || _b === void 0 ? void 0 : _b.toString()) || "";
+}
+exports.getNodeKey = getNodeKey;
 //# sourceMappingURL=utils.js.map

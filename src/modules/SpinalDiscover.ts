@@ -5,13 +5,12 @@ import { SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, OPCUA_ORGAN_USER_CHOICE, 
 import { IOPCNode } from "../interfaces/OPCNode";
 import { ITreeOption } from "../interfaces/ITreeOption";
 
-
 import { _transformTreeToGraphRecursively, getNodeAlreadyCreated } from "../utils/transformTreeToGraph";
 import { getServerUrl, getVariablesList } from "../utils/Functions";
 import { getOrGenNetworkNode } from "../utils/addNetworkToGraph";
 import OPCUAService from "../utils/OPCUAService";
 import discoveringStore from "../utils/discoveringProcessStore";
-import { discoverIsCancelled, getConfig, normalizePath } from "../utils/utils";
+import { discoverIsCancelled, getConfig, getNodeKey, normalizePath } from "../utils/utils";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 import OPCUAFactory from "../utils/OPCUAFactory";
@@ -53,12 +52,10 @@ class SpinalDiscover extends EventEmitter {
 			model.changeState(OPCUA_ORGAN_STATES.discovering);
 
 			this.emit("next");
-
 		} else {
 			this._isProcess = false;
 		}
 	}
-
 
 	private _bindDiscoverModel(model: SpinalOPCUADiscoverModel) {
 		const processBind = model.state.bind(async () => {
@@ -80,7 +77,7 @@ class SpinalDiscover extends EventEmitter {
 	private async _discoverDevices(model: SpinalOPCUADiscoverModel) {
 		try {
 			const servers = model.network.gateways;
-			let index = 0
+			let index = 0;
 			const discovered = [];
 
 			while (index < servers.length && !discoverIsCancelled(model)) {
@@ -107,11 +104,9 @@ class SpinalDiscover extends EventEmitter {
 			console.log(`${model.network?.name?.get()} discovered !!`);
 			model.changeState(OPCUA_ORGAN_STATES.discovered);
 			return discovered;
-
 		} catch (error) {
 			model.changeState(OPCUA_ORGAN_STATES.error);
 		}
-
 	}
 
 	private async _discoverDevice(gateway: spinal.Model, model: SpinalOPCUADiscoverModel) {
@@ -124,14 +119,12 @@ class SpinalDiscover extends EventEmitter {
 		if (discoveringStore.fileExist(_url)) {
 			// 	console.log("inside file exist");
 			// 	useLastResult = await this.askToContinueDiscovery(model);
-			useLastResult = await model?.useLastResult?.get() || false;
+			useLastResult = (await model?.useLastResult?.get()) || false;
 		}
-
 
 		console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
 		const discoverResult = await this._getOPCUATree(server, useLastResult, model, true);
 		if (!discoverResult) return;
-
 
 		return discoverResult.tree;
 		// return this._getOPCUATree(model, useLastResult, true)
@@ -147,13 +140,11 @@ class SpinalDiscover extends EventEmitter {
 		// 		error: console.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
 		// 		model.changeState(OPCUA_ORGAN_STATES.error);
 		// 	});
-
 	}
 
 	private askToContinueDiscovery(model: SpinalOPCUADiscoverModel): Promise<boolean> {
 		return new Promise((resolve, reject) => {
 			try {
-
 				model.changeChoice(OPCUA_ORGAN_USER_CHOICE.noChoice);
 
 				let proccessId = model.askResponse.bind(() => {
@@ -171,10 +162,8 @@ class SpinalDiscover extends EventEmitter {
 			} catch (error) {
 				reject(error);
 			}
-
 		});
 	}
-
 
 	// tryTree2 is used to try the second method to get the tree if the first one failed
 	// private async _getOPCUATree(model: SpinalOPCUADiscoverModel, useLastResult: boolean, tryTree2: boolean = true) {
@@ -186,17 +175,19 @@ class SpinalDiscover extends EventEmitter {
 
 		const options: ITreeOption = { useLastResult, useBroadCast: true };
 		let err;
-		return opcuaService.getTree(entryPointPath, options)
+		return opcuaService
+			.getTree(entryPointPath, options)
 			.then(async (result) => {
 				if (!result || !result.tree || !result.tree.children) throw new Error("No tree discovered");
 
 				result.tree.children.map((el) => {
 					el.server = server;
 					return el;
-				})
+				});
 
 				return result;
-			}).catch(async (err) => {
+			})
+			.catch(async (err) => {
 				console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
 				throw err;
 				// model.changeState(OPCUA_ORGAN_STATES.error);
@@ -205,7 +196,6 @@ class SpinalDiscover extends EventEmitter {
 				// Disable disconnect to keep the connection alive for future operations
 				// await opcuaService.disconnect();
 			});
-
 	}
 
 	private async _createNetworkTreeInGraph(model: SpinalOPCUADiscoverModel) {
@@ -221,11 +211,11 @@ class SpinalDiscover extends EventEmitter {
 			const dataObject = await this._getDataByGateway(treeToCreate.children, context, network);
 
 			for (const nodeTocreate of treeToCreate.children) {
-				const gatewayData = (dataObject[nodeTocreate.server?.address] || []);
+				const gatewayData = dataObject[nodeTocreate.server?.address] || [];
 				if (!gatewayData || gatewayData.length <= 0) continue;
 
 				const deviceData = gatewayData.find((el: { node: IOPCNode }) => {
-					const key = normalizePath(nodeTocreate.path || "") || nodeTocreate.nodeId.toString();
+					const key = getNodeKey(nodeTocreate);
 					return normalizePath(el.node.path || "") === key || el.node.nodeId.toString() === key;
 				});
 
@@ -236,18 +226,13 @@ class SpinalDiscover extends EventEmitter {
 
 			await model.changeState(OPCUA_ORGAN_STATES.created);
 			console.log("network", network.getName().get(), "created !!");
-
 		} catch (error) {
 			console.error(error);
 			model.changeState(OPCUA_ORGAN_STATES.error);
 		}
-
-
 	}
 
-
 	private async _getDataByGateway(nodes: IOPCNode[], context: SpinalContext, network: SpinalNode) {
-
 		const obj: { [key: string]: any } = {};
 
 		for (const node of nodes) {
@@ -269,12 +254,12 @@ class SpinalDiscover extends EventEmitter {
 		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
 
 		return opcuaService.readNodeValue(variables).then((result) => {
-			const obj: { [key: string]: { dataType: string, value: any } } = {};
+			const obj: { [key: string]: { dataType: string; value: any } } = {};
 
 			for (let index = 0; index < result.length; index++) {
 				const element = result[index];
 				const variable = variables[index];
-				const key = normalizePath(variable.path || "") || variable.nodeId.toString();
+				const key = getNodeKey(variable);
 				obj[key] = element;
 			}
 

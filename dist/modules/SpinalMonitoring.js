@@ -71,7 +71,7 @@ class SpinalMonitoring {
                     const allInitialized = devices.every((device) => device === null || device === void 0 ? void 0 : device.isInit);
                     if (allInitialized) {
                         clearInterval(interval);
-                        resolve(devices.filter(el => !!el));
+                        resolve(devices.filter((el) => !!el));
                     }
                 }, 400);
             });
@@ -192,9 +192,9 @@ class SpinalMonitoring {
         let intervalObj = this.intervalTimesMap.get(interval) || {};
         let intervalList = intervalObj[url] || [];
         const nodeToUpdate = intervalData.children.map((child) => {
-            const key = (0, utils_1.normalizePath)(child.path) || child.idNetwork;
+            const key = (0, utils_1.getNodeKey)(child);
             this.idNetworkToSpinalDevice.set(key, spinalDevice); // save the device in the map to be able to retrieve it later
-            return { path: (0, utils_1.normalizePath)(child.path) };
+            return { path: (0, utils_1.normalizePath)(child.path), nodeId: child.nodeId || child.idNetwork };
         });
         intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate });
         intervalObj[url] = intervalList;
@@ -212,7 +212,7 @@ class SpinalMonitoring {
     _removeFromMaps(deviceId, url) {
         this.intervalTimesMap.forEach((valueObj, key) => {
             if (valueObj[url]) {
-                valueObj[url] = valueObj[url].filter(el => el.id !== deviceId);
+                valueObj[url] = valueObj[url].filter((el) => el.id !== deviceId);
                 this.intervalTimesMap.set(key, valueObj);
             }
             //    this.intervalTimesMap.set(key, value.filter(el => el.id !== deviceId));
@@ -256,7 +256,7 @@ class SpinalMonitoring {
             for (const opcNode of result.flat()) {
                 if (!opcNode || !opcNode.nodeId)
                     continue; // skip if no nodeId
-                const key = (0, utils_1.normalizePath)(opcNode.path || "") || opcNode.nodeId.toString();
+                const key = (0, utils_1.getNodeKey)(opcNode);
                 const device = this.idNetworkToSpinalDevice.get(key);
                 if (!device)
                     continue;
@@ -324,7 +324,7 @@ class SpinalMonitoring {
             return;
         // const value = ["string", "number", "boolean"].includes(typeof dataValue?.value) ? dataValue?.value : null;
         const value = (_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) !== null && _a !== void 0 ? _a : null;
-        const nodePath = (0, utils_1.normalizePath)(node.path || "") || node.nodeId.toString();
+        const nodePath = (0, utils_1.getNodeKey)(node);
         const nodeId = node.nodeId.toString();
         console.log(`[COV] - ${nodePath} has changed value to ${value}`);
         const temp_id = `${spinalDevice.deviceInfo.id}_${nodeId}`;

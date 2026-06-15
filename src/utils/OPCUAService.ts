@@ -10,7 +10,6 @@ import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua
 import { ITreeOption } from "../interfaces/ITreeOption";
 import { NAMES_TO_IGNORE, noSessionError, noSubscriptionError } from "./constants";
 import OPCUAFactory from "./OPCUAFactory";
-import * as path from "path";
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
@@ -26,7 +25,7 @@ export class OPCUAService extends EventEmitter {
 	private monitoredItemsData: { nodes: IOPCNode[]; callback: CovCallbackType }[] = [];
 
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
-	private _discoverModel: SpinalOPCUADiscoverModel;
+	private _discoverModel: SpinalOPCUADiscoverModel | undefined = undefined; // model used to save the discovering process in the spinal system, if provided in the constructor
 
 	public isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
 	private isReconnecting: boolean = false;
@@ -369,25 +368,29 @@ export class OPCUAService extends EventEmitter {
 
 			const nodesFound = await this.session.translateBrowsePath(browsePaths);
 
-			if (!nodesFound.targets || nodesFound.targets.length === 0) return;
+			if (!nodesFound.targets || nodesFound.targets.length === 0) {
+				throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
+			}
 
 			return nodesFound.targets[0].targetId?.toString();
 		} catch (error) {
-			return;
+			const nodeInfo = await this._browToGetNodeByPath(nodePath);
+			return nodeInfo?.nodeId?.toString();
 		}
 	}
 
 	public async getNodeByPath(nodePath: string = ""): Promise<IOPCNode | void> {
 		try {
-			return this._browToGetNodeByPath(nodePath);
-			// const startNodeId = await this.getNodeIdByPath(nodePath);
-			// if (!startNodeId) return;
+			// // return this._browToGetNodeByPath(nodePath);
+			const startNodeId = await this.getNodeIdByPath(nodePath);
 
-			// const startNode = await this.readNodeDescription(startNodeId, nodePath);
+			if (!startNodeId) return;
 
-			// return startNode; // return the node with its children and path
+			const startNode = await this.readNodeDescription(startNodeId, nodePath);
+
+			return startNode; // return the node with its children and path
 		} catch (error) {
-			return;
+			return this._browToGetNodeByPath(nodePath); // if the first method fails, use the second method
 		}
 	}
 

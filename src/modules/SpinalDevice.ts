@@ -31,9 +31,8 @@ import { SpinalServiceTimeseries } from "spinal-model-timeseries";
 import { SpinalGraphService } from "spinal-env-viewer-graph-service";
 import { IProfile } from "../interfaces/IProfile";
 import { IOPCNode } from "../interfaces/OPCNode";
-import { normalizePath } from "../utils/utils";
+import { getNodeKey } from "../utils/utils";
 import { SpinalOPCUAListener, IServer } from "spinal-model-opcua";
-
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
@@ -45,7 +44,7 @@ export class SpinalDevice extends EventEmitter {
 	public network: SpinalNode;
 	public device: SpinalNode;
 	public server: IServer;
-	public deviceInfo: { name: string, type: string, id: string, path: string };
+	public deviceInfo: { name: string; type: string; id: string; path: string };
 	public spinalListenerModel: SpinalOPCUAListener;
 	public profile: IProfile;
 
@@ -53,7 +52,6 @@ export class SpinalDevice extends EventEmitter {
 	private endpoints: { [key: string]: SpinalNode } = {};
 
 	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener, profile: IProfile) {
-
 		super();
 
 		this.server = server;
@@ -65,24 +63,24 @@ export class SpinalDevice extends EventEmitter {
 		this.profile = profile;
 	}
 
-
 	public async init() {
 		if (this.isInit) return;
-		return this._convertNodesToObj().then((result) => {
-			this.isInit = true;
-			console.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
-			return result;
-		}).catch((err) => {
-			console.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${err.message}`);
-		});;
+		return this._convertNodesToObj()
+			.then((result) => {
+				this.isInit = true;
+				console.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
+				return result;
+			})
+			.catch((err) => {
+				console.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${err.message}`);
+			});
 	}
 
 	public async updateEndpoints(nodes: IOPCNode[], isCov: boolean = false) {
-
 		const promises = [];
 
 		for (const opcNode of nodes) {
-			const key = normalizePath(opcNode.path || "") || opcNode.nodeId.toString();
+			const key = getNodeKey(opcNode);
 			const spinalnode = this.endpoints[key];
 			if (!spinalnode) continue;
 
@@ -92,14 +90,14 @@ export class SpinalDevice extends EventEmitter {
 			promises.push(this._updateEndpoint(spinalnode, value, isCov));
 		}
 
-		return Promise.all(promises).then((result) => {
-			if (!isCov) console.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
-		}).catch((err) => {
-			if (!isCov) console.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
-		});;
+		return Promise.all(promises)
+			.then((result) => {
+				if (!isCov) console.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
+			})
+			.catch((err) => {
+				if (!isCov) console.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
+			});
 	}
-
-
 
 	stopMonitoring() {
 		this.spinalListenerModel.monitored.set(false);
@@ -116,14 +114,12 @@ export class SpinalDevice extends EventEmitter {
 		}, 1000);
 	}
 
-
 	/////////////////////////////////////////////////////////////////////////
 	//						PRIVATES METHODS
 	/////////////////////////////////////////////////////////////////////////
 
 	private async _updateEndpoint(endpointNode: SpinalNode, value: any, cov: boolean = false) {
 		try {
-
 			if (value === null) value = "null";
 
 			const saveTimeSeries = this.spinalListenerModel.saveTimeSeries?.get();
@@ -154,7 +150,8 @@ export class SpinalDevice extends EventEmitter {
 
 	private _convertNodesToObj(): Promise<SpinalNode[]> {
 		return this.device.findInContext(this.context, (node) => {
-			const key = normalizePath(node.info?.path?.get()) || node.info?.idNetwork?.get()
+			const info = node.info.get();
+			const key = getNodeKey(info);
 
 			if (key) this.nodes[key] = node;
 			if (key && node.getType().get() === SpinalBmsEndpoint.nodeTypeName) this.endpoints[key] = node;
@@ -177,7 +174,5 @@ export class SpinalDevice extends EventEmitter {
 		if (opcNode?.nodeId) {
 			spinalNode.info?.idNetwork?.set(opcNode.nodeId.toString());
 		}
-
 	}
-
 }

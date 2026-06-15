@@ -61,14 +61,15 @@ class SpinalDevice extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.isInit)
                 return;
-            return this._convertNodesToObj().then((result) => {
+            return this._convertNodesToObj()
+                .then((result) => {
                 this.isInit = true;
                 console.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
                 return result;
-            }).catch((err) => {
+            })
+                .catch((err) => {
                 console.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${err.message}`);
             });
-            ;
         });
     }
     updateEndpoints(nodes, isCov = false) {
@@ -76,7 +77,7 @@ class SpinalDevice extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             const promises = [];
             for (const opcNode of nodes) {
-                const key = (0, utils_1.normalizePath)(opcNode.path || "") || opcNode.nodeId.toString();
+                const key = (0, utils_1.getNodeKey)(opcNode);
                 const spinalnode = this.endpoints[key];
                 if (!spinalnode)
                     continue;
@@ -85,14 +86,15 @@ class SpinalDevice extends events_1.EventEmitter {
                 const value = (_a = opcNode.value) === null || _a === void 0 ? void 0 : _a.value;
                 promises.push(this._updateEndpoint(spinalnode, value, isCov));
             }
-            return Promise.all(promises).then((result) => {
+            return Promise.all(promises)
+                .then((result) => {
                 if (!isCov)
                     console.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
-            }).catch((err) => {
+            })
+                .catch((err) => {
                 if (!isCov)
                     console.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
             });
-            ;
         });
     }
     stopMonitoring() {
@@ -143,8 +145,8 @@ class SpinalDevice extends events_1.EventEmitter {
     }
     _convertNodesToObj() {
         return this.device.findInContext(this.context, (node) => {
-            var _a, _b, _c, _d;
-            const key = (0, utils_1.normalizePath)((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = node.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
+            const info = node.info.get();
+            const key = (0, utils_1.getNodeKey)(info);
             if (key)
                 this.nodes[key] = node;
             if (key && node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName)

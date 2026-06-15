@@ -28,6 +28,7 @@ class OPCUAService extends events_1.EventEmitter {
         this.endpointUrl = "";
         this.monitoredItemsData = [];
         this.clientAlarms = new node_opcua_1.ClientAlarmList();
+        this._discoverModel = undefined; // model used to save the discovering process in the spinal system, if provided in the constructor
         this.isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
         this.isReconnecting = false;
         this.endpointUrl = url;
@@ -341,7 +342,7 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     getNodeIdByPath(nodePath = "") {
-        var _a;
+        var _a, _b;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 if (!this.session)
@@ -351,26 +352,29 @@ class OPCUAService extends events_1.EventEmitter {
                 nodePath = (0, utils_1.normalizePath)(nodePath);
                 const browsePaths = (0, node_opcua_1.makeBrowsePath)("RootFolder", nodePath);
                 const nodesFound = yield this.session.translateBrowsePath(browsePaths);
-                if (!nodesFound.targets || nodesFound.targets.length === 0)
-                    return;
+                if (!nodesFound.targets || nodesFound.targets.length === 0) {
+                    throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
+                }
                 return (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
             }
             catch (error) {
-                return;
+                const nodeInfo = yield this._browToGetNodeByPath(nodePath);
+                return (_b = nodeInfo === null || nodeInfo === void 0 ? void 0 : nodeInfo.nodeId) === null || _b === void 0 ? void 0 : _b.toString();
             }
         });
     }
     getNodeByPath(nodePath = "") {
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                return this._browToGetNodeByPath(nodePath);
-                // const startNodeId = await this.getNodeIdByPath(nodePath);
-                // if (!startNodeId) return;
-                // const startNode = await this.readNodeDescription(startNodeId, nodePath);
-                // return startNode; // return the node with its children and path
+                // // return this._browToGetNodeByPath(nodePath);
+                const startNodeId = yield this.getNodeIdByPath(nodePath);
+                if (!startNodeId)
+                    return;
+                const startNode = yield this.readNodeDescription(startNodeId, nodePath);
+                return startNode; // return the node with its children and path
             }
             catch (error) {
-                return;
+                return this._browToGetNodeByPath(nodePath); // if the first method fails, use the second method
             }
         });
     }

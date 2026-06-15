@@ -12,10 +12,9 @@ export interface IOPCNode {
 	[key: string]: any;
 }
 
-
 export interface IServer {
 	address: string;
 	port: number;
-	endpoint?: string
+	endpoint?: string;
 	ip?: string; // Deprecated, use address instead
 }

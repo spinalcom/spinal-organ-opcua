@@ -157,7 +157,8 @@ class SpinalDiscover extends events_1.EventEmitter {
             const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url, model);
             const options = { useLastResult, useBroadCast: true };
             let err;
-            return opcuaService.getTree(entryPointPath, options)
+            return opcuaService
+                .getTree(entryPointPath, options)
                 .then((result) => __awaiter(this, void 0, void 0, function* () {
                 if (!result || !result.tree || !result.tree.children)
                     throw new Error("No tree discovered");
@@ -166,7 +167,8 @@ class SpinalDiscover extends events_1.EventEmitter {
                     return el;
                 });
                 return result;
-            })).catch((err) => __awaiter(this, void 0, void 0, function* () {
+            }))
+                .catch((err) => __awaiter(this, void 0, void 0, function* () {
                 console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
                 throw err;
                 // model.changeState(OPCUA_ORGAN_STATES.error);
@@ -189,11 +191,11 @@ class SpinalDiscover extends events_1.EventEmitter {
                 const { network, organ } = yield (0, addNetworkToGraph_1.getOrGenNetworkNode)(model, context);
                 const dataObject = yield this._getDataByGateway(treeToCreate.children, context, network);
                 for (const nodeTocreate of treeToCreate.children) {
-                    const gatewayData = (dataObject[(_a = nodeTocreate.server) === null || _a === void 0 ? void 0 : _a.address] || []);
+                    const gatewayData = dataObject[(_a = nodeTocreate.server) === null || _a === void 0 ? void 0 : _a.address] || [];
                     if (!gatewayData || gatewayData.length <= 0)
                         continue;
                     const deviceData = gatewayData.find((el) => {
-                        const key = (0, utils_1.normalizePath)(nodeTocreate.path || "") || nodeTocreate.nodeId.toString();
+                        const key = (0, utils_1.getNodeKey)(nodeTocreate);
                         return (0, utils_1.normalizePath)(el.node.path || "") === key || el.node.nodeId.toString() === key;
                     });
                     if (!deviceData)
@@ -234,7 +236,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 for (let index = 0; index < result.length; index++) {
                     const element = result[index];
                     const variable = variables[index];
-                    const key = (0, utils_1.normalizePath)(variable.path || "") || variable.nodeId.toString();
+                    const key = (0, utils_1.getNodeKey)(variable);
                     obj[key] = element;
                 }
                 return obj;

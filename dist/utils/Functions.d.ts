@@ -1,4 +1,4 @@
-import { SpinalOrganOPCUA } from "spinal-model-opcua";
+import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { IOPCNode, IServer } from "../interfaces/OPCNode";
 export declare const WaitModelReady: () => Promise<any>;
 export declare const GetPm2Instance: (organName: string) => Promise<unknown>;

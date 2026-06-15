@@ -6,9 +6,7 @@ import * as path from "path";
 import { config as dotenvConfig } from "dotenv";
 import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 
-
 dotenvConfig({ path: path.resolve(__dirname, "../../.env"), override: true });
-
 
 export function getConfig(): IConfig {
 	return {
@@ -19,7 +17,7 @@ export function getConfig(): IConfig {
 		host: process.env.HOST || "EDIT_ME",
 		port: process.env.PORT || "EDIT_ME",
 		path: process.env.ORGAN_FOLDER_PATH || "EDIT_ME",
-		entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || ""
+		entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || "",
 	};
 }
 
@@ -91,7 +89,6 @@ export const coerceFunc = (dataType: DataType) => {
 	}
 };
 
-
 export function coerceStringToDataType(dataType: DataType, arrayType: number, VariantArrayType: any, data: any) {
 	const c = coerceFunc(dataType);
 	if (arrayType === VariantArrayType.Scalar) {
@@ -101,7 +98,9 @@ export function coerceStringToDataType(dataType: DataType, arrayType: number, Va
 	}
 }
 
-export function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): boolean {
+export function discoverIsCancelled(_discoverModel?: SpinalOPCUADiscoverModel): boolean {
+	if (!_discoverModel) return true; // if no model is provided, we consider that the discover is not cancelled, as we have no way to know
+
 	return !_discoverModel || _discoverModel.state?.get() == OPCUA_ORGAN_STATES.cancelled;
 }
 
@@ -124,4 +123,8 @@ export function normalizePath(nodePath: string): string {
 	if (protocol && nodePath.startsWith("/")) nodePath = nodePath.slice(1); // Remove leading slash if protocol exists
 
 	return protocol + nodePath;
+}
+
+export function getNodeKey(opcNode: IOPCNode): string {
+	return normalizePath(opcNode.path || "") || opcNode.nodeId?.toString() || opcNode.idNetwork?.toString() || "";
 }

@@ -36,31 +36,32 @@ function _transformTreeToGraphRecursively(context, opcNode, nodesAlreadyCreated,
 }
 exports._transformTreeToGraphRecursively = _transformTreeToGraphRecursively;
 function getNodeAlreadyCreated(context, network, opcNode) {
-    var _a, _b, _c, _d;
     return __awaiter(this, void 0, void 0, function* () {
         const devices = yield network.getChildrenInContext(context);
         const serverInfo = opcNode.server;
         const device = devices.find((el) => {
-            var _a, _b, _c, _d, _e, _f, _g, _h;
+            var _a, _b, _c, _d;
             const serverIsMatch = ((_b = (_a = el.info.server) === null || _a === void 0 ? void 0 : _a.address) === null || _b === void 0 ? void 0 : _b.get()) == (serverInfo === null || serverInfo === void 0 ? void 0 : serverInfo.address) && ((_d = (_c = el.info.server) === null || _c === void 0 ? void 0 : _c.port) === null || _d === void 0 ? void 0 : _d.get()) == (serverInfo === null || serverInfo === void 0 ? void 0 : serverInfo.port);
             if (!serverIsMatch)
                 return false;
-            const key = ((_f = (_e = el.info) === null || _e === void 0 ? void 0 : _e.path) === null || _f === void 0 ? void 0 : _f.get()) || ((_h = (_g = el.info) === null || _g === void 0 ? void 0 : _g.idNetwork) === null || _h === void 0 ? void 0 : _h.get());
+            const info = el.info.get();
+            const key = (0, utils_1.getNodeKey)(info);
             return (0, utils_1.normalizePath)(opcNode.path || "") === key || opcNode.nodeId.toString() === key;
         });
         if (!device)
             return {}; // If no device found, return an empty object
-        const key = ((_b = (_a = device.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = device.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
-        const obj = {
-            [key]: device // Use the device's path or idNetwork as the key
-        };
-        return device.findInContext(context, (node) => {
-            var _a, _b, _c, _d;
-            const id = ((_b = (_a = node.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get()) || ((_d = (_c = node.info) === null || _c === void 0 ? void 0 : _c.idNetwork) === null || _d === void 0 ? void 0 : _d.get());
-            if (id)
-                obj[id] = node;
+        const info = device.info.get();
+        const key = (0, utils_1.getNodeKey)(info);
+        const obj = { [key]: device };
+        return device
+            .findInContext(context, (node) => {
+            const info = node.info.get();
+            const nodeKey = (0, utils_1.getNodeKey)(info);
+            if (nodeKey)
+                obj[nodeKey] = node;
             return true;
-        }).then(() => {
+        })
+            .then(() => {
             return obj;
         });
     });
@@ -68,9 +69,10 @@ function getNodeAlreadyCreated(context, network, opcNode) {
 exports.getNodeAlreadyCreated = getNodeAlreadyCreated;
 function getNodeAndRelation(opcNode, nodesAlreadyCreated, values = {}, depth = 0) {
     return __awaiter(this, void 0, void 0, function* () {
-        const key = (0, utils_1.normalizePath)(opcNode.path || "") || opcNode.nodeId.toString();
+        const key = (0, utils_1.getNodeKey)(opcNode);
         let spinalNode = nodesAlreadyCreated[key];
-        if (!spinalNode) { // If the node does not exist, create it
+        if (!spinalNode) {
+            // If the node does not exist, create it
             if (depth == 0)
                 return _generateDevice(opcNode);
             return _generateNodeAndRelation(opcNode, values);
@@ -101,10 +103,10 @@ function _generateNodeAndRelation(node, values = {}) {
         name: node.displayName,
         path: (0, utils_1.normalizePath)(node.path || ""),
         displayName: node.displayName || node.browseName,
-        browseName: node.browseName || node.displayName
+        browseName: node.browseName || node.displayName,
     };
     if (OPCUAService_1.default.isVariable(node)) {
-        const key = (0, utils_1.normalizePath)(node.path || "") || node.nodeId.toString();
+        const key = (0, utils_1.getNodeKey)(node);
         const dataValue = values[key];
         param = Object.assign(Object.assign({}, param), { typeId: "", nodeTypeName: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, type: spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName, 
             // currentValue: dataValue?.value || "null", // may be bad if value is boolean
@@ -120,7 +122,7 @@ function _generateNodeAndRelation(node, values = {}) {
         idNetwork: element.id,
         displayName: element.displayName || "",
         browseName: element.browseName || "",
-        path: (0, utils_1.normalizePath)(element.path.get() || "")
+        path: (0, utils_1.normalizePath)(element.path.get() || ""),
     });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
 }
@@ -135,10 +137,10 @@ function _generateDevice(node) {
         server: {
             address: (_a = node.server) === null || _a === void 0 ? void 0 : _a.address,
             port: (_b = node.server) === null || _b === void 0 ? void 0 : _b.port,
-            endpoint: ((_c = node.server) === null || _c === void 0 ? void 0 : _c.endpoint) || ""
+            endpoint: ((_c = node.server) === null || _c === void 0 ? void 0 : _c.endpoint) || "",
         },
         displayName: node === null || node === void 0 ? void 0 : node.displayName,
-        browseName: node === null || node === void 0 ? void 0 : node.browseName
+        browseName: node === null || node === void 0 ? void 0 : node.browseName,
     };
     let element = new spinal_model_bmsnetwork_1.SpinalBmsDevice(param);
     const spinalNode = new spinal_env_viewer_graph_service_1.SpinalNode(param.name, param.type, element);
@@ -150,7 +152,7 @@ function _generateDevice(node) {
         server: {
             address: (_d = node.server) === null || _d === void 0 ? void 0 : _d.address,
             port: (_e = node.server) === null || _e === void 0 ? void 0 : _e.port,
-            endpoint: ((_f = node.server) === null || _f === void 0 ? void 0 : _f.endpoint) || ""
+            endpoint: ((_f = node.server) === null || _f === void 0 ? void 0 : _f.endpoint) || "",
         },
     });
     return { node: spinalNode, relation: _getNodeRelationName(param.type), alreadyExist: false };
@@ -174,7 +176,7 @@ function _formatTree(tree) {
     if (tree.nodeClass != node_opcua_1.NodeClass.Variable)
         return { children: tree.children, attributes: [] };
     const result = { children: [], attributes: [] };
-    for (const item of (tree.children || [])) {
+    for (const item of tree.children || []) {
         if (item.nodeClass == node_opcua_1.NodeClass.Variable && (!(item === null || item === void 0 ? void 0 : item.children) || ((_a = item === null || item === void 0 ? void 0 : item.children) === null || _a === void 0 ? void 0 : _a.length) == 0)) {
             result.attributes.push(item);
         }
@@ -190,7 +192,7 @@ function _createNodeAttributes(node, attributes, values = {}) {
     //[TODO] use createOrUpdateAttrsAndCategories
     const formatted = {};
     for (const attr of attributes) {
-        const key = (0, utils_1.normalizePath)(attr.path || "") || attr.nodeId.toString();
+        const key = (0, utils_1.getNodeKey)(attr);
         const value = ((_a = values[key]) === null || _a === void 0 ? void 0 : _a.value) || "";
         if (attr.displayName)
             formatted[attr.displayName] = value;
