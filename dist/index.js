@@ -19,6 +19,7 @@ const { protocol, host, port, userId, password, path, name } = (0, utils_1.getCo
 const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
 const connect = spinal_core_connectorjs_type_1.spinalCore.connect(url);
 (0, Functions_1.CreateOrganConfigFile)(connect, path, name).then((organModel) => {
+    console.warn("This organ use load_type function, for more optimization, use main branch");
     organModel.restart.bind(() => {
         (0, Functions_1.GetPm2Instance)(name).then((app) => __awaiter(void 0, void 0, void 0, function* () {
             const restart = organModel.restart.get();

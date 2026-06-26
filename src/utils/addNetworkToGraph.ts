@@ -3,11 +3,10 @@ import { SpinalBmsNetwork } from "spinal-model-bmsnetwork";
 import { SpinalOrganOPCUA } from "spinal-model-opcua";
 
 export async function addNetworkToGraph(nodes: { node: SpinalNode; relation: string; attributes: any }[], context: SpinalContext, network: SpinalNode, organ: SpinalNode) {
-
 	const result = [];
 
 	for (const { node, relation } of nodes) {
-		const n = await network.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => { });
+		const n = await network.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context).catch((e) => {});
 		result.push(n);
 	}
 
@@ -48,8 +47,10 @@ export async function getOrGenNetworkNode(model: any, context: SpinalContext) {
 
 export function getOrganNode(organ: SpinalOrganOPCUA, contextId: string): Promise<SpinalNode> {
 	return new Promise((resolve, reject) => {
+		if (organ instanceof SpinalNode) resolve(organ);
+
 		try {
-			organ.references[contextId].load((node) => {
+			organ.references[contextId].load((node: SpinalNode) => {
 				if (node instanceof SpinalNode) resolve(node);
 				else reject("Error: getOrganNode");
 			});

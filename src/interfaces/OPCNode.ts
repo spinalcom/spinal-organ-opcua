@@ -1,9 +1,9 @@
-import { NodeClass, NodeId } from "node-opcua";
+import { NodeClass, NodeIdLike } from "node-opcua";
 
 export interface IOPCNode {
 	displayName?: string;
 	browseName?: string;
-	nodeId: NodeId;
+	nodeId: NodeIdLike;
 	nodeClass?: NodeClass;
 	children?: IOPCNode[];
 	path?: string;
@@ -12,10 +12,9 @@ export interface IOPCNode {
 	[key: string]: any;
 }
 
-
 export interface IServer {
 	address: string;
 	port: number;
-	endpoint?: string
+	endpoint?: string;
 	ip?: string; // Deprecated, use address instead
 }

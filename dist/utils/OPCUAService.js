@@ -28,6 +28,7 @@ class OPCUAService extends events_1.EventEmitter {
         this.endpointUrl = "";
         this.monitoredItemsData = [];
         this.clientAlarms = new node_opcua_1.ClientAlarmList();
+        this._discoverModel = undefined;
         this.isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
         this.isReconnecting = false;
         this.endpointUrl = url;
@@ -127,7 +128,7 @@ class OPCUAService extends events_1.EventEmitter {
                     requestedMaxKeepAliveCount: 4,
                     maxNotificationsPerPublish: 10,
                     publishingEnabled: true,
-                    priority: 1 // Donne une priorité à la subscription
+                    priority: 1, // Donne une priorité à la subscription
                 };
                 return this.session.createSubscription2(parameters);
             }
@@ -262,7 +263,8 @@ class OPCUAService extends events_1.EventEmitter {
             const chunckSize = 100; // read 100 nodes at a time to avoid timeout errors
             const nodesChunk = lodash.chunk(node, chunckSize);
             const promises = nodesChunk.map((chunk) => this.readNode(chunk));
-            return Promise.allSettled(promises).then((results) => {
+            return Promise.allSettled(promises)
+                .then((results) => {
                 const dataValues = [];
                 for (const result of results) {
                     if (result.status === "fulfilled") {
@@ -270,7 +272,8 @@ class OPCUAService extends events_1.EventEmitter {
                     }
                 }
                 return dataValues.map((dataValue) => this._formatDataValue(dataValue));
-            }).finally(() => __awaiter(this, void 0, void 0, function* () {
+            })
+                .finally(() => __awaiter(this, void 0, void 0, function* () {
                 yield this.disconnect();
             }));
         });
@@ -327,10 +330,10 @@ class OPCUAService extends events_1.EventEmitter {
                 filter: new node_opcua_1.DataChangeFilter({
                     trigger: node_opcua_1.DataChangeTrigger.StatusValue,
                     deadbandType: node_opcua_1.DeadbandType.Absolute,
-                    deadbandValue: 0.1
+                    deadbandValue: 0.1,
                 }),
                 discardOldest: true,
-                queueSize: 1
+                queueSize: 1,
             };
             const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, parameters, node_opcua_1.TimestampsToReturn.Both);
             for (const monitoredItem of monitoredItemGroup.monitoredItems) {
@@ -381,7 +384,7 @@ class OPCUAService extends events_1.EventEmitter {
     getNodesNewInfoByPath(nodes) {
         if (!Array.isArray(nodes))
             nodes = [nodes];
-        const promises = nodes.map(node => this.getNodeByPath(node.path));
+        const promises = nodes.map((node) => this.getNodeByPath(node.path));
         return Promise.all(promises).then((result) => {
             const res = [];
             for (let i = 0; i < result.length; i++) {
@@ -453,19 +456,23 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     _getPossibleDataType(value) {
-        if (!isNaN(value)) { // if the value is a number
+        if (!isNaN(value)) {
+            // if the value is a number
             const numerics = [node_opcua_1.DataType.Float, node_opcua_1.DataType.Double, node_opcua_1.DataType.Int16, node_opcua_1.DataType.Int32, node_opcua_1.DataType.Int64, node_opcua_1.DataType.UInt16, node_opcua_1.DataType.UInt32, node_opcua_1.DataType.UInt64];
             if (value == 0 || value == 1)
                 return [...numerics, node_opcua_1.DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
             return numerics; // if the value is a number, it can be a numeric type
         }
-        if (typeof value == "string") { // if the value is a string
+        if (typeof value == "string") {
+            // if the value is a string
             return [node_opcua_1.DataType.String, node_opcua_1.DataType.LocalizedText, node_opcua_1.DataType.XmlElement]; // if the value is a string, it can be a string or a localized text
         }
-        if (typeof value == "boolean") { // if the value is a boolean
+        if (typeof value == "boolean") {
+            // if the value is a boolean
             return [node_opcua_1.DataType.Boolean];
         }
-        if (value instanceof Date) { // if the value is a Date
+        if (value instanceof Date) {
+            // if the value is a Date
             return [node_opcua_1.DataType.DateTime];
         }
         return [node_opcua_1.DataType.Null]; // if the value is not recognized, return null
@@ -492,7 +499,7 @@ class OPCUAService extends events_1.EventEmitter {
                 nodeClass,
                 children: [],
                 path,
-                value
+                value,
             };
         });
     }
@@ -599,7 +606,7 @@ class OPCUAService extends events_1.EventEmitter {
             nodeClass: reference.nodeClass,
             path: parentPath + browseName,
             children: [],
-            parentId
+            parentId,
         };
     }
     _formatDataValue(dataValue) {

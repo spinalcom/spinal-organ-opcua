@@ -12,13 +12,16 @@ import { NAMES_TO_IGNORE, noSessionError, noSubscriptionError } from "./constant
 import OPCUAFactory from "./OPCUAFactory";
 import * as path from "path";
 
-
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
-type CovCallbackType = (node: IOPCNode, data: {
-	value: any;
-	dataType: string;
-}, monitorItem: ClientMonitoredItemBase) => void;
+type CovCallbackType = (
+	node: IOPCNode,
+	data: {
+		value: any;
+		dataType: string;
+	},
+	monitorItem: ClientMonitoredItemBase,
+) => void;
 
 export class OPCUAService extends EventEmitter {
 	private client?: OPCUAClient;
@@ -30,7 +33,7 @@ export class OPCUAService extends EventEmitter {
 	private monitoredItemsData: { nodes: IOPCNode[]; callback: CovCallbackType }[] = [];
 
 	private clientAlarms: ClientAlarmList = new ClientAlarmList();
-	private _discoverModel: SpinalOPCUADiscoverModel;
+	private _discoverModel: SpinalOPCUADiscoverModel | undefined = undefined;
 
 	public isVariable = OPCUAService.isVariable; // static method to check if a node is a variable
 	private isReconnecting: boolean = false;
@@ -44,7 +47,6 @@ export class OPCUAService extends EventEmitter {
 	//////////////////////////// Client connection management ////////////////////////////
 
 	private async createClient(): Promise<OPCUAClient> {
-
 		if (this.client) return this.client; // if the client already exists, return it
 
 		const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
@@ -66,7 +68,6 @@ export class OPCUAService extends EventEmitter {
 
 		this._listenClientEvents(client);
 
-
 		return client;
 	}
 
@@ -86,7 +87,6 @@ export class OPCUAService extends EventEmitter {
 		client.on("connection_lost", () => {
 			this.reconnect();
 		});
-
 	}
 
 	public async checkAndRetablishConnection(): Promise<void> {
@@ -121,28 +121,26 @@ export class OPCUAService extends EventEmitter {
 		session.on("session_closed", () => {
 			// console.log(" Warning => Session closed");
 			this.reconnect();
-		})
+		});
 		// session.on("keepalive", () => {
 		// 	// console.log("session keepalive");
 		// })
 		session.on("keepalive_failure", () => {
 			this.reconnect();
-		})
+		});
 	}
-
 
 	private async createSubscription() {
 		if (!this.session) this.session = await this._createSession();
 
-
 		try {
 			const parameters = {
 				requestedPublishingInterval: 10 * 1000, // interval auquel on veut recevoir les notifications
-				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée 
+				requestedLifetimeCount: 100, // Nombre de notification sans reponses avants que la subscription soit considérée comme expirée
 				requestedMaxKeepAliveCount: 4, // Nombre de notification avant que le serveur envoie un keep alive
 				maxNotificationsPerPublish: 10, // Nombre de valueur (DataChange) maximum par notification
 				publishingEnabled: true, // Activer ou desactiver l'envoi de notification
-				priority: 1 // Donne une priorité à la subscription
+				priority: 1, // Donne une priorité à la subscription
 			};
 
 			return this.session.createSubscription2(parameters);
@@ -182,15 +180,12 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-
-
 	///////////////////////////////////////////////////////////////////////////
 	//              Exemple 1 : [getTree] - Browse several node              //
 	//              May have timeout error if the tree is too big            //
 	///////////////////////////////////////////////////////////////////////////
 
 	public async getTree(entryPointPath: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] } | void> {
-
 		// await this.connect(userIdentity);
 		if (!this.session) throw noSessionError;
 
@@ -198,9 +193,7 @@ export class OPCUAService extends EventEmitter {
 		let { nodesObj, queue, browseMode } = await this._getDiscoverStarterData(entryPointPath, options.useLastResult);
 		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
-
 		while (queue.length && !discoverIsCancelled(this._discoverModel)) {
-
 			let discoverState = null;
 			let _error = null;
 
@@ -216,7 +209,6 @@ export class OPCUAService extends EventEmitter {
 
 				if (newsItems.length) console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
 				console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
-
 			} catch (error) {
 				queue.unshift(...chunked); // if an error occurs, put the nodes back in the queue
 				_error = error;
@@ -230,7 +222,6 @@ export class OPCUAService extends EventEmitter {
 			if (_error) throw _error; // if an error occurs, throw it to stop the process
 		}
 
-
 		// if the discovering process is interrupted by user, stop the process
 		if (discoverIsCancelled(this._discoverModel)) return;
 
@@ -239,9 +230,7 @@ export class OPCUAService extends EventEmitter {
 		return { tree, variables };
 	}
 
-
 	///////////////////////////////////////////////////////////////////////////
-
 
 	public async readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]> {
 		if (!this.session) throw noSessionError;
@@ -280,7 +269,6 @@ export class OPCUAService extends EventEmitter {
 		return `${browsePath}/${translation.targets[0]?.targetId?.toString()}`;
 	}
 
-
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<({ dataType: string; value: any } | null)[]> {
 		await this.checkAndRetablishConnection();
 
@@ -292,19 +280,20 @@ export class OPCUAService extends EventEmitter {
 
 		const promises = nodesChunk.map((chunk) => this.readNode(chunk));
 
-		return Promise.allSettled(promises).then((results) => {
-			const dataValues = [];
-			for (const result of results) {
-				if (result.status === "fulfilled") {
-					dataValues.push(...result.value);
+		return Promise.allSettled(promises)
+			.then((results) => {
+				const dataValues = [];
+				for (const result of results) {
+					if (result.status === "fulfilled") {
+						dataValues.push(...result.value);
+					}
 				}
-			}
 
-			return dataValues.map((dataValue) => this._formatDataValue(dataValue));
-		}).finally(async () => {
-			await this.disconnect();
-		})
-
+				return dataValues.map((dataValue) => this._formatDataValue(dataValue));
+			})
+			.finally(async () => {
+				await this.disconnect();
+			});
 	}
 
 	public async writeNode(node: IOPCNode, value: any): Promise<any> {
@@ -313,7 +302,6 @@ export class OPCUAService extends EventEmitter {
 		const PossibleDataType = await this._getPossibleDataType(value);
 
 		try {
-
 			let statusCode: StatusCode = StatusCodes.BadTypeMismatch;
 			let isGood: boolean = false; // check we found a data type
 
@@ -327,14 +315,12 @@ export class OPCUAService extends EventEmitter {
 				statusCode = await (this.session as any).writeSingleNode(node.nodeId.toString(), { dataType, value: tempValue });
 
 				if (statusCode.isGoodish()) isGood = true;
-
 			}
 
 			console.log("statusCode", statusCode);
 
 			if (!isGood) throw new Error("Cannot write value: " + value + " to node: " + node.nodeId + " with any data type");
 			return statusCode;
-
 		} catch (error) {
 			throw error;
 		}
@@ -365,11 +351,11 @@ export class OPCUAService extends EventEmitter {
 			filter: new DataChangeFilter({
 				trigger: DataChangeTrigger.StatusValue,
 				deadbandType: DeadbandType.Absolute,
-				deadbandValue: 0.1
+				deadbandValue: 0.1,
 			}),
 			discardOldest: true,
-			queueSize: 1
-		}
+			queueSize: 1,
+		};
 
 		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, parameters, TimestampsToReturn.Both);
 
@@ -378,15 +364,13 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-
 	public async getNodeIdByPath(nodePath: string = ""): Promise<string | void> {
-
 		try {
 			if (!this.session) throw noSessionError;
 
 			if (!nodePath.startsWith("/Objects")) nodePath = "/Objects/" + nodePath;
 
-			nodePath = normalizePath(nodePath)
+			nodePath = normalizePath(nodePath);
 			const browsePaths = makeBrowsePath("RootFolder", nodePath);
 
 			const nodesFound = await this.session.translateBrowsePath(browsePaths);
@@ -394,16 +378,12 @@ export class OPCUAService extends EventEmitter {
 			if (!nodesFound.targets || nodesFound.targets.length === 0) return;
 
 			return nodesFound.targets[0].targetId?.toString();
-
 		} catch (error) {
 			return;
 		}
-
 	}
 
-
 	public async getNodeByPath(nodePath: string = ""): Promise<IOPCNode | void> {
-
 		try {
 			const startNodeId = await this.getNodeIdByPath(nodePath);
 			if (!startNodeId) return;
@@ -411,13 +391,10 @@ export class OPCUAService extends EventEmitter {
 			const startNode = await this.readNodeDescription(startNodeId, nodePath);
 
 			return startNode; // return the node with its children and path
-
 		} catch (error) {
 			return;
 		}
-
 	}
-
 
 	public static isVariable(node: IOPCNode): boolean {
 		return node.nodeClass === NodeClass.Variable;
@@ -430,10 +407,10 @@ export class OPCUAService extends EventEmitter {
 	public getNodesNewInfoByPath(nodes: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
 		if (!Array.isArray(nodes)) nodes = [nodes];
 
-		const promises = nodes.map(node => this.getNodeByPath(node.path));
+		const promises = nodes.map((node) => this.getNodeByPath(node.path));
 
 		return Promise.all(promises).then((result) => {
-			const res = []
+			const res = [];
 			for (let i = 0; i < result.length; i++) {
 				const element = result[i];
 				if (!element) {
@@ -445,7 +422,7 @@ export class OPCUAService extends EventEmitter {
 			}
 
 			return res;
-		})
+		});
 	}
 
 	///////////////////////////////////////////////////////////////////////////
@@ -500,7 +477,6 @@ export class OPCUAService extends EventEmitter {
 		return children;
 	}
 
-
 	private async _addNodeToNodesObject(nodes: IOPCNode[], nodesObj: { [key: string]: IOPCNode } = {}) {
 		for (const child of nodes) {
 			const parent = nodesObj[child.parentId];
@@ -516,35 +492,34 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	private _getPossibleDataType(value: any): DataType[] {
+		if (!isNaN(value)) {
+			// if the value is a number
 
-		if (!isNaN(value)) { // if the value is a number
-
-			const numerics = [DataType.Float, DataType.Double, DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64]
-			if (value == 0 || value == 1)
-				return [...numerics, DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
+			const numerics = [DataType.Float, DataType.Double, DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64];
+			if (value == 0 || value == 1) return [...numerics, DataType.Boolean]; // if the value is 0 or 1, it can be a boolean or a numeric type
 
 			return numerics; // if the value is a number, it can be a numeric type
 		}
 
-		if (typeof value == "string") { // if the value is a string
+		if (typeof value == "string") {
+			// if the value is a string
 			return [DataType.String, DataType.LocalizedText, DataType.XmlElement]; // if the value is a string, it can be a string or a localized text
 		}
 
-
-		if (typeof value == "boolean") { // if the value is a boolean
+		if (typeof value == "boolean") {
+			// if the value is a boolean
 			return [DataType.Boolean];
 		}
 
-		if (value instanceof Date) { // if the value is a Date
+		if (value instanceof Date) {
+			// if the value is a Date
 			return [DataType.DateTime];
 		}
-
 
 		return [DataType.Null]; // if the value is not recognized, return null
 	}
 
 	private async readNodeDescription(nodeId: string, path: string = ""): Promise<IOPCNode> {
-
 		if (!this.session) throw noSessionError;
 
 		const attributesToRead = [
@@ -567,12 +542,11 @@ export class OPCUAService extends EventEmitter {
 			nodeClass,
 			children: [],
 			path,
-			value
+			value,
 		};
 	}
 
 	private async _getNodeParent(nodeId: NodeId): Promise<{ sep: string; parentNodeId: NodeId } | null> {
-
 		if (!this.session) throw noSessionError;
 
 		let browseResult = await this.session.browse({
@@ -588,7 +562,6 @@ export class OPCUAService extends EventEmitter {
 			const parentNodeId = browseResult.references[0].nodeId;
 			return { sep: ".", parentNodeId };
 		}
-
 
 		// using Organizes if HasChild is not found
 		browseResult = await this.session.browse({
@@ -622,7 +595,6 @@ export class OPCUAService extends EventEmitter {
 
 			nodesObj = data.nodesObj;
 			queue = data.queue;
-
 		} catch (error) {
 			// if no last result or error in file reading, use unicast browsing
 
@@ -634,8 +606,7 @@ export class OPCUAService extends EventEmitter {
 		return { queue, nodesObj, browseMode };
 	}
 
-
-	private async _convertObjToTree(entryPointPath: string, obj: { [key: string]: IOPCNode }): Promise<{ tree: IOPCNode, variables: string[] }> {
+	private async _convertObjToTree(entryPointPath: string, obj: { [key: string]: IOPCNode }): Promise<{ tree: IOPCNode; variables: string[] }> {
 		let tree = await this._getEntryPoint(entryPointPath);
 		const variables = [];
 
@@ -653,9 +624,8 @@ export class OPCUAService extends EventEmitter {
 		}
 
 		tree = obj[tree.nodeId.toString()];
-		return { tree, variables }
+		return { tree, variables };
 	}
-
 
 	///////////////////////////////////////////////////////
 	//                                      Utils                                                    //
@@ -671,7 +641,6 @@ export class OPCUAService extends EventEmitter {
 		throw `No node found with entry point : ${entryPointPath}`;
 	}
 
-
 	private _formatReference(reference: ReferenceDescription, parentPath: string, parentId?: string): IOPCNode {
 		const name = reference.displayName.text || reference.browseName.toString();
 		const browseName = reference.browseName?.toString();
@@ -685,15 +654,11 @@ export class OPCUAService extends EventEmitter {
 			nodeClass: reference.nodeClass as number,
 			path: parentPath + browseName,
 			children: [],
-			parentId
+			parentId,
 		};
 	}
 
-
-
 	private _formatDataValue(dataValue: any): { value: any; dataType: string } | null {
-
-
 		// if dataValue.value is not a Variant, return the value and dataType
 		if (typeof dataValue.value !== "object") {
 			dataValue.value = this._formatRealValue(dataValue.value); // format the value if it's not a Variant
@@ -713,7 +678,6 @@ export class OPCUAService extends EventEmitter {
 			return obj;
 		}
 
-
 		return null;
 	}
 
@@ -732,9 +696,6 @@ export class OPCUAService extends EventEmitter {
 		const node = await this.session.read({ nodeId, attributeId: AttributeIds.BrowseName });
 		return node.value.value;
 	}
-
 }
-
-
 
 export default OPCUAService;

@@ -1,5 +1,5 @@
 import { FileSystem } from "spinal-core-connectorjs_type";
-import { SpinalOrganOPCUA } from "spinal-model-opcua";
+import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { IOPCNode, IServer } from "../interfaces/OPCNode";
 export declare const WaitModelReady: () => Promise<any>;
 export declare const connectionErrorCallback: (err?: Error) => void;

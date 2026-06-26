@@ -10,13 +10,13 @@ import * as fs from "fs";
 
 // dotenvConfig({ path: nodepath.resolve(__dirname, "../.env"), override: true });
 
-
 const { protocol, host, port, userId, password, path, name } = getConfig();
 const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
 const connect: spinal.FileSystem = spinalCore.connect(url);
 
-
 CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) => {
+	console.warn("This organ use load_type function, for more optimization, use main branch");
+
 	organModel.restart.bind(() => {
 		GetPm2Instance(name).then(async (app: any) => {
 			const restart = organModel.restart.get();
@@ -44,20 +44,32 @@ CreateOrganConfigFile(connect, path, name).then((organModel: SpinalOrganOPCUA) =
 });
 
 const listenLoadType = (connect: spinal.FileSystem, organModel: SpinalOrganOPCUA) => {
-	loadTypeInSpinalCore(connect, "SpinalOPCUADiscoverModel", (spinalDisoverModel: SpinalOPCUADiscoverModel) => {
-		SpinalDiscoverCallback(spinalDisoverModel, organModel);
-	}, connectionErrorCallback);
+	loadTypeInSpinalCore(
+		connect,
+		"SpinalOPCUADiscoverModel",
+		(spinalDisoverModel: SpinalOPCUADiscoverModel) => {
+			SpinalDiscoverCallback(spinalDisoverModel, organModel);
+		},
+		connectionErrorCallback,
+	);
 
-	loadTypeInSpinalCore(connect, "SpinalOPCUAListener", (spinalListenerModel: SpinalOPCUAListener) => {
-		SpinalListnerCallback(spinalListenerModel, organModel);
-	}, connectionErrorCallback);
+	loadTypeInSpinalCore(
+		connect,
+		"SpinalOPCUAListener",
+		(spinalListenerModel: SpinalOPCUAListener) => {
+			SpinalListnerCallback(spinalListenerModel, organModel);
+		},
+		connectionErrorCallback,
+	);
 
-	loadTypeInSpinalCore(connect, "SpinalOPCUAPilot", (spinalPilotModel: SpinalOPCUAPilot) => {
-		SpinalPilotCallback(spinalPilotModel, organModel);
-	}, connectionErrorCallback);
-
-
-
+	loadTypeInSpinalCore(
+		connect,
+		"SpinalOPCUAPilot",
+		(spinalPilotModel: SpinalOPCUAPilot) => {
+			SpinalPilotCallback(spinalPilotModel, organModel);
+		},
+		connectionErrorCallback,
+	);
 };
 
 const loadTypeInSpinalCore = (connect: spinal.FileSystem, type: string, callback: (model: any) => void, errorCallback: SpinalCallBackError) => {

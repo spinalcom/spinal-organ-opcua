@@ -54,6 +54,8 @@ function getOrGenNetworkNode(model, context) {
 exports.getOrGenNetworkNode = getOrGenNetworkNode;
 function getOrganNode(organ, contextId) {
     return new Promise((resolve, reject) => {
+        if (organ instanceof spinal_env_viewer_graph_service_1.SpinalNode)
+            resolve(organ);
         try {
             organ.references[contextId].load((node) => {
                 if (node instanceof spinal_env_viewer_graph_service_1.SpinalNode)

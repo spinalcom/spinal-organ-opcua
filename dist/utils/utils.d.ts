@@ -5,7 +5,7 @@ import { SpinalNode } from "spinal-env-viewer-graph-service";
 import { SpinalOPCUADiscoverModel } from "spinal-model-opcua";
 export declare function getConfig(): IConfig;
 export declare function convertToBrowseDescription(node: IOPCNode): {
-    nodeId: import("node-opcua").NodeId;
+    nodeId: import("node-opcua").NodeIdLike;
     referenceTypeId: ReferenceTypeIds;
     includeSubtypes: boolean;
     browseDirection: BrowseDirection;
@@ -18,5 +18,5 @@ export declare const coerceNumberR: (data: any) => number;
 export declare const coerceNoop: (data: any) => any;
 export declare const coerceFunc: (dataType: DataType) => (data: any) => any;
 export declare function coerceStringToDataType(dataType: DataType, arrayType: number, VariantArrayType: any, data: any): any;
-export declare function discoverIsCancelled(_discoverModel: SpinalOPCUADiscoverModel): boolean;
+export declare function discoverIsCancelled(_discoverModel?: SpinalOPCUADiscoverModel): boolean;
 export declare function normalizePath(path: string): string;

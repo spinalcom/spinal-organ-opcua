@@ -15,7 +15,7 @@ function getConfig() {
         host: process.env.HOST || "EDIT_ME",
         port: process.env.PORT || "EDIT_ME",
         path: process.env.ORGAN_FOLDER_PATH || "EDIT_ME",
-        entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || ""
+        entryPointPath: process.env.OPCUA_SERVER_ENTRYPOINT || "",
     };
 }
 exports.getConfig = getConfig;
