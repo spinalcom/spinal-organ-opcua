@@ -22,11 +22,11 @@
  * <http://resources.spinalcom.com/licenses.pdf>.
  */
 
-import { FileSystem, File as SpinalFile } from "spinal-core-connectorjs_type";
+import { FileSystem, Lst, File as SpinalFile } from "spinal-core-connectorjs_type";
 import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { NodeClass, s } from "node-opcua";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
-import { STATES } from "spinal-connector-service";
+import { ModelsInfo, STATES } from "spinal-connector-service";
 import { IOPCNode, IServer } from "../interfaces/OPCNode";
 
 import { discover } from "../modules/SpinalDiscover";
@@ -34,6 +34,7 @@ import { spinalMonitoring } from "../modules/SpinalMonitoring";
 import { SpinalPilot } from "../modules/SpinalPilot";
 import * as pm2 from "pm2";
 import { normalizePath } from "./utils";
+import { clearOrgan } from "./clearOrgan";
 // import { SpinalDevice } from "../modules/SpinalDevice";
 // import { SpinalNetworkServiceUtilities } from "./SpinalNetworkServiceUtilities";
 // import { spinalMonitoring } from "../modules/SpinalMonitoring";
@@ -55,7 +56,6 @@ export const WaitModelReady = (): Promise<any> => {
 	return WaitModelReadyLoop(deferred);
 };
 
-
 export const GetPm2Instance = (organName: string) => {
 	return new Promise((resolve, reject) => {
 		pm2.list((err: Error, apps: pm2.ProcessDescription[]) => {
@@ -69,7 +69,6 @@ export const GetPm2Instance = (organName: string) => {
 		});
 	});
 };
-
 
 function findFileInDirectory(directory: spinal.Directory, fileName: string): Promise<SpinalOrganOPCUA | void> {
 	return new Promise((resolve, reject) => {
@@ -94,43 +93,46 @@ function findFileInDirectory(directory: spinal.Directory, fileName: string): Pro
 ////////////////////////////////////////////////
 
 export async function bindModels(organModel: SpinalOrganOPCUA): Promise<void> {
+	if (!organIsCompatible(organModel)) {
+		if (!clearnOrgan()) throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
+
+		console.log("[bindModels] - Clearing organ model...");
+		await clearOrganModel(organModel);
+		console.log("[bindModels] - Organ model cleared. Rebinding models...");
+	}
 
 	const { discover, listener, pilot } = await organModel.getModels();
+
+	if (!discover || !listener || !pilot) {
+		throw new Error("[bindModels] - Organ model is missing one or more required models (discover, listener, pilot).");
+	}
 
 	const listenerAlreadyBinded = new Set<number>();
 	const discoverAlreadyBinded = new Set<number>();
 
-	//////////////// 
+	////////////////
 	//bind discover model[discover]
 	////////////////
-	discover.modification_date.bind(async () => {
-		const discoverList = await organModel.getDiscoverModelFromGraph();
-
-		for (const spinalDiscoverModel of discoverList) {
-			if (discoverAlreadyBinded.has(spinalDiscoverModel._server_id)) continue;
-
-			SpinalDiscoverCallback(spinalDiscoverModel, organModel)
-			discoverAlreadyBinded.add(spinalDiscoverModel._server_id);
-		}
-	})
+	bindDiscoverModel(discover, organModel, discoverAlreadyBinded);
 
 	///////////////
 	//  bind pilot model [write value to bacnet device]
 	///////////////
-	pilot.modification_date.bind(async () => {
-		const pilotList = await organModel.getPilotModelFromGraph();
-
-		for (const spinalPilotModel of pilotList) {
-			SpinalPilotCallback(spinalPilotModel, organModel);
-		}
-	}, true);
-
+	bindPilotModel(pilot, organModel);
 
 	////////////
 	//  bind listener model [monitoring bacnet device]
 	////////////
-	listener.modification_date.bind(async () => {
-		const listenerList = await organModel.getListenerModelFromGraph();
+	bindListenerModel(listener, organModel, listenerAlreadyBinded);
+}
+
+function bindListenerModel(listenerModel: ModelsInfo<SpinalOPCUAListener>, organModel: SpinalOrganOPCUA, listenerAlreadyBinded: Set<number>): void {
+	if (!listenerModel?.modification_date) return;
+
+	listenerModel.modification_date.bind(async () => {
+		const listenerList: Lst<SpinalOPCUAListener> | undefined = await organModel.getListenerModelFromGraph();
+
+		if (!listenerList) return;
 
 		for (let i = 0; i < listenerList.length; i++) {
 			const spinalListenerModel = listenerList[i];
@@ -143,9 +145,39 @@ export async function bindModels(organModel: SpinalOrganOPCUA): Promise<void> {
 	}, true);
 }
 
+function bindDiscoverModel(discoverModel: ModelsInfo<SpinalOPCUADiscoverModel>, organModel: SpinalOrganOPCUA, discoverAlreadyBinded: Set<number>): void {
+	discoverModel.modification_date.bind(async () => {
+		const discoverList: Lst<SpinalOPCUADiscoverModel> | undefined = await organModel.getDiscoverModelFromGraph();
+
+		if (!discoverList) return;
+
+		for (const spinalDiscoverModel of discoverList) {
+			const serverId = spinalDiscoverModel?._server_id;
+			if (typeof serverId !== "number") continue;
+			if (discoverAlreadyBinded.has(serverId)) continue;
+
+			SpinalDiscoverCallback(spinalDiscoverModel, organModel);
+			discoverAlreadyBinded.add(serverId);
+		}
+	});
+}
+
+function bindPilotModel(pilotModel: ModelsInfo<SpinalOPCUAPilot>, organModel: SpinalOrganOPCUA): void {
+	if (!pilotModel?.modification_date) return;
+
+	pilotModel.modification_date.bind(async () => {
+		const pilotList: Lst<SpinalOPCUAPilot> | undefined = await organModel.getPilotModelFromGraph();
+
+		if (!pilotList) return;
+
+		for (const spinalPilotModel of pilotList) {
+			SpinalPilotCallback(spinalPilotModel, organModel);
+		}
+	}, true);
+}
+
 async function checkOrgan(spinalOrgan: SpinalOPCUAListener | SpinalOPCUADiscoverModel | SpinalOPCUAPilot, organId: string): Promise<boolean> {
 	try {
-
 		if (!organId) return false;
 
 		await WaitModelReady();
@@ -155,11 +187,10 @@ async function checkOrgan(spinalOrgan: SpinalOPCUAListener | SpinalOPCUADiscover
 			spinalDisoverModelOrgan = await spinalDisoverModelOrgan.getElement(true);
 		}
 
-		return !!(organId === spinalDisoverModelOrgan.id?.get())
+		return !!(organId === spinalDisoverModelOrgan.id?.get());
 	} catch (error) {
 		return false;
 	}
-
 }
 
 export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA): Promise<void> => {
@@ -168,44 +199,39 @@ export const SpinalListnerCallback = async (spinalListenerModel: SpinalOPCUAList
 };
 
 export const SpinalDiscoverCallback = async (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA): Promise<void | boolean> => {
-
 	try {
 		const itsForme = await checkOrgan(spinalDisoverModel, organModel.id?.get());
+		if (!itsForme) return false;
 
-		if (itsForme) {
-			const minute = 2 * (60 * 1000);
-			const time = Date.now();
-			const creation = spinalDisoverModel.creation?.get() || 0;
+		// Check if model is not timeout.
+		const minute = 2 * (60 * 1000);
+		const time = Date.now();
+		const creation = spinalDisoverModel.creation?.get() || 0;
 
-			const state = spinalDisoverModel.state.get();
-			const timeout = time - creation >= minute;
+		const state = spinalDisoverModel.state.get();
+		const timeout = time - creation >= minute;
 
-			// Check if model is not timeout.
-			if (timeout || [STATES.created, STATES.cancelled].includes(state)) throw "Time out !"
+		// Check if model is not timeout.
+		if (timeout || [STATES.created, STATES.cancelled].includes(state)) throw "Time out !";
 
-			discover.addToQueue(spinalDisoverModel);
-		}
+		discover.addToQueue(spinalDisoverModel);
 	} catch (error) {
 		spinalDisoverModel.changeState(STATES.timeout);
 		return spinalDisoverModel.removeFromGraph();
 	}
-
 };
 
 export const SpinalPilotCallback = async (spinalPilotModel: SpinalOPCUAPilot, organModel: SpinalOrganOPCUA): Promise<void> => {
 	try {
 		const itsForme = await checkOrgan(spinalPilotModel, organModel.id?.get());
+		if (!itsForme) return;
 
-		if (itsForme) {
-			const spinalPilot = new SpinalPilot(spinalPilotModel);
-			await spinalPilot.sendPilotToServer();
-		}
-
+		const spinalPilot = new SpinalPilot(spinalPilotModel);
+		await spinalPilot.sendPilotToServer();
 	} catch (error) {
 		spinalPilotModel?.setErrorMode();
 		await spinalPilotModel?.removeFromNode();
 	}
-
 };
 
 export function getVariablesList(tree: IOPCNode): IOPCNode[] {
@@ -214,7 +240,6 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 	addToObj(tree);
 
 	return variables;
-
 
 	// Recursively add nodes to the variables list
 	function addToObj(n: IOPCNode) {
@@ -241,11 +266,54 @@ export function getServerUrl(serverInfo: IServer): string {
 }
 
 export function restartProcessById(instanceId: string | number): Promise<boolean> {
-
 	return new Promise((resolve, reject) => {
 		pm2.restart(instanceId, (err) => {
 			if (err) return resolve(false);
 			resolve(true);
 		});
 	});
+}
+
+export async function consumeBatch<T, R>(items: T[], batchSize: number, callback: (item: T, index: number) => Promise<R>): Promise<R[]> {
+	if (!items.length) return [];
+
+	const safeBatchSize = Math.max(1, batchSize);
+	const results: R[] = new Array(items.length);
+
+	for (let start = 0; start < items.length; start += safeBatchSize) {
+		const end = Math.min(start + safeBatchSize, items.length);
+		const batchPromises: Promise<void>[] = [];
+
+		for (let index = start; index < end; index += 1) {
+			const item = items[index];
+			batchPromises.push(
+				callback(item, index).then((result) => {
+					results[index] = result;
+				}),
+			);
+		}
+
+		await Promise.all(batchPromises);
+	}
+
+	return results;
+}
+
+export function clearnOrgan(): boolean {
+	if (process.env.CLEAR_ORGAN_IF_NOT_COMPATIBLE == "1") return true;
+	return false;
+}
+
+function organIsCompatible(organModel: SpinalOrganOPCUA): boolean {
+	if (organModel.discover instanceof SpinalOPCUADiscoverModel && organModel.listener instanceof SpinalOPCUAListener && organModel.pilot instanceof SpinalOPCUAPilot) return true;
+	return false;
+}
+
+export async function clearOrganModel(organModel: SpinalOrganOPCUA): Promise<void> {
+	organModel.rem_attr("discover");
+	organModel.rem_attr("listener");
+	organModel.rem_attr("pilot");
+
+	await clearOrgan(organModel);
+	return organModel.initializeModelsList();
 }

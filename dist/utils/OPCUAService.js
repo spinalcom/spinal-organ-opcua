@@ -342,7 +342,21 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     getNodeIdByPath(nodePath = "") {
-        var _a, _b;
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const nodeInfo = yield this.getNodeByPath(nodePath);
+                if (!nodeInfo)
+                    return;
+                return (_a = nodeInfo === null || nodeInfo === void 0 ? void 0 : nodeInfo.nodeId) === null || _a === void 0 ? void 0 : _a.toString();
+            }
+            catch (error) {
+                return;
+            }
+        });
+    }
+    getNodeByPath(nodePath = "") {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 if (!this.session)
@@ -355,26 +369,16 @@ class OPCUAService extends events_1.EventEmitter {
                 if (!nodesFound.targets || nodesFound.targets.length === 0) {
                     throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
                 }
-                return (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
-            }
-            catch (error) {
-                const nodeInfo = yield this._browToGetNodeByPath(nodePath);
-                return (_b = nodeInfo === null || nodeInfo === void 0 ? void 0 : nodeInfo.nodeId) === null || _b === void 0 ? void 0 : _b.toString();
-            }
-        });
-    }
-    getNodeByPath(nodePath = "") {
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                // // return this._browToGetNodeByPath(nodePath);
-                const startNodeId = yield this.getNodeIdByPath(nodePath);
+                const startNodeId = (_a = nodesFound.targets[0].targetId) === null || _a === void 0 ? void 0 : _a.toString();
                 if (!startNodeId)
-                    return;
+                    throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
                 const startNode = yield this.readNodeDescription(startNodeId, nodePath);
+                if (!startNode)
+                    throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
                 return startNode; // return the node with its children and path
             }
             catch (error) {
-                return this._browToGetNodeByPath(nodePath); // if the first method fails, use the second method
+                return this.searchNodeUsingTreeBrowse(nodePath); // if the first method fails, use the second method
             }
         });
     }
@@ -647,48 +651,21 @@ class OPCUAService extends events_1.EventEmitter {
         });
     }
     ////////////////////////////////////////////////// REMOVE BELLOW
-    _browToGetNodeByPath(entryPointPath) {
+    searchNodeUsingTreeBrowse(path) {
         return __awaiter(this, void 0, void 0, function* () {
-            let root = {
-                displayName: "Root",
-                nodeId: node_opcua_1.ObjectIds.RootFolder,
-                path: "/",
-                children: [],
-            };
-            if (!entryPointPath || entryPointPath === "/")
-                entryPointPath = "/Objects";
-            if (!entryPointPath.startsWith("/"))
-                entryPointPath = "/" + entryPointPath;
-            return this._getEntryPointWithPath(root, entryPointPath);
-        });
-    }
-    _getEntryPointWithPath(start, entryPointPath) {
-        return __awaiter(this, void 0, void 0, function* () {
-            if (!entryPointPath.startsWith("/Objects"))
-                entryPointPath = "/Objects" + entryPointPath;
-            const paths = entryPointPath.split("/").filter((el) => el !== "");
-            let error;
-            let node = start;
-            let lastNode;
-            while (paths.length && !error) {
-                const path = paths.shift();
-                const children = yield this._browseNode(node);
-                let found = children.find((el) => {
-                    var _a, _b;
-                    const names = [(_a = el.displayName) === null || _a === void 0 ? void 0 : _a.toLocaleLowerCase(), (_b = el.browseName) === null || _b === void 0 ? void 0 : _b.toLocaleLowerCase()];
-                    return names.includes(path === null || path === void 0 ? void 0 : path.toLocaleLowerCase());
-                });
-                if (!found) {
-                    error = `No node found with entry point : ${entryPointPath}`;
-                    break;
-                }
-                node = found;
-                if (paths.length === 0)
-                    lastNode = node;
+            if (!(path === null || path === void 0 ? void 0 : path.startsWith("/Objects")))
+                path = (0, utils_1.normalizePath)("/Objects" + `/${path}`);
+            const rootNodeId = (0, node_opcua_1.resolveNodeId)(node_opcua_1.ObjectIds.RootFolder).toString();
+            let currentNode = yield this.readNodeDescription(rootNodeId, ""); // RootFolder nodeId
+            if (!currentNode)
+                console.log(`RootFolder node not found`);
+            const pathSplitted = path.split("/").filter((el) => el !== "");
+            while (pathSplitted.length && currentNode) {
+                const currentPath = (pathSplitted.shift() || "").toLowerCase();
+                const children = yield this._browseNode(currentNode);
+                currentNode = children.find((el) => { var _a, _b; return [(_a = el.browseName) === null || _a === void 0 ? void 0 : _a.toLowerCase(), (_b = el.displayName) === null || _b === void 0 ? void 0 : _b.toLowerCase()].includes(currentPath); });
             }
-            if (error)
-                throw new Error(error);
-            return Object.assign(Object.assign({}, lastNode), { children: [], path: `/${paths.join("/")}` });
+            return currentNode;
         });
     }
 }

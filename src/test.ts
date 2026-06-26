@@ -91,7 +91,7 @@ function getNodePaht(ip: string, port: number, nodePath: string) {
 			// opcuaService
 			// 	.getNodeIdByPath(nodePath)
 			opcuaService
-				._browToGetNodeByPath(nodePath)
+				.searchNodeUsingTreeBrowse(nodePath)
 				.then((nodeId) => {
 					console.log(`Node id for path ${nodePath}: ${nodeId}`);
 				})

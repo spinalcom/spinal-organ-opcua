@@ -24,6 +24,7 @@ class SpinalMonitoring {
         this.priorityQueue = new priority_queue_1.MinPriorityQueue();
         this.isProcessing = false;
         this.intervalTimesMap = new Map();
+        this.initConcurrency = 10;
         this.initializedMap = new Map();
         this.spinalDevicesStore = new Map();
         this.idNetworkToSpinalDevice = new Map();
@@ -61,20 +62,34 @@ class SpinalMonitoring {
     }
     initAllListenersModels(spinalListenerModels) {
         return __awaiter(this, void 0, void 0, function* () {
-            const devices = [];
-            for (const model of spinalListenerModels) {
-                const modelData = yield this.spinalNetworkUtils.initSpinalListenerModel(model);
-                devices.push(modelData);
+            return this.spinalNetworkUtils.initAllListenersModels(spinalListenerModels);
+            // const initializedDevices = await consumeBatch(spinalListenerModels, this.initConcurrency, async (model) => {
+            // 	try {
+            // 		return await this.spinalNetworkUtils.initSpinalListenerModel(model);
+            // 	} catch (error) {
+            // 		console.error("Failed to initialize listener model:", error);
+            // 		return undefined;
+            // 	}
+            // });
+            // const devices = initializedDevices.filter((device): device is SpinalDevice => !!device);
+            // return this._waitUntilAllDevicesInitialized(devices);
+        });
+    }
+    _waitUntilAllDevicesInitialized(devices) {
+        return new Promise((resolve) => {
+            if (!devices.length) {
+                resolve([]);
+                return;
             }
-            return new Promise((resolve, reject) => {
-                const interval = setInterval(() => {
-                    const allInitialized = devices.every((device) => device === null || device === void 0 ? void 0 : device.isInit);
-                    if (allInitialized) {
-                        clearInterval(interval);
-                        resolve(devices.filter((el) => !!el));
-                    }
-                }, 400);
-            });
+            const checkInitialization = () => {
+                const allInitialized = devices.every((device) => device === null || device === void 0 ? void 0 : device.isInit);
+                if (allInitialized) {
+                    resolve(devices.filter((el) => !!el));
+                    return;
+                }
+                setTimeout(checkInitialization, 500);
+            };
+            checkInitialization();
         });
     }
     startMonitoring() {

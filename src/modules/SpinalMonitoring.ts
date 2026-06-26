@@ -8,7 +8,7 @@ import { SpinalNetworkUtils } from "../utils/SpinalNetworkUtils";
 import { ClientMonitoredItemBase, coerceNodeId, UserIdentityInfo, UserTokenType } from "node-opcua";
 import OPCUAService from "../utils/OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
-import { getServerUrl } from "../utils/Functions";
+import { consumeBatch, getServerUrl } from "../utils/Functions";
 import { ISpinalInterval } from "../interfaces/IntervalTypes";
 import { getNodeKey, normalizePath } from "../utils/utils";
 import OPCUAFactory from "../utils/OPCUAFactory";
@@ -19,6 +19,7 @@ class SpinalMonitoring {
 	private priorityQueue: MinPriorityQueue<{ interval: number }> = new MinPriorityQueue();
 	private isProcessing: boolean = false;
 	private intervalTimesMap: Map<number, { [key: string]: ISpinalInterval[] }> = new Map();
+	private readonly initConcurrency: number = 10;
 
 	private initializedMap: Map<string, boolean> = new Map();
 	private spinalDevicesStore: Map<string, SpinalDevice> = new Map();
@@ -62,20 +63,38 @@ class SpinalMonitoring {
 	}
 
 	public async initAllListenersModels(spinalListenerModels: SpinalOPCUAListener[]): Promise<SpinalDevice[]> {
-		const devices: SpinalDevice[] = [];
-		for (const model of spinalListenerModels) {
-			const modelData = await this.spinalNetworkUtils.initSpinalListenerModel(model);
-			devices.push(modelData);
-		}
+		return this.spinalNetworkUtils.initAllListenersModels(spinalListenerModels);
 
-		return new Promise((resolve, reject) => {
-			const interval = setInterval(() => {
+		// const initializedDevices = await consumeBatch(spinalListenerModels, this.initConcurrency, async (model) => {
+		// 	try {
+		// 		return await this.spinalNetworkUtils.initSpinalListenerModel(model);
+		// 	} catch (error) {
+		// 		console.error("Failed to initialize listener model:", error);
+		// 		return undefined;
+		// 	}
+		// });
+		// const devices = initializedDevices.filter((device): device is SpinalDevice => !!device);
+		// return this._waitUntilAllDevicesInitialized(devices);
+	}
+
+	private _waitUntilAllDevicesInitialized(devices: SpinalDevice[]): Promise<SpinalDevice[]> {
+		return new Promise((resolve) => {
+			if (!devices.length) {
+				resolve([]);
+				return;
+			}
+
+			const checkInitialization = () => {
 				const allInitialized = devices.every((device) => device?.isInit);
 				if (allInitialized) {
-					clearInterval(interval);
 					resolve(devices.filter((el) => !!el));
+					return;
 				}
-			}, 400);
+
+				setTimeout(checkInitialization, 500);
+			};
+
+			checkInitialization();
 		});
 	}
 

@@ -8,3 +8,5 @@ ORGAN_FOLDER_PATH="/__users__/admin/organs"     # the path to store/retrieve the
 
 OPCUA_SERVER_ENTRYPOINT="/"                     #if empty, the server will discover the default entry point (Objects Folder) otherwise, it will use the provided path.
 NODEOPCUA_LOG_LEVEL=3  # only display errors
+
+CLEAR_ORGAN_IF_NOT_COMPATIBLE="0" # clear organ if already use load_type version, possbible value 0 | 1

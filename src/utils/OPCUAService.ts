@@ -161,6 +161,7 @@ export class OPCUAService extends EventEmitter {
 			if (this.isReconnecting) return;
 
 			if (!this.client) this.client = await this.createClient();
+
 			this.isReconnecting = true;
 			await this.client.disconnect();
 			await this.connect();
@@ -359,6 +360,17 @@ export class OPCUAService extends EventEmitter {
 
 	public async getNodeIdByPath(nodePath: string = ""): Promise<string | void> {
 		try {
+			const nodeInfo = await this.getNodeByPath(nodePath);
+			if (!nodeInfo) return;
+
+			return nodeInfo?.nodeId?.toString();
+		} catch (error) {
+			return;
+		}
+	}
+
+	public async getNodeByPath(nodePath: string = ""): Promise<IOPCNode | void> {
+		try {
 			if (!this.session) throw noSessionError;
 
 			if (!nodePath.startsWith("/Objects")) nodePath = "/Objects/" + nodePath;
@@ -372,25 +384,15 @@ export class OPCUAService extends EventEmitter {
 				throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
 			}
 
-			return nodesFound.targets[0].targetId?.toString();
-		} catch (error) {
-			const nodeInfo = await this._browToGetNodeByPath(nodePath);
-			return nodeInfo?.nodeId?.toString();
-		}
-	}
-
-	public async getNodeByPath(nodePath: string = ""): Promise<IOPCNode | void> {
-		try {
-			// // return this._browToGetNodeByPath(nodePath);
-			const startNodeId = await this.getNodeIdByPath(nodePath);
-
-			if (!startNodeId) return;
+			const startNodeId = nodesFound.targets[0].targetId?.toString();
+			if (!startNodeId) throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
 
 			const startNode = await this.readNodeDescription(startNodeId, nodePath);
+			if (!startNode) throw new Error(`No node found with path: ${nodePath}`); // if no node is found, throw an error to use the second method
 
 			return startNode; // return the node with its children and path
 		} catch (error) {
-			return this._browToGetNodeByPath(nodePath); // if the first method fails, use the second method
+			return this.searchNodeUsingTreeBrowse(nodePath); // if the first method fails, use the second method
 		}
 	}
 
@@ -694,49 +696,55 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	////////////////////////////////////////////////// REMOVE BELLOW
-	public async _browToGetNodeByPath(entryPointPath?: string): Promise<IOPCNode> {
-		let root: any = {
-			displayName: "Root",
-			nodeId: ObjectIds.RootFolder,
-			path: "/",
-			children: [],
-		};
+	public async searchNodeUsingTreeBrowse(path?: string): Promise<IOPCNode | void> {
+		if (!path?.startsWith("/Objects")) path = normalizePath("/Objects" + `/${path}`);
 
-		if (!entryPointPath || entryPointPath === "/") entryPointPath = "/Objects";
-		if (!entryPointPath.startsWith("/")) entryPointPath = "/" + entryPointPath;
+		const rootNodeId = resolveNodeId(ObjectIds.RootFolder).toString();
 
-		return this._getEntryPointWithPath(root, entryPointPath);
-	}
+		let currentNode: IOPCNode | undefined = await this.readNodeDescription(rootNodeId, ""); // RootFolder nodeId
+		if (!currentNode) console.log(`RootFolder node not found`);
 
-	private async _getEntryPointWithPath(start: any, entryPointPath: string): Promise<IOPCNode> {
-		if (!entryPointPath.startsWith("/Objects")) entryPointPath = "/Objects" + entryPointPath;
+		const pathSplitted = path.split("/").filter((el) => el !== "");
 
-		const paths = entryPointPath.split("/").filter((el) => el !== "");
-		let error;
-		let node = start;
-		let lastNode;
+		while (pathSplitted.length && currentNode) {
+			const currentPath = (pathSplitted.shift() || "").toLowerCase();
 
-		while (paths.length && !error) {
-			const path = paths.shift();
-			const children = await this._browseNode(node);
-			let found = children.find((el) => {
-				const names = [el.displayName?.toLocaleLowerCase(), el.browseName?.toLocaleLowerCase()];
-				return names.includes(path?.toLocaleLowerCase());
-			});
-
-			if (!found) {
-				error = `No node found with entry point : ${entryPointPath}`;
-				break;
-			}
-
-			node = found;
-			if (paths.length === 0) lastNode = node;
+			const children = await this._browseNode(currentNode);
+			currentNode = children.find((el) => [el.browseName?.toLowerCase(), el.displayName?.toLowerCase()].includes(currentPath));
 		}
 
-		if (error) throw new Error(error);
-
-		return { ...lastNode, children: [], path: `/${paths.join("/")}` };
+		return currentNode;
 	}
+
+	// private async _getEntryPointWithPath(start: any, entryPointPath: string): Promise<IOPCNode> {
+	// 	if (!entryPointPath.startsWith("/Objects")) entryPointPath = "/Objects" + entryPointPath;
+
+	// 	const paths = entryPointPath.split("/").filter((el) => el !== "");
+	// 	let error;
+	// 	let node = start;
+	// 	let lastNode;
+
+	// 	while (paths.length && !error) {
+	// 		const path = paths.shift();
+	// 		const children = await this._browseNode(node);
+	// 		let found = children.find((el) => {
+	// 			const names = [el.displayName?.toLocaleLowerCase(), el.browseName?.toLocaleLowerCase()];
+	// 			return names.includes(path?.toLocaleLowerCase());
+	// 		});
+
+	// 		if (!found) {
+	// 			error = `No node found with entry point : ${entryPointPath}`;
+	// 			break;
+	// 		}
+
+	// 		node = found;
+	// 		if (paths.length === 0) lastNode = node;
+	// 	}
+
+	// 	if (error) throw new Error(error);
+
+	// 	return { ...lastNode, children: [], path: `/${paths.join("/")}` };
+	// }
 }
 
 export default OPCUAService;

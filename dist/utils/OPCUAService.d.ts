@@ -61,7 +61,6 @@ export declare class OPCUAService extends EventEmitter {
     private _formatDataValue;
     private _formatRealValue;
     private _readBrowseName;
-    _browToGetNodeByPath(entryPointPath?: string): Promise<IOPCNode>;
-    private _getEntryPointWithPath;
+    searchNodeUsingTreeBrowse(path?: string): Promise<IOPCNode | void>;
 }
 export default OPCUAService;

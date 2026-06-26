@@ -6,6 +6,7 @@ declare class SpinalMonitoring {
     private priorityQueue;
     private isProcessing;
     private intervalTimesMap;
+    private readonly initConcurrency;
     private initializedMap;
     private spinalDevicesStore;
     private idNetworkToSpinalDevice;
@@ -17,6 +18,7 @@ declare class SpinalMonitoring {
     init(): void;
     startDeviceInitialisation(): Promise<void>;
     initAllListenersModels(spinalListenerModels: SpinalOPCUAListener[]): Promise<SpinalDevice[]>;
+    private _waitUntilAllDevicesInitialized;
     startMonitoring(): Promise<void>;
     updateData(data: {
         [key: string]: ISpinalInterval[];
