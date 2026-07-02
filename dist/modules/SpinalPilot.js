@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.SpinalPilot = void 0;
 const Functions_1 = require("../utils/Functions");
 const OPCUAFactory_1 = require("../utils/OPCUAFactory");
+const displayLog_1 = require("../utils/displayLog");
 class SpinalPilot {
     constructor(spinalPilotModel) {
         // private queue: SpinalQueuing = new SpinalQueuing();
@@ -28,7 +29,7 @@ class SpinalPilot {
             try {
                 if (!request)
                     throw new Error("No requests found in the pilot model");
-                console.log(`sending update request to ${request.path} with value ${request.value}`);
+                displayLog_1.default.log(`sending update request to ${request.path} with value ${request.value}`);
                 const url = (0, Functions_1.getServerUrl)(request.networkInfo);
                 const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
                 yield opcuaService.checkAndRetablishConnection();
@@ -39,10 +40,10 @@ class SpinalPilot {
                 // Disable disconnect to keep the connection alive for future requests
                 // await opcuaService.disconnect(); // disconnect after the write operation
                 (_b = this.spinalPilotModel) === null || _b === void 0 ? void 0 : _b.setSuccessMode();
-                console.log(`[${request.path}] updated successfully`);
+                displayLog_1.default.log(`[${request.path}] updated successfully`);
             }
             catch (error) {
-                console.log(`the update of [${request.path}] failed due to error: ${error.message}`);
+                displayLog_1.default.log(`the update of [${request.path}] failed due to error: ${error.message}`);
                 (_c = this.spinalPilotModel) === null || _c === void 0 ? void 0 : _c.setErrorMode();
             }
             yield ((_d = this.spinalPilotModel) === null || _d === void 0 ? void 0 : _d.removeFromGraph());

@@ -2,7 +2,7 @@ import { SpinalOPCUAListener } from "spinal-model-opcua";
 import { SpinalDevice } from "./SpinalDevice";
 import { ISpinalInterval } from "../interfaces/IntervalTypes";
 declare class SpinalMonitoring {
-    private queue;
+    private devicesToMonitorQueue;
     private priorityQueue;
     private isProcessing;
     private intervalTimesMap;
@@ -12,13 +12,12 @@ declare class SpinalMonitoring {
     private idNetworkToSpinalDevice;
     private spinalNetworkUtils;
     private covItemToMonitoring;
-    private addToMonitoringMapQueue;
+    private monitoringMapQueue;
     constructor();
-    addToMonitoringList(spinalListenerModel: SpinalOPCUAListener): Promise<void>;
+    addToDeviceToMonitorQueue(spinalListenerModel: SpinalOPCUAListener): Promise<void>;
     init(): void;
     startDeviceInitialisation(): Promise<void>;
     initAllListenersModels(spinalListenerModels: SpinalOPCUAListener[]): Promise<SpinalDevice[]>;
-    private _waitUntilAllDevicesInitialized;
     startMonitoring(): Promise<void>;
     updateData(data: {
         [key: string]: ISpinalInterval[];
@@ -33,7 +32,6 @@ declare class SpinalMonitoring {
     private waitFct;
     private _getOPCValues;
     private _getVariablesValues;
-    private _updateProfile;
     private monitorWithCov;
     private _monitorCallback;
 }

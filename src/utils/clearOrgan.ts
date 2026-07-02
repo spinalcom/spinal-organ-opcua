@@ -2,6 +2,7 @@ import { Ptr } from "spinal-core-connectorjs";
 import { SpinalNode } from "spinal-env-viewer-graph-service";
 import { SpinalBmsDevice, SpinalBmsEndpoint } from "spinal-model-bmsnetwork";
 import { SpinalOrganOPCUA } from "spinal-model-opcua";
+import spinalLog from "./displayLog";
 
 export async function clearOrgan(organModel: SpinalOrganOPCUA): Promise<void[]> {
 	const references = await getAllOrganReferences(organModel);
@@ -26,7 +27,7 @@ function getAllOrganReferences(organModel: SpinalOrganOPCUA): Promise<SpinalNode
 
 async function clearReference(reference: SpinalNode) {
 	const { devices, endpoints } = await getDeviceAndEndpointsFromOrgan(reference);
-	console.log(`Clearing reference: ${reference.getName().get()} with ${devices.length} devices and ${endpoints.length} endpoints.`);
+	spinalLog.log(`Clearing reference: ${reference.getName().get()} with ${devices.length} devices and ${endpoints.length} endpoints.`);
 	devices.forEach(clearDevice);
 	endpoints.forEach(clearEndpoint);
 }

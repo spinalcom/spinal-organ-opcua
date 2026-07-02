@@ -172,17 +172,15 @@ function _getNodeRelationName(type) {
     }
 }
 function _formatTree(tree) {
-    var _a;
     if (tree.nodeClass != node_opcua_1.NodeClass.Variable)
         return { children: tree.children, attributes: [] };
     const result = { children: [], attributes: [] };
     for (const item of tree.children || []) {
-        if (item.nodeClass == node_opcua_1.NodeClass.Variable && (!(item === null || item === void 0 ? void 0 : item.children) || ((_a = item === null || item === void 0 ? void 0 : item.children) === null || _a === void 0 ? void 0 : _a.length) == 0)) {
-            result.attributes.push(item);
-        }
-        else {
-            result.children.push(item);
-        }
+        // if (item.nodeClass == NodeClass.Variable && (!item?.children || item?.children?.length == 0)) {
+        // 	result.attributes.push(item);
+        // } else {
+        result.children.push(item);
+        // }
     }
     return result;
 }

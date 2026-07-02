@@ -12,13 +12,13 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.OPCUAService = void 0;
 const node_opcua_1 = require("node-opcua");
 const events_1 = require("events");
-const lodash = require("lodash");
 const utils_1 = require("./utils");
 const make_certificate_1 = require("../utils/make_certificate");
 const discoveringProcessStore_1 = require("./discoveringProcessStore");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
 const constants_1 = require("./constants");
 const OPCUAFactory_1 = require("./OPCUAFactory");
+const displayLog_1 = require("./displayLog");
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class OPCUAService extends events_1.EventEmitter {
     constructor(url, model) {
@@ -44,14 +44,15 @@ class OPCUAService extends events_1.EventEmitter {
                 securityMode: node_opcua_1.MessageSecurityMode.None,
                 securityPolicy: node_opcua_1.SecurityPolicy.None,
                 endpointMustExist: false,
-                defaultSecureTokenLifetime: 30 * 1000,
-                requestedSessionTimeout: 50 * 1000,
+                defaultSecureTokenLifetime: 2 * 60 * 1000,
+                requestedSessionTimeout: 5 * 60 * 1000,
                 keepSessionAlive: true,
-                transportTimeout: 30 * 1000,
+                transportTimeout: 90 * 1000,
                 connectionStrategy: {
                     // maxRetry: 3,
                     initialDelay: 1000,
-                    // maxDelay: 5 * 1000,
+                    maxDelay: 10 * 1000,
+                    randomisationFactor: 0.2 // 20% randomisation
                 },
             });
             this._listenClientEvents(client);
@@ -61,7 +62,7 @@ class OPCUAService extends events_1.EventEmitter {
     _listenClientEvents(client) {
         client.on("backoff", (number, delay) => {
             // if (number === 1) return client.disconnect();
-            // console.log(`connection failed, retrying attempt ${number + 1}`)
+            // spinalLog.log(`connection failed, retrying attempt ${number + 1}`)
         });
         client.on("after_reconnection", () => {
             const isReconnection = true;
@@ -73,7 +74,7 @@ class OPCUAService extends events_1.EventEmitter {
             this.reconnect();
         });
     }
-    checkAndRetablishConnection() {
+    checkAndRetablishConnection(userIdentity) {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.client && this.session)
                 return;
@@ -100,18 +101,18 @@ class OPCUAService extends events_1.EventEmitter {
                 return session;
             }
             catch (err) {
-                console.log(" Cannot create session ", err.toString());
+                displayLog_1.default.log(" Cannot create session ", err.toString());
                 throw err;
             }
         });
     }
     _listenSessionEvent(session) {
         session.on("session_closed", () => {
-            // console.log(" Warning => Session closed");
+            // spinalLog.log(" Warning => Session closed");
             this.reconnect();
         });
         // session.on("keepalive", () => {
-        // 	// console.log("session keepalive");
+        // 	// spinalLog.log("session keepalive");
         // })
         session.on("keepalive_failure", () => {
             this.reconnect();
@@ -133,7 +134,7 @@ class OPCUAService extends events_1.EventEmitter {
                 return this.session.createSubscription2(parameters);
             }
             catch (error) {
-                console.log("cannot create subscription !", error.message);
+                displayLog_1.default.log("cannot create subscription !", error.message);
                 throw error;
             }
         });
@@ -149,7 +150,7 @@ class OPCUAService extends events_1.EventEmitter {
                 this.subscription = yield this.createSubscription();
             }
             catch (error) {
-                console.log(`Cannot connect to ${this.endpointUrl} with userIdentity ${JSON.stringify(this.userIdentity)} !`, error.message);
+                displayLog_1.default.log(`Cannot connect to ${this.endpointUrl} with userIdentity ${JSON.stringify(this.userIdentity)} !`, error.message);
                 throw error;
             }
         });
@@ -167,7 +168,7 @@ class OPCUAService extends events_1.EventEmitter {
                 this.isReconnecting = false;
             }
             catch (error) {
-                console.log(`Reconnection failed to ${this.endpointUrl}`, error);
+                displayLog_1.default.log(`Reconnection failed to ${this.endpointUrl}`, error);
                 this.isReconnecting = false;
                 // OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
             }
@@ -183,7 +184,7 @@ class OPCUAService extends events_1.EventEmitter {
                 yield this.connect(userIdentity);
             // get the queue and nodesObj from the last discover or create a new one
             let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(entryPointPath, options.useLastResult);
-            console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
+            displayLog_1.default.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
             while (queue.length && !(0, utils_1.discoverIsCancelled)(this._discoverModel)) {
                 let discoverState = null;
                 let _error = null;
@@ -195,8 +196,8 @@ class OPCUAService extends events_1.EventEmitter {
                     const newsItems = yield this._addNodeToNodesObject(children, nodesObj); // add the new nodes to the nodesObj
                     queue.push(...newsItems);
                     if (newsItems.length)
-                        console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
-                    console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
+                        displayLog_1.default.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
+                    displayLog_1.default.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
                 }
                 catch (error) {
                     queue.unshift(...chunked); // if an error occurs, put the nodes back in the queue
@@ -213,7 +214,7 @@ class OPCUAService extends events_1.EventEmitter {
             if ((0, utils_1.discoverIsCancelled)(this._discoverModel))
                 return;
             const { tree, variables } = yield this._convertObjToTree(entryPointPath, nodesObj);
-            console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
+            displayLog_1.default.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
             return { tree, variables };
         });
     }
@@ -260,22 +261,18 @@ class OPCUAService extends events_1.EventEmitter {
             if (!this.session)
                 throw constants_1.noSessionError;
             node = Array.isArray(node) ? node : [node];
-            const chunckSize = 100; // read 100 nodes at a time to avoid timeout errors
-            const nodesChunk = lodash.chunk(node, chunckSize);
-            const promises = nodesChunk.map((chunk) => this.readNode(chunk));
-            return Promise.allSettled(promises)
-                .then((results) => {
-                const dataValues = [];
-                for (const result of results) {
-                    if (result.status === "fulfilled") {
-                        dataValues.push(...result.value);
-                    }
-                }
-                return dataValues.map((dataValue) => this._formatDataValue(dataValue));
-            })
-                .finally(() => __awaiter(this, void 0, void 0, function* () {
-                yield this.disconnect();
-            }));
+            const chunckSize = 10; // read 10 nodes at a time to avoid timeout errors
+            // execute the readNode function concurrently for each node in the array, 
+            // with a maximum of chunckSize concurrent executions
+            const results = yield (0, utils_1.executeConcurrently)(node, (n) => {
+                displayLog_1.default.log(`Reading node value for ${n.path} (${n.nodeId.toString()})`);
+                return this.readNode(n);
+            }, chunckSize);
+            const dataValues = [];
+            for (const result of results) {
+                dataValues.push(...result);
+            }
+            return dataValues.map((dataValue) => this._formatDataValue(dataValue));
         });
     }
     writeNode(node, value) {
@@ -298,7 +295,7 @@ class OPCUAService extends events_1.EventEmitter {
                     if (statusCode.isGoodish())
                         isGood = true;
                 }
-                console.log("statusCode", statusCode);
+                displayLog_1.default.log("statusCode", statusCode);
                 if (!isGood)
                     throw new Error("Cannot write value: " + value + " to node: " + node.nodeId + " with any data type");
                 return statusCode;
@@ -341,26 +338,16 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    getNodeIdByPath(nodePath = "") {
-        var _a;
-        return __awaiter(this, void 0, void 0, function* () {
-            try {
-                const nodeInfo = yield this.getNodeByPath(nodePath);
-                if (!nodeInfo)
-                    return;
-                return (_a = nodeInfo === null || nodeInfo === void 0 ? void 0 : nodeInfo.nodeId) === null || _a === void 0 ? void 0 : _a.toString();
-            }
-            catch (error) {
-                return;
-            }
-        });
-    }
     getNodeByPath(nodePath = "") {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
+                yield this.checkAndRetablishConnection();
                 if (!this.session)
                     throw constants_1.noSessionError;
+                const entryPoint = process.env.OPCUA_SERVER_ENTRYPOINT || "";
+                // TODO: edit the path to make sure it starts with /Objects and the entry point
+                // if(!nodePath.startsWith(entryPoint)) nodePath = entryPoint + nodePath;
                 if (!nodePath.startsWith("/Objects"))
                     nodePath = "/Objects/" + nodePath;
                 nodePath = (0, utils_1.normalizePath)(nodePath);
@@ -382,6 +369,20 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
+    getNodeIdByPath(nodePath = "") {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            try {
+                const nodeInfo = yield this.getNodeByPath(nodePath);
+                if (!nodeInfo)
+                    return;
+                return (_a = nodeInfo === null || nodeInfo === void 0 ? void 0 : nodeInfo.nodeId) === null || _a === void 0 ? void 0 : _a.toString();
+            }
+            catch (error) {
+                return;
+            }
+        });
+    }
     static isVariable(node) {
         return node.nodeClass === node_opcua_1.NodeClass.Variable;
     }
@@ -389,27 +390,26 @@ class OPCUAService extends events_1.EventEmitter {
         return node.nodeClass === node_opcua_1.NodeClass.Object;
     }
     getNodesNewInfoByPath(nodes) {
-        if (!Array.isArray(nodes))
-            nodes = [nodes];
-        const promises = nodes.map((node) => this.getNodeByPath(node.path));
-        return Promise.all(promises).then((result) => {
-            const res = [];
-            for (let i = 0; i < result.length; i++) {
-                const element = result[i];
-                if (!element) {
-                    console.log(`Node with path ${nodes[i].path} not found anymore, it may have been deleted`);
-                    continue;
-                }
-                res.push(element);
-            }
-            return res;
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!Array.isArray(nodes))
+                nodes = [nodes];
+            const chunkSize = 10;
+            const paths = nodes.map((node) => node.path || "");
+            const result = yield (0, utils_1.executeConcurrently)(paths, this.getNodeByPath.bind(this), chunkSize);
+            return result.reduce((acc, node, index) => {
+                if (node)
+                    acc.push(node);
+                else
+                    displayLog_1.default.log(`Node with path ${nodes[index].path} not found anymore, it may have been deleted`);
+                return acc;
+            }, []);
         });
     }
     ///////////////////////////////////////////////////////////////////////////
     _listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNode) {
         const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
         const node = nodeIdToNode[nodeId];
-        console.log(`Monitor ${node.path} with COV`);
+        // spinalLog.log(`Monitor ${node.path} with COV`);
         monitoredItem.on("changed", (dataValue) => {
             const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
             const node = nodeIdToNode[nodeId];
@@ -420,7 +420,7 @@ class OPCUAService extends events_1.EventEmitter {
         monitoredItem.on("err", (err) => {
             const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
             const node = nodeIdToNode[nodeId];
-            console.log(`[Error - COV] - ${node.path} due to: ${err.message}`);
+            displayLog_1.default.log(`[Error - COV] - ${node.path} due to: ${err.message}`);
         });
     }
     _browseNode(node) {
@@ -494,7 +494,7 @@ class OPCUAService extends events_1.EventEmitter {
                 { nodeId, attributeId: node_opcua_1.AttributeIds.NodeClass },
                 { nodeId, attributeId: node_opcua_1.AttributeIds.Value },
             ];
-            const [displayNameData, browseNameData, nodeClassData, valueData] = yield this.session.read(attributesToRead);
+            const [browseNameData, displayNameData, nodeClassData, valueData] = yield this.session.read(attributesToRead);
             const displayName = this._formatDataValue(displayNameData);
             const browseName = this._formatDataValue(browseNameData);
             const nodeClass = nodeClassData.value.value;
@@ -658,7 +658,7 @@ class OPCUAService extends events_1.EventEmitter {
             const rootNodeId = (0, node_opcua_1.resolveNodeId)(node_opcua_1.ObjectIds.RootFolder).toString();
             let currentNode = yield this.readNodeDescription(rootNodeId, ""); // RootFolder nodeId
             if (!currentNode)
-                console.log(`RootFolder node not found`);
+                displayLog_1.default.log(`RootFolder node not found`);
             const pathSplitted = path.split("/").filter((el) => el !== "");
             while (pathSplitted.length && currentNode) {
                 const currentPath = (pathSplitted.shift() || "").toLowerCase();

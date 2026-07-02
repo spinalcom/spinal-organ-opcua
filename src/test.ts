@@ -4,6 +4,7 @@
 // import OPCUAService from "./utils/OPCUAService";
 // import OPCUAFactory from "./utils/OPCUAFactory";
 // import { SpinalContext, SpinalGraph, SpinalNode } from "spinal-env-viewer-graph-service";
+// import spinalLog from "./utils/displayLog";
 
 // const { spinalCore } = require("spinal-core-connectorjs_type");
 // const { SpinalBmsNetwork } = require("spinal-model-bmsnetwork");
@@ -32,7 +33,7 @@
 // 			return resolve({ graph, context, organ, network });
 // 		},
 // 			() => {
-// 				console.log("hello");
+// 				spinalLog.log("hello");
 // 			}
 // 		);
 // 	});
@@ -64,7 +65,7 @@
 // 	// await spinalOPCUADiscoverModel.setTreeDiscovered(excelData);
 
 // 	// const tree = await spinalOPCUADiscoverModel.getTreeDiscovered();
-// 	// console.log(tree);
+// 	// spinalLog.log(tree);
 
 // 	//////////////		 	COV		 //////////////
 
@@ -74,11 +75,11 @@
 // 	await opcuaService.checkAndRetablishConnection();
 
 // 	opcuaService.monitorItem([nodeId], (id, dataValue) => {
-// 		console.log(`Node id: ${id} value: ${dataValue}`);
+// 		spinalLog.log(`Node id: ${id} value: ${dataValue}`);
 // 	});
 
 // }())
-
+import spinalLog from "./utils/displayLog";
 import { ObjectIds } from "node-opcua";
 import { IOPCNode } from "./interfaces/OPCNode";
 import { OPCUAFactory } from "./utils/OPCUAFactory";
@@ -93,13 +94,13 @@ function getNodePaht(ip: string, port: number, nodePath: string) {
 			opcuaService
 				.searchNodeUsingTreeBrowse(nodePath)
 				.then((nodeId) => {
-					console.log(`Node id for path ${nodePath}: ${nodeId}`);
+					spinalLog.log(`Node id for path ${nodePath}: ${nodeId}`);
 				})
 				.catch((err) => {
-					console.error(`Error getting node id for path ${nodePath}:`, err);
+					spinalLog.error(`Error getting node id for path ${nodePath}:`, err);
 				});
 		})
 		.catch((err) => {
-			console.error(err);
+			spinalLog.error(err);
 		});
 }

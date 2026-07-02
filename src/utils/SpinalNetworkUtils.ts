@@ -1,26 +1,16 @@
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 import { OPCUAProfileService } from "./profile_service";
 import { SpinalDevice } from "../modules/SpinalDevice";
-import { EventEmitter } from "stream";
+import { EventEmitter, promises } from "stream";
 import { Process } from "spinal-core-connectorjs_type";
 import { IServer, SpinalOPCUAListener } from "spinal-model-opcua";
 import { IProfile } from "../interfaces/IProfile";
-
-interface IListenerData {
-	context: SpinalContext;
-	device: SpinalNode;
-	profile: SpinalNode;
-	network: SpinalNode;
-	serverinfo: IServer;
-	model: SpinalOPCUAListener;
-}
+import { IListenerData } from "../interfaces/IListenerData";
+import { consumeBatch } from "./Functions";
+import spinalLog from "./displayLog";
 
 export class SpinalNetworkUtils extends EventEmitter {
 	static instance: SpinalNetworkUtils;
-
-	profiles: Map<string, IProfile> = new Map();
-	profileToDevices: Map<string, Set<string>> = new Map();
-	profileBinded: Map<string, Process> = new Map();
 
 	private constructor() {
 		super();
@@ -33,18 +23,34 @@ export class SpinalNetworkUtils extends EventEmitter {
 	}
 
 	async initAllListenersModels(spinalListenerModels: SpinalOPCUAListener[]): Promise<SpinalDevice[]> {
-		const { first, others } = await this.collectFirstListenerForProfiles(spinalListenerModels);
+		const startTime = Date.now();
+		const listenerData = await this._getSpinalListenerData(spinalListenerModels);
+		const profiles: { [profileId: string]: () => Promise<IProfile> } = {};
+		const devicesPromises: (() => Promise<SpinalDevice | null>)[] = [];
 
-		// Initialize the first listener of each profile first
-		// This ensures that the profile data is initialized before the other listeners that share the same profile
-		const firstDevicesPromises = first.map((data) => this.initSpinalListenerModel(data));
-		const firstDevices = await Promise.all(firstDevicesPromises);
+		for (const data of listenerData) {
+			const { profile } = data;
+			if (!profiles[profile.getId().get()]) {
+				profiles[profile.getId().get()] = () => OPCUAProfileService.getInstance().initProfile(profile);
+			}
 
-		// Initialize the other listeners after the first ones have been initialized
-		const othersDevicesPromises = others.map((data) => this.initSpinalListenerModel(data));
-		const othersDevices = await Promise.all(othersDevicesPromises);
+			devicesPromises.push(() => this.initSpinalListenerModel(data));
+		}
 
-		return [...firstDevices, ...othersDevices].filter((device) => !!device);
+		
+		return consumeBatch<SpinalDevice | null>(devicesPromises, 10).then(async (devicesResults) => { 
+			const endTime = Date.now();
+			spinalLog.log(`All listener models initialized`);
+			
+			spinalLog.log(`Starting to initialize profiles...`);
+			const profilePromises = Object.values(profiles);
+			await consumeBatch<IProfile>(profilePromises, 10);
+
+			spinalLog.log(`All profiles initialized`);
+
+			return (devicesResults as (SpinalDevice | null)[]).filter((device: any): device is SpinalDevice => device !== null);
+		})
+
 	}
 
 	public async getListenerData(spinalListenerModel: SpinalOPCUAListener): Promise<IListenerData | null> {
@@ -53,7 +59,7 @@ export class SpinalNetworkUtils extends EventEmitter {
 		const listenerIsValid = await this._checkIfListenerModelIsValid(spinalListenerModel, device);
 
 		if (!listenerIsValid) {
-			console.warn(`${device.getName().get()} listener model in info is not valid. Please check the device connection.`);
+			spinalLog.warn(`${device.getName().get()} listener model in info is not valid. Please check the device connection.`);
 			return null;
 		}
 
@@ -63,96 +69,93 @@ export class SpinalNetworkUtils extends EventEmitter {
 
 	public async initSpinalListenerModel(data: IListenerData): Promise<SpinalDevice | null> {
 		const { context, device, profile, network, model } = data;
+
 		try {
 			const serverinfo = device.info.server?.get() || {};
-			const profileData = await this.initProfile(profile, device.getId().get());
+			// const profileData = await OPCUAProfileService.getInstance().initProfile(profile);
 
-			const spinalDevice = new SpinalDevice(serverinfo, context, network, device, model, profileData);
-
-			await spinalDevice.init();
+			const spinalDevice = new SpinalDevice(serverinfo, context, network, device, model, profile.getId().get());
+			// await spinalDevice.init();
 
 			return spinalDevice;
 		} catch (error: Error | any) {
-			console.error(`[initSpinalListenerModel] - Error initializing ${device.getName().get()} due to: ${error.message}`);
+			spinalLog.error(`[initSpinalListenerModel] - Error initializing ${device.getName().get()} due to: ${error.message}`);
 			return null;
 		}
 	}
 
-	public async initProfile(profile: SpinalNode, deviceId: string): Promise<IProfile> {
-		const profileId = profile.getId().get();
-		const profileInfo = this.profiles.get(profileId);
-
-		if (profileInfo && profileInfo.modificationDate === profile.info.indirectModificationDate.get()) {
-			return profileInfo;
-		}
-
-		const intervals = await OPCUAProfileService.getIntervals(profile);
-		const data = {
-			modificationDate: profile.info.indirectModificationDate.get(),
-			node: profile,
-			intervals,
-		};
-
-		this.profiles.set(profileId, data);
-
-		const ids = this.profileToDevices.get(profileId) || new Set();
-		ids.add(deviceId);
-
-		this.profileToDevices.set(profileId, ids);
-
-		this._bindProfile(profile);
-
-		return data;
+	private _getSpinalListenerData(listeners : SpinalOPCUAListener | SpinalOPCUAListener[]): Promise<IListenerData[]> {
+		listeners = Array.isArray(listeners) ? listeners : [listeners];
+		const promises = listeners.map((model) => this.getListenerData(model));
+		return Promise.all(promises).then((results) => results.filter((data) => data !== null) as IListenerData[]);
 	}
 
-	private _bindProfile(profile: SpinalNode) {
-		const profileId = profile.getId().get();
-		if (this.profileBinded.has(profileId)) return;
+	// public async initProfile(profile: SpinalNode, deviceId: string): Promise<IProfile> {
+	// 	const profileId = profile.getId().get();
+	// 	const profileInfo = this.profiles.get(profileId);
 
-		const bindProcess = profile.info.indirectModificationDate.bind(() => {
-			const devicesIds: Set<string> | undefined = this.profileToDevices.get(profileId) || new Set();
+	// 	if (profileInfo && profileInfo.modificationDate === profile.info.indirectModificationDate.get()) {
+	// 		return profileInfo;
+	// 	}
 
-			console.log(`profile changed`);
-			this.emit("profileUpdated", { profileId: profileId, devicesIds: Array.from(devicesIds) });
-		}, false);
+	// 	const intervals = await OPCUAProfileService.getIntervals(profile);
+	// 	const data = {
+	// 		modificationDate: profile.info.indirectModificationDate.get(),
+	// 		node: profile,
+	// 		intervals,
+	// 	};
 
-		this.profileBinded.set(profileId, bindProcess);
-	}
+	// 	this.profiles.set(profileId, data);
 
-	/**
-	 * Classifies listener models data by their profile.
-	 * put the first listener of each profile in the "first" array and the others in the "others" array.
-	 *
-	 *
-	 * @private
-	 * @param {SpinalOPCUAListener[]} spinalListenerModels
-	 * @return {*}  {Promise<{ first: IListenerData[]; others: IListenerData[] }>}
-	 * @memberof SpinalNetworkUtils
-	 */
-	private async collectFirstListenerForProfiles(spinalListenerModels: SpinalOPCUAListener[]): Promise<{ first: IListenerData[]; others: IListenerData[] }> {
-		const promises = spinalListenerModels.map((model) => this.getListenerData(model));
-		const allData = await Promise.all(promises);
+	// 	const ids = this.profileToDevices.get(profileId) || new Set();
+	// 	ids.add(deviceId);
 
-		const classifiedData: { [profileId: string]: IListenerData[] } = {};
-		const result: { first: IListenerData[]; others: IListenerData[] } = { first: [], others: [] };
+	// 	this.profileToDevices.set(profileId, ids);
 
-		for (const data of allData) {
-			if (!data) continue;
+	// 	this._bindProfile(profile);
 
-			const profileId = data.profile.getId().get();
+	// 	return data;
+	// }
 
-			if (!classifiedData[profileId]) {
-				classifiedData[profileId] = [];
-				result.first.push(data);
-			} else {
-				result.others.push(data);
-			}
+	// private _bindProfile(profile: SpinalNode) {
+	// 	const profileId = profile.getId().get();
+	// 	if (this.profileBinded.has(profileId)) return;
 
-			classifiedData[profileId].push(data);
-		}
+	// 	const bindProcess = profile.info.indirectModificationDate.bind(() => {
+	// 		const devicesIds: Set<string> | undefined = this.profileToDevices.get(profileId) || new Set();
 
-		return result;
-	}
+	// 		spinalLog.log(`profile changed`);
+	// 		this.emit("profileUpdated", { profileId: profileId, devicesIds: Array.from(devicesIds) });
+	// 	}, false);
+
+	// 	this.profileBinded.set(profileId, bindProcess);
+	// }
+
+
+	// private async collectListenerData(spinalListenerModels: SpinalOPCUAListener[]): Promise<{ profile: SpinalNode[]; listenerData: IListenerData[] }> {
+	// 	const promises = spinalListenerModels.map((model) => this.getListenerData(model));
+	// 	const allData = await Promise.all(promises);
+
+	// 	const classifiedData: { [profileId: string]: IListenerData[] } = {};
+	// 	const result: { first: IListenerData[]; others: IListenerData[] } = { first: [], others: [] };
+
+	// 	for (const data of allData) {
+	// 		if (!data) continue;
+
+	// 		const profileId = data.profile.getId().get();
+
+	// 		if (!classifiedData[profileId]) {
+	// 			classifiedData[profileId] = [];
+	// 			result.first.push(data);
+	// 		} else {
+	// 			result.others.push(data);
+	// 		}
+
+	// 		classifiedData[profileId].push(data);
+	// 	}
+
+	// 	return result;
+	// }
 
 	private async _checkIfListenerModelIsValid(argListenerModel: SpinalOPCUAListener, device: SpinalNode): Promise<boolean> {
 		const listenerModel = await device.info.listener.load();

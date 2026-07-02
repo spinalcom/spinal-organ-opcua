@@ -13,9 +13,11 @@ import { ISpinalInterval } from "../interfaces/IntervalTypes";
 import { getNodeKey, normalizePath } from "../utils/utils";
 import OPCUAFactory from "../utils/OPCUAFactory";
 import { IProfile } from "../interfaces/IProfile";
+import { OPCUAProfileService, PROFILE_UPDATE_EVENT } from "../utils/profile_service";
+import spinalLog from "../utils/displayLog";
 
 class SpinalMonitoring {
-	private queue: SpinalQueuing = new SpinalQueuing();
+	private devicesToMonitorQueue: SpinalQueuing = new SpinalQueuing();
 	private priorityQueue: MinPriorityQueue<{ interval: number }> = new MinPriorityQueue();
 	private isProcessing: boolean = false;
 	private intervalTimesMap: Map<number, { [key: string]: ISpinalInterval[] }> = new Map();
@@ -26,34 +28,28 @@ class SpinalMonitoring {
 	private idNetworkToSpinalDevice: Map<string, SpinalDevice> = new Map();
 	private spinalNetworkUtils: SpinalNetworkUtils = SpinalNetworkUtils.getInstance();
 	private covItemToMonitoring: Map<string, ClientMonitoredItemBase> = new Map();
-	private addToMonitoringMapQueue: SpinalQueuing = new SpinalQueuing();
+	private monitoringMapQueue: SpinalQueuing = new SpinalQueuing();
 
 	constructor() {}
 
-	public async addToMonitoringList(spinalListenerModel: SpinalOPCUAListener): Promise<void> {
-		this.queue.addToQueue(spinalListenerModel);
+	public async addToDeviceToMonitorQueue(spinalListenerModel: SpinalOPCUAListener): Promise<void> {
+		this.devicesToMonitorQueue.addToQueue(spinalListenerModel);
 	}
 
 	init() {
-		this.queue.on("start", () => this.startDeviceInitialisation());
-		this.spinalNetworkUtils.on("profileUpdated", ({ profileId, devicesIds }) => this._updateProfile(profileId, devicesIds));
-		this.addToMonitoringMapQueue.on("start", async () => this._addAllDeviceDataToMaps());
+		this.devicesToMonitorQueue.on("start", () => this.startDeviceInitialisation());
+
+		this.monitoringMapQueue.on("start", async () => this._addAllDeviceDataToMaps());
 	}
 
 	public async startDeviceInitialisation() {
-		const modelInQueue = this.queue.getQueue(); // get all models as array
-		this.queue.refresh(); // clear the queue
+		const modelInQueue = this.devicesToMonitorQueue.getQueue(); // get all models as array
+		this.devicesToMonitorQueue.refresh(); // clear the queue
 
-		console.log(`Starting initialization of ${modelInQueue.length} devices`);
+		spinalLog.log(`${modelInQueue.length} devices found, start formatting and binding`);
 
 		const devices = await this.initAllListenersModels(modelInQueue);
 
-		console.log(`${devices.length} devices initialized successfully`);
-		// const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
-
-		// const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
-		// const validDevices = devicesFlatted.filter(el => !!el);
-		console.log(`Starting to bind devices`);
 		await this._bindDevices(devices);
 
 		if (!this.isProcessing) {
@@ -64,39 +60,8 @@ class SpinalMonitoring {
 
 	public async initAllListenersModels(spinalListenerModels: SpinalOPCUAListener[]): Promise<SpinalDevice[]> {
 		return this.spinalNetworkUtils.initAllListenersModels(spinalListenerModels);
-
-		// const initializedDevices = await consumeBatch(spinalListenerModels, this.initConcurrency, async (model) => {
-		// 	try {
-		// 		return await this.spinalNetworkUtils.initSpinalListenerModel(model);
-		// 	} catch (error) {
-		// 		console.error("Failed to initialize listener model:", error);
-		// 		return undefined;
-		// 	}
-		// });
-		// const devices = initializedDevices.filter((device): device is SpinalDevice => !!device);
-		// return this._waitUntilAllDevicesInitialized(devices);
 	}
 
-	private _waitUntilAllDevicesInitialized(devices: SpinalDevice[]): Promise<SpinalDevice[]> {
-		return new Promise((resolve) => {
-			if (!devices.length) {
-				resolve([]);
-				return;
-			}
-
-			const checkInitialization = () => {
-				const allInitialized = devices.every((device) => device?.isInit);
-				if (allInitialized) {
-					resolve(devices.filter((el) => !!el));
-					return;
-				}
-
-				setTimeout(checkInitialization, 500);
-			};
-
-			checkInitialization();
-		});
-	}
 
 	public async startMonitoring() {
 		let p = true;
@@ -127,7 +92,7 @@ class SpinalMonitoring {
 		try {
 			// if a date is provided, we wait for the next update
 			if (date && Date.now() < date) {
-				console.log(`waiting ${(date - Date.now()) / 1000}s, for the next update`);
+				spinalLog.log(`waiting ${(date - Date.now()) / 1000}s, for the next update`);
 				await this.waitFct(date - Date.now());
 			}
 
@@ -148,7 +113,7 @@ class SpinalMonitoring {
 
 			//         return device.updateEndpoints(valuesObj[deviceId]);
 			//     } catch (error) {
-			//         console.error(`Error updating endpoints for device ${deviceId}:`, error);
+			//         spinalLog.error(`Error updating endpoints for device ${deviceId}:`, error);
 			//     }
 			// });
 
@@ -156,18 +121,20 @@ class SpinalMonitoring {
 
 			// this.priorityQueue.enqueue({ interval }, Date.now() + interval);
 		} catch (error) {
-			console.error(error);
+			spinalLog.error(error);
 		} finally {
 			this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
 		}
 	}
 
 	private _bindDevices(devices: SpinalDevice[]) {
+		spinalLog.log(`Binding devices to their respective models and profiles...`);
+
 		for (const spinalDevice of devices) {
 			this.spinalDevicesStore.set(spinalDevice.deviceInfo.id, spinalDevice); // save the device in the map to be able to retrieve it later
 
 			const spinalModel = spinalDevice.spinalListenerModel;
-			const profile = spinalDevice.profile;
+			const profile = (spinalDevice.profileId);
 
 			spinalModel.monitored.bind(async () => {
 				const deviceIsMonitored = spinalModel.monitored.get();
@@ -177,25 +144,33 @@ class SpinalMonitoring {
 				const url = getServerUrl(spinalDevice.server);
 
 				if (!deviceIsMonitored) {
-					console.log(deviceInfo.name, "is stopped");
+					spinalLog.log(deviceInfo.name, "is stopped");
 					this._removeFromMaps(deviceInfo.id, url);
 					this._stopCovItems(deviceInfo.id);
 					return;
 				}
 
-				console.log(deviceInfo.name, "is monitored");
-				this.addToMonitoringMapQueue.addToQueue({ url, spinalDevice, profile });
+				spinalLog.log(deviceInfo.name, "is monitored");
+				await spinalDevice.init();
+				this.monitoringMapQueue.addToQueue({ url, spinalDevice, profile });
 				// await this._addDeviceDataToMaps(url, spinalDevice, profile);
 			});
 		}
 	}
 
 	private async _addAllDeviceDataToMaps() {
-		const queueData = this.addToMonitoringMapQueue.getQueue(); // get all models as array
-		this.addToMonitoringMapQueue.refresh(); // clear the queue
+		const queueData = this.monitoringMapQueue.getQueue(); // get all models as array
+		this.monitoringMapQueue.refresh(); // clear the queue
 
-		for (const { url, spinalDevice, profile } of queueData) {
-			await this._addDeviceDataToMaps(url, spinalDevice, profile);
+		for (const { url, spinalDevice } of queueData) {
+			const profileData = OPCUAProfileService.getInstance().getProfile(spinalDevice.profileId || "");
+
+			if (!profileData) { 
+				spinalLog.warn(`Profile data not found for device ${spinalDevice.deviceInfo.name} with profileId ${spinalDevice.profileId}`);
+				continue;
+			}
+
+			this._addDeviceDataToMaps(url, spinalDevice, profileData);
 		}
 	}
 
@@ -205,6 +180,7 @@ class SpinalMonitoring {
 
 			const interval = Number(intervalData.value);
 
+			// if interval is 0, we need to monitor the items with COV (Change of Value) instead of adding them to the interval map
 			if (interval == 0) {
 				await this.monitorWithCov(url, spinalDevice, intervalData.children as any);
 				continue; // go to next interval
@@ -241,7 +217,7 @@ class SpinalMonitoring {
 		const priorityQueueData: PriorityQueueItem<{ interval: number }>[] = this.priorityQueue.toArray();
 
 		const intervalFound = priorityQueueData.find((priority: any) => priority.element?.interval == interval);
-		console.log("Interval found in priority queue:", !!intervalFound, interval);
+		spinalLog.log("Interval found in priority queue:", !!intervalFound, interval);
 		if (!intervalFound) this.priorityQueue.enqueue({ interval }, interval + Date.now());
 
 		return intervalFound;
@@ -321,7 +297,6 @@ class SpinalMonitoring {
 
 			const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 			const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(endpointUrl);
-
 			await opcuaService.checkAndRetablishConnection();
 
 			return opcuaService.getNodesNewInfoByPath(variableNodes).then(async (result) => {
@@ -334,16 +309,17 @@ class SpinalMonitoring {
 		}
 	}
 
-	private _updateProfile(profileId: string, devicesIds: string[]) {
-		return devicesIds.map((deviceId) => {
-			const device = this.spinalDevicesStore.get(deviceId);
-			if (!device) return;
+	// private _updateProfile(profileId: string, devicesIds: string[]) {
+	// 	return devicesIds.map((deviceId) => {
+	// 		const device = this.spinalDevicesStore.get(deviceId);
+	// 		if (!device) return;
 
-			device.restartMonitoring();
-		});
-	}
+	// 		device.restartMonitoring();
+	// 	});
+	// }
 
 	private async monitorWithCov(url: string, spinalDevice: SpinalDevice, nodes: IOPCNode[]) {
+		// spinalLog.log(`Monitoring ${nodes.length} nodes with COV for device ${spinalDevice.deviceInfo.name} at ${url}`);
 		const isCov = true;
 		// const idsToPaths: { [key: string]: string } = {};
 
@@ -377,7 +353,7 @@ class SpinalMonitoring {
 		const nodePath = getNodeKey(node);
 		const nodeId = node.nodeId.toString();
 
-		console.log(`[COV] - ${nodePath} has changed value to ${value}`);
+		spinalLog.log(`[COV] - receive COV notif from OPCUA server: ${nodePath} change event ${value}`);
 
 		const temp_id = `${spinalDevice.deviceInfo.id}_${nodeId}`;
 

@@ -1,5 +1,5 @@
 /// <reference types="node" />
-import { NodeId, DataValue, ClientMonitoredItemBase } from "node-opcua";
+import { UserIdentityInfo, NodeId, DataValue, ClientMonitoredItemBase } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { SpinalOPCUADiscoverModel } from "spinal-model-opcua";
@@ -23,7 +23,7 @@ export declare class OPCUAService extends EventEmitter {
     constructor(url: string, model?: SpinalOPCUADiscoverModel);
     private createClient;
     private _listenClientEvents;
-    checkAndRetablishConnection(): Promise<void>;
+    checkAndRetablishConnection(userIdentity?: UserIdentityInfo): Promise<void>;
     disconnect(): Promise<void>;
     private _createSession;
     private _listenSessionEvent;
@@ -42,8 +42,8 @@ export declare class OPCUAService extends EventEmitter {
     } | null)[]>;
     writeNode(node: IOPCNode, value: any): Promise<any>;
     monitorItem(nodes: IOPCNode | IOPCNode[], callback: CovCallbackType, isReconnection?: boolean): Promise<void>;
-    getNodeIdByPath(nodePath?: string): Promise<string | void>;
     getNodeByPath(nodePath?: string): Promise<IOPCNode | void>;
+    getNodeIdByPath(nodePath?: string): Promise<string | void>;
     static isVariable(node: IOPCNode): boolean;
     isObject(node: IOPCNode): boolean;
     getNodesNewInfoByPath(nodes: IOPCNode | IOPCNode[]): Promise<IOPCNode[]>;

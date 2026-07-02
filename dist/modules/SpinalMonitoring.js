@@ -18,9 +18,11 @@ const node_opcua_1 = require("node-opcua");
 const Functions_1 = require("../utils/Functions");
 const utils_1 = require("../utils/utils");
 const OPCUAFactory_1 = require("../utils/OPCUAFactory");
+const profile_service_1 = require("../utils/profile_service");
+const displayLog_1 = require("../utils/displayLog");
 class SpinalMonitoring {
     constructor() {
-        this.queue = new SpinalQueuing_1.SpinalQueuing();
+        this.devicesToMonitorQueue = new SpinalQueuing_1.SpinalQueuing();
         this.priorityQueue = new priority_queue_1.MinPriorityQueue();
         this.isProcessing = false;
         this.intervalTimesMap = new Map();
@@ -30,29 +32,23 @@ class SpinalMonitoring {
         this.idNetworkToSpinalDevice = new Map();
         this.spinalNetworkUtils = SpinalNetworkUtils_1.SpinalNetworkUtils.getInstance();
         this.covItemToMonitoring = new Map();
-        this.addToMonitoringMapQueue = new SpinalQueuing_1.SpinalQueuing();
+        this.monitoringMapQueue = new SpinalQueuing_1.SpinalQueuing();
     }
-    addToMonitoringList(spinalListenerModel) {
+    addToDeviceToMonitorQueue(spinalListenerModel) {
         return __awaiter(this, void 0, void 0, function* () {
-            this.queue.addToQueue(spinalListenerModel);
+            this.devicesToMonitorQueue.addToQueue(spinalListenerModel);
         });
     }
     init() {
-        this.queue.on("start", () => this.startDeviceInitialisation());
-        this.spinalNetworkUtils.on("profileUpdated", ({ profileId, devicesIds }) => this._updateProfile(profileId, devicesIds));
-        this.addToMonitoringMapQueue.on("start", () => __awaiter(this, void 0, void 0, function* () { return this._addAllDeviceDataToMaps(); }));
+        this.devicesToMonitorQueue.on("start", () => this.startDeviceInitialisation());
+        this.monitoringMapQueue.on("start", () => __awaiter(this, void 0, void 0, function* () { return this._addAllDeviceDataToMaps(); }));
     }
     startDeviceInitialisation() {
         return __awaiter(this, void 0, void 0, function* () {
-            const modelInQueue = this.queue.getQueue(); // get all models as array
-            this.queue.refresh(); // clear the queue
-            console.log(`Starting initialization of ${modelInQueue.length} devices`);
+            const modelInQueue = this.devicesToMonitorQueue.getQueue(); // get all models as array
+            this.devicesToMonitorQueue.refresh(); // clear the queue
+            displayLog_1.default.log(`${modelInQueue.length} devices found, start formatting and binding`);
             const devices = yield this.initAllListenersModels(modelInQueue);
-            console.log(`${devices.length} devices initialized successfully`);
-            // const promises = modelInQueue.map(el => this.spinalNetworkUtils.initSpinalListenerModel(el));
-            // const devicesFlatted = lodash.flattenDeep(await Promise.all(promises));
-            // const validDevices = devicesFlatted.filter(el => !!el);
-            console.log(`Starting to bind devices`);
             yield this._bindDevices(devices);
             if (!this.isProcessing) {
                 this.isProcessing = true;
@@ -63,33 +59,6 @@ class SpinalMonitoring {
     initAllListenersModels(spinalListenerModels) {
         return __awaiter(this, void 0, void 0, function* () {
             return this.spinalNetworkUtils.initAllListenersModels(spinalListenerModels);
-            // const initializedDevices = await consumeBatch(spinalListenerModels, this.initConcurrency, async (model) => {
-            // 	try {
-            // 		return await this.spinalNetworkUtils.initSpinalListenerModel(model);
-            // 	} catch (error) {
-            // 		console.error("Failed to initialize listener model:", error);
-            // 		return undefined;
-            // 	}
-            // });
-            // const devices = initializedDevices.filter((device): device is SpinalDevice => !!device);
-            // return this._waitUntilAllDevicesInitialized(devices);
-        });
-    }
-    _waitUntilAllDevicesInitialized(devices) {
-        return new Promise((resolve) => {
-            if (!devices.length) {
-                resolve([]);
-                return;
-            }
-            const checkInitialization = () => {
-                const allInitialized = devices.every((device) => device === null || device === void 0 ? void 0 : device.isInit);
-                if (allInitialized) {
-                    resolve(devices.filter((el) => !!el));
-                    return;
-                }
-                setTimeout(checkInitialization, 500);
-            };
-            checkInitialization();
         });
     }
     startMonitoring() {
@@ -120,7 +89,7 @@ class SpinalMonitoring {
             try {
                 // if a date is provided, we wait for the next update
                 if (date && Date.now() < date) {
-                    console.log(`waiting ${(date - Date.now()) / 1000}s, for the next update`);
+                    displayLog_1.default.log(`waiting ${(date - Date.now()) / 1000}s, for the next update`);
                     yield this.waitFct(date - Date.now());
                 }
                 const valuesObj = yield this._getOPCValues(data);
@@ -137,14 +106,14 @@ class SpinalMonitoring {
                 //         if (!device) return;
                 //         return device.updateEndpoints(valuesObj[deviceId]);
                 //     } catch (error) {
-                //         console.error(`Error updating endpoints for device ${deviceId}:`, error);
+                //         spinalLog.error(`Error updating endpoints for device ${deviceId}:`, error);
                 //     }
                 // });
                 // await Promise.all(promises);
                 // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
             }
             catch (error) {
-                console.error(error);
+                displayLog_1.default.error(error);
             }
             finally {
                 this.priorityQueue.enqueue({ interval }, Number(interval) + Date.now());
@@ -152,33 +121,40 @@ class SpinalMonitoring {
         });
     }
     _bindDevices(devices) {
+        displayLog_1.default.log(`Binding devices to their respective models and profiles...`);
         for (const spinalDevice of devices) {
             this.spinalDevicesStore.set(spinalDevice.deviceInfo.id, spinalDevice); // save the device in the map to be able to retrieve it later
             const spinalModel = spinalDevice.spinalListenerModel;
-            const profile = spinalDevice.profile;
+            const profile = (spinalDevice.profileId);
             spinalModel.monitored.bind(() => __awaiter(this, void 0, void 0, function* () {
                 const deviceIsMonitored = spinalModel.monitored.get();
                 const deviceInfo = spinalDevice.deviceInfo;
                 // const serverInfo = network.info.serverInfo.get()
                 const url = (0, Functions_1.getServerUrl)(spinalDevice.server);
                 if (!deviceIsMonitored) {
-                    console.log(deviceInfo.name, "is stopped");
+                    displayLog_1.default.log(deviceInfo.name, "is stopped");
                     this._removeFromMaps(deviceInfo.id, url);
                     this._stopCovItems(deviceInfo.id);
                     return;
                 }
-                console.log(deviceInfo.name, "is monitored");
-                this.addToMonitoringMapQueue.addToQueue({ url, spinalDevice, profile });
+                displayLog_1.default.log(deviceInfo.name, "is monitored");
+                yield spinalDevice.init();
+                this.monitoringMapQueue.addToQueue({ url, spinalDevice, profile });
                 // await this._addDeviceDataToMaps(url, spinalDevice, profile);
             }));
         }
     }
     _addAllDeviceDataToMaps() {
         return __awaiter(this, void 0, void 0, function* () {
-            const queueData = this.addToMonitoringMapQueue.getQueue(); // get all models as array
-            this.addToMonitoringMapQueue.refresh(); // clear the queue
-            for (const { url, spinalDevice, profile } of queueData) {
-                yield this._addDeviceDataToMaps(url, spinalDevice, profile);
+            const queueData = this.monitoringMapQueue.getQueue(); // get all models as array
+            this.monitoringMapQueue.refresh(); // clear the queue
+            for (const { url, spinalDevice } of queueData) {
+                const profileData = profile_service_1.OPCUAProfileService.getInstance().getProfile(spinalDevice.profileId || "");
+                if (!profileData) {
+                    displayLog_1.default.warn(`Profile data not found for device ${spinalDevice.deviceInfo.name} with profileId ${spinalDevice.profileId}`);
+                    continue;
+                }
+                this._addDeviceDataToMaps(url, spinalDevice, profileData);
             }
         });
     }
@@ -189,6 +165,7 @@ class SpinalMonitoring {
                 if (isNaN(intervalData.value) || !((_a = intervalData.children) === null || _a === void 0 ? void 0 : _a.length))
                     continue;
                 const interval = Number(intervalData.value);
+                // if interval is 0, we need to monitor the items with COV (Change of Value) instead of adding them to the interval map
                 if (interval == 0) {
                     yield this.monitorWithCov(url, spinalDevice, intervalData.children);
                     continue; // go to next interval
@@ -219,7 +196,7 @@ class SpinalMonitoring {
     _addItemToPriorityQueue(interval) {
         const priorityQueueData = this.priorityQueue.toArray();
         const intervalFound = priorityQueueData.find((priority) => { var _a; return ((_a = priority.element) === null || _a === void 0 ? void 0 : _a.interval) == interval; });
-        console.log("Interval found in priority queue:", !!intervalFound, interval);
+        displayLog_1.default.log("Interval found in priority queue:", !!intervalFound, interval);
         if (!intervalFound)
             this.priorityQueue.enqueue({ interval }, interval + Date.now());
         return intervalFound;
@@ -302,16 +279,16 @@ class SpinalMonitoring {
             }
         });
     }
-    _updateProfile(profileId, devicesIds) {
-        return devicesIds.map((deviceId) => {
-            const device = this.spinalDevicesStore.get(deviceId);
-            if (!device)
-                return;
-            device.restartMonitoring();
-        });
-    }
+    // private _updateProfile(profileId: string, devicesIds: string[]) {
+    // 	return devicesIds.map((deviceId) => {
+    // 		const device = this.spinalDevicesStore.get(deviceId);
+    // 		if (!device) return;
+    // 		device.restartMonitoring();
+    // 	});
+    // }
     monitorWithCov(url, spinalDevice, nodes) {
         return __awaiter(this, void 0, void 0, function* () {
+            // spinalLog.log(`Monitoring ${nodes.length} nodes with COV for device ${spinalDevice.deviceInfo.name} at ${url}`);
             const isCov = true;
             // const idsToPaths: { [key: string]: string } = {};
             const opcNodes = yield this._getVariablesValues(url, nodes);
@@ -341,7 +318,7 @@ class SpinalMonitoring {
         const value = (_a = dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) !== null && _a !== void 0 ? _a : null;
         const nodePath = (0, utils_1.getNodeKey)(node);
         const nodeId = node.nodeId.toString();
-        console.log(`[COV] - ${nodePath} has changed value to ${value}`);
+        displayLog_1.default.log(`[COV] - receive COV notif from OPCUA server: ${nodePath} change event ${value}`);
         const temp_id = `${spinalDevice.deviceInfo.id}_${nodeId}`;
         if (!this.covItemToMonitoring.has(temp_id))
             this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later

@@ -14,6 +14,7 @@ import { discoverIsCancelled, getConfig, getNodeKey, normalizePath } from "../ut
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 import OPCUAFactory from "../utils/OPCUAFactory";
+import spinalLog from "../utils/displayLog";
 
 // import * as testJSON from "./test.json";
 
@@ -101,7 +102,7 @@ class SpinalDiscover extends EventEmitter {
 			if (discovered.length === 0) throw "No Device found";
 
 			await model.setTreeDiscovered({ nodeId: "root", displayName: "Root", children: discovered });
-			console.log(`${model.network?.name?.get()} discovered !!`);
+			spinalLog.log(`${model.network?.name?.get()} discovered !!`);
 			model.changeState(OPCUA_ORGAN_STATES.discovered);
 			return discovered;
 		} catch (error) {
@@ -117,12 +118,12 @@ class SpinalDiscover extends EventEmitter {
 
 		// if file exist we ask the user if he wants to use the last result or start from scratch
 		if (discoveringStore.fileExist(_url)) {
-			// 	console.log("inside file exist");
+			// 	spinalLog.log("inside file exist");
 			// 	useLastResult = await this.askToContinueDiscovery(model);
 			useLastResult = (await model?.useLastResult?.get()) || false;
 		}
 
-		console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
+		spinalLog.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
 		const discoverResult = await this._getOPCUATree(server, useLastResult, model, true);
 		if (!discoverResult) return;
 
@@ -132,12 +133,12 @@ class SpinalDiscover extends EventEmitter {
 		// 		if (!tree) return;
 
 		// 		await model.setTreeDiscovered(tree);
-		// 		console.log(server.name, "discovered !!");
+		// 		spinalLog.log(server.name, "discovered !!");
 		// 		model.changeState(OPCUA_ORGAN_STATES.discovered);
 		// 		return tree;
 
 		// 	}).catch((err) => {
-		// 		error: console.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
+		// 		error: spinalLog.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
 		// 		model.changeState(OPCUA_ORGAN_STATES.error);
 		// 	});
 	}
@@ -188,7 +189,7 @@ class SpinalDiscover extends EventEmitter {
 				return result;
 			})
 			.catch(async (err) => {
-				console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
+				spinalLog.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
 				throw err;
 				// model.changeState(OPCUA_ORGAN_STATES.error);
 			})
@@ -200,7 +201,7 @@ class SpinalDiscover extends EventEmitter {
 
 	private async _createNetworkTreeInGraph(model: SpinalOPCUADiscoverModel) {
 		try {
-			console.log("creating networkTree");
+			spinalLog.log("creating networkTree");
 			const { protocol, host, port } = getConfig();
 			const hubPath = `${protocol}://${host}:${port}`;
 			const treeToCreate = await model.getTreeToCreate(hubPath);
@@ -225,9 +226,9 @@ class SpinalDiscover extends EventEmitter {
 			}
 
 			await model.changeState(OPCUA_ORGAN_STATES.created);
-			console.log("network", network.getName().get(), "created !!");
+			spinalLog.log("network", network.getName().get(), "created !!");
 		} catch (error) {
-			console.error(error);
+			spinalLog.error(error);
 			model.changeState(OPCUA_ORGAN_STATES.error);
 		}
 	}
@@ -250,7 +251,7 @@ class SpinalDiscover extends EventEmitter {
 		return obj;
 	}
 
-	private async _getVariablesValues(url: string, variables: IOPCNode[]) {
+	private async _getVariablesValues(url: string, variables: IOPCNode[]): Promise<{ [key: string]: { dataType: string; value: any } }> {
 		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
 
 		return opcuaService.readNodeValue(variables).then((result) => {

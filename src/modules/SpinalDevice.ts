@@ -33,6 +33,8 @@ import { IProfile } from "../interfaces/IProfile";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { getNodeKey } from "../utils/utils";
 import { SpinalOPCUAListener, IServer } from "spinal-model-opcua";
+import { OPCUAProfileService, PROFILE_UPDATE_EVENT } from "../utils/profile_service";
+import spinalLog from "../utils/displayLog";
 
 const securityMode: MessageSecurityMode = MessageSecurityMode["None"] as any as MessageSecurityMode;
 const securityPolicy = (SecurityPolicy as any)["None"];
@@ -46,12 +48,14 @@ export class SpinalDevice extends EventEmitter {
 	public server: IServer;
 	public deviceInfo: { name: string; type: string; id: string; path: string };
 	public spinalListenerModel: SpinalOPCUAListener;
-	public profile: IProfile;
+	public profileId: string | null = null;
 
 	private nodes: { [key: string]: SpinalNode } = {};
 	private endpoints: { [key: string]: SpinalNode } = {};
+	private _browseHistoryQueue: SpinalNode[] = []; // Queue for breadth-first traversal of the node tree
+	private _updateQueue: { nodes: IOPCNode[]; isCov: boolean; date: number }[] = []; // Queue for nodes that need to be updated
 
-	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener, profile: IProfile) {
+	constructor(server: IServer, context: SpinalContext, network: SpinalNode, device: SpinalNode, spinalListenerModel: SpinalOPCUAListener, profileId: string) {
 		super();
 
 		this.server = server;
@@ -60,42 +64,66 @@ export class SpinalDevice extends EventEmitter {
 		this.device = device;
 		this.deviceInfo = device.info.get();
 		this.spinalListenerModel = spinalListenerModel;
-		this.profile = profile;
+		this.profileId = profileId;
+		this._browseHistoryQueue = [device]; // Initialize the queue with the root device node
+
+		this._listenToProfileUpdate();
+	
 	}
+
+	
 
 	public async init() {
-		if (this.isInit) return;
-		return this._convertNodesToObj()
-			.then((result) => {
-				this.isInit = true;
-				console.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
-				return result;
-			})
-			.catch((err) => {
-				console.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${err.message}`);
-			});
+		try { 
+
+			spinalLog.log(`[SpinalDevice] - initializing device ${this.deviceInfo.name} with profile ${this.profileId}`);
+			
+			if (this.isInit) return;
+		
+			this._checkInitAndUpdate(); 
+
+			const result = await this._collectGraphData();
+			this.isInit = true;
+			
+			spinalLog.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
+			return result;
+		} catch (error: Error | any) { 
+			spinalLog.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${error.message}`);
+		}
+		
 	}
 
-	public async updateEndpoints(nodes: IOPCNode[], isCov: boolean = false) {
+	public updateEndpoints(nodes: IOPCNode[], isCov: boolean = false) { 
+		if (this.isInit) return this.updateEndpointsDirectly(nodes, isCov);
+		
+		spinalLog.log(`[SpinalDevice] - ${this.deviceInfo.name} not initialized yet, the update will be queued and executed after initialization`);
+		this._updateQueue.push({ nodes, isCov, date: Date.now() });
+	}
+
+	public async updateEndpointsDirectly(nodes: IOPCNode[], isCov: boolean = false, date: number | null = null) {
 		const promises = [];
 
 		for (const opcNode of nodes) {
 			const key = getNodeKey(opcNode);
-			const spinalnode = this.endpoints[key];
-			if (!spinalnode) continue;
+			const spinalnode = await this._getEndpoint(key);
+			
+			if (!spinalnode) {
+				spinalLog.warn(`[SpinalDevice] - endpoint ${key} not found in device ${this.deviceInfo.name}`);
+				continue;
+			}
 
 			await this._updateNodeInfo(opcNode, spinalnode);
 			// const value = opcNode.value?.value || null; // may be bad if value is boolean
 			const value = opcNode.value?.value;
-			promises.push(this._updateEndpoint(spinalnode, value, isCov));
+			promises.push(this._updateEndpointInGraph(spinalnode, value, isCov, date));
 		}
 
 		return Promise.all(promises)
 			.then((result) => {
-				if (!isCov) console.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
+				if (!isCov) spinalLog.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
 			})
 			.catch((err) => {
-				if (!isCov) console.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
+				if (!isCov) spinalLog.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
 			});
 	}
 
@@ -118,11 +146,13 @@ export class SpinalDevice extends EventEmitter {
 	//						PRIVATES METHODS
 	/////////////////////////////////////////////////////////////////////////
 
-	private async _updateEndpoint(endpointNode: SpinalNode, value: any, cov: boolean = false) {
+	private async _updateEndpointInGraph(endpointNode: SpinalNode, value: any, cov: boolean = false, date: number | null = null) {
 		try {
 			if (value === null) value = "null";
 
-			const saveTimeSeries = this.spinalListenerModel.saveTimeSeries?.get();
+			//TODO: correct logic after testing, for now we don't save time series to avoid filling the database with useless data
+			// const saveTimeSeries = this.spinalListenerModel.saveTimeSeries?.get();
+			const saveTimeSeries = false;
 
 			const element = await endpointNode.getElement(true);
 			if (!element) return false;
@@ -133,30 +163,24 @@ export class SpinalDevice extends EventEmitter {
 
 			// avertir du changement de valeur, le log du cov est fait dans son callback
 			const prefix = cov ? "[COV]" : "[PULLING]";
-			console.log(`${prefix} - [${endpointNode.info?.path?.get().replace("/Objects", "")}] changed value to`, value);
+			spinalLog.log(`${prefix} - Updating [${endpointNode.info?.path?.get().replace("/Objects", "")}] value to ${value} in graph`);
 
-			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) {
-				const spinalServiceTimeseries = new SpinalServiceTimeseries();
-				SpinalGraphService._addNode(endpointNode);
-				return spinalServiceTimeseries.pushFromEndpoint(endpointNode.getId().get(), value);
-			}
+			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) await this._saveTimeSeries(endpointNode, value, date);
 
 			return true;
 		} catch (error) {
-			console.error(error);
+			spinalLog.error(error);
 			return false;
 		}
 	}
 
-	private _convertNodesToObj(): Promise<SpinalNode[]> {
-		return this.device.findInContext(this.context, (node) => {
-			const info = node.info.get();
-			const key = getNodeKey(info);
+	private async _saveTimeSeries(endpointNode: SpinalNode, value: any, date: number | null = null) { 
+		const spinalServiceTimeseries = new SpinalServiceTimeseries();
+		SpinalGraphService._addNode(endpointNode);
 
-			if (key) this.nodes[key] = node;
-			if (key && node.getType().get() === SpinalBmsEndpoint.nodeTypeName) this.endpoints[key] = node;
-			return true;
-		});
+		if(!date) return spinalServiceTimeseries.pushFromEndpoint(endpointNode.getId().get(), value);
+
+		return spinalServiceTimeseries.insertFromEndpoint(endpointNode.getId().get(), value, date);
 	}
 
 	private async _updateNodeInfo(opcNode: IOPCNode, spinalNode: SpinalNode) {
@@ -174,5 +198,126 @@ export class SpinalDevice extends EventEmitter {
 		if (opcNode?.nodeId) {
 			spinalNode.info?.idNetwork?.set(opcNode.nodeId.toString());
 		}
+	}
+
+
+	private async _getEndpoint(id: string): Promise<SpinalNode | undefined> {
+		return this.endpoints[id] || this.nodes[id] || this._findNodeInTree(id);
+	}
+
+	private async _findNodeInTree(id: string): Promise<SpinalNode | undefined> {	
+
+		const existingNode = this.nodes[id];
+		if (existingNode) {
+			return existingNode;
+		}
+
+		let queue: SpinalNode[] = [...this._browseHistoryQueue]; // Start with the root device node
+		const visited = new Set<string>();
+		const batchSize = 50;
+
+		while (queue.length > 0) {
+
+			const currentBatch = queue.splice(0, batchSize);
+			const childrenResults = await Promise.all(currentBatch.map((node) => node.getChildrenInContext(this.context)));
+
+			for (const children of childrenResults) {
+				for (const child of children) {
+					const info = child.info.get();
+					const key = getNodeKey(info);
+
+					if (visited.has(key)) {
+						continue;
+					}
+
+					visited.add(key);
+
+					this.addNode(key, child);
+
+					if (key === id) {
+						this._browseHistoryQueue = queue;
+						return child;
+					}
+
+					queue.push(child);
+				}
+
+			}
+
+			this._browseHistoryQueue = queue;
+		}
+
+		return undefined; // Return undefined if not found after traversing the entire tree
+	}
+
+	public addNode(key: string, node: SpinalNode) {
+		const type = node.getType().get();
+
+		if (key) this.nodes[key] = node;
+		if (key && type === SpinalBmsEndpoint.nodeTypeName) this.endpoints[key] = node;
+	}
+
+	private _listenToProfileUpdate() { 
+		OPCUAProfileService.getInstance().on(PROFILE_UPDATE_EVENT, ({ profileId }) => { 
+			if (profileId === this.profileId) { 
+				spinalLog.log(`[SpinalDevice] - profile ${profileId} updated, restarting monitoring for device ${this.deviceInfo.name}`);
+				this.restartMonitoring();
+			}
+		})
+	}
+
+	private async _collectGraphData(): Promise<SpinalNode[]> {
+		let queue: SpinalNode[] = [this.device]; // Start with the root device node
+		const visited = new Set<string>();
+		const batchSize = 50;
+		const allNodes: SpinalNode[] = [];
+
+		while (queue.length > 0) {
+
+			const currentBatch = queue.splice(0, batchSize);
+			const childrenResults = await Promise.all(currentBatch.map((node) => node.getChildrenInContext(this.context)));
+
+			for (const children of childrenResults) {
+				for (const child of children) {
+					const info = child.info.get();
+					const key = getNodeKey(info);
+
+					if (visited.has(key)) {
+						continue;
+					}
+
+					visited.add(key);
+					allNodes.push(child);
+					this.addNode(key, child);
+					queue.push(child);
+				}
+
+			}
+
+			this._browseHistoryQueue = queue;
+		}
+
+		return allNodes; // Return all collected nodes
+	}
+
+	private async _checkInitAndUpdate() { 
+		const waitInitProm = new Promise((resolve, reject) => {
+			const initFinished = () => {
+				if (!this.isInit) {
+					setTimeout(initFinished, 1000);
+					return;
+				}
+
+				resolve(true);
+			}
+			initFinished();
+		})
+
+
+		return waitInitProm.then(() => {
+			const promises = this._updateQueue.map(({ nodes, isCov, date }) => this.updateEndpointsDirectly(nodes, isCov, date));
+			this._updateQueue = [];
+			return Promise.all(promises);
+		})
 	}
 }

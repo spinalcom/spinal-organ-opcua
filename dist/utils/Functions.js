@@ -33,8 +33,8 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 };
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearOrganModel = exports.clearnOrgan = exports.consumeBatch = exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindModels = exports.GetPm2Instance = exports.WaitModelReady = void 0;
+const displayLog_1 = require("./displayLog");
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
-const spinal_model_opcua_1 = require("spinal-model-opcua");
 const node_opcua_1 = require("node-opcua");
 const spinal_env_viewer_graph_service_1 = require("spinal-env-viewer-graph-service");
 const spinal_connector_service_1 = require("spinal-connector-service");
@@ -44,31 +44,25 @@ const SpinalPilot_1 = require("../modules/SpinalPilot");
 const pm2 = require("pm2");
 const utils_1 = require("./utils");
 const clearOrgan_1 = require("./clearOrgan");
-// import { SpinalDevice } from "../modules/SpinalDevice";
-// import { SpinalNetworkServiceUtilities } from "./SpinalNetworkServiceUtilities";
-// import { spinalMonitoring } from "../modules/SpinalMonitoring";
-const Q = require("q");
+const lodash = require("lodash");
 const WaitModelReady = () => {
-    const deferred = Q.defer();
-    const WaitModelReadyLoop = (defer) => {
-        if (spinal_core_connectorjs_type_1.FileSystem._sig_server === false) {
-            setTimeout(() => {
-                defer.resolve(WaitModelReadyLoop(defer));
-            }, 200);
-        }
-        else {
-            defer.resolve();
-        }
-        return defer.promise;
-    };
-    return WaitModelReadyLoop(deferred);
+    return new Promise((resolve) => {
+        const waitLoop = () => {
+            if (spinal_core_connectorjs_type_1.FileSystem._sig_server === false) {
+                setTimeout(waitLoop, 200);
+                return;
+            }
+            resolve(true);
+        };
+        waitLoop();
+    });
 };
 exports.WaitModelReady = WaitModelReady;
 const GetPm2Instance = (organName) => {
     return new Promise((resolve, reject) => {
         pm2.list((err, apps) => {
             if (err) {
-                console.error(err);
+                displayLog_1.default.error(err);
                 return reject(err);
             }
             const instance = apps.find((app) => app.name === organName);
@@ -77,22 +71,22 @@ const GetPm2Instance = (organName) => {
     });
 };
 exports.GetPm2Instance = GetPm2Instance;
-function findFileInDirectory(directory, fileName) {
-    return new Promise((resolve, reject) => {
-        for (let index = 0; index < directory.length; index++) {
-            const element = directory[index];
-            const elementName = element.name.get();
-            if (elementName.toLowerCase() === `${fileName}.conf`.toLowerCase()) {
-                return element.load((file) => {
-                    (0, exports.WaitModelReady)().then(() => {
-                        resolve(file);
-                    });
-                });
-            }
-        }
-        resolve(undefined);
-    });
-}
+// function findFileInDirectory(directory: spinal.Directory, fileName: string): Promise<SpinalOrganOPCUA | void> {
+// 	return new Promise((resolve, reject) => {
+// 		for (let index = 0; index < directory.length; index++) {
+// 			const element = directory[index];
+// 			const elementName = element.name.get();
+// 			if (elementName.toLowerCase() === `${fileName}.conf`.toLowerCase()) {
+// 				return element.load((file: SpinalOrganOPCUA) => {
+// 					WaitModelReady().then(() => {
+// 						resolve(file);
+// 					});
+// 				});
+// 			}
+// 		}
+// 		resolve(undefined);
+// 	});
+// }
 ////////////////////////////////////////////////
 ////                 CALLBACKS                //
 ////////////////////////////////////////////////
@@ -101,9 +95,9 @@ function bindModels(organModel) {
         if (!organIsCompatible(organModel)) {
             if (!clearnOrgan())
                 throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
-            console.log("[bindModels] - Clearing organ model...");
+            displayLog_1.default.log("[bindModels] - Clearing organ model...");
             yield clearOrganModel(organModel);
-            console.log("[bindModels] - Organ model cleared. Rebinding models...");
+            displayLog_1.default.log("[bindModels] - Organ model cleared. Rebinding models...");
         }
         const { discover, listener, pilot } = yield organModel.getModels();
         if (!discover || !listener || !pilot) {
@@ -192,7 +186,7 @@ const SpinalListnerCallback = (spinalListenerModel, organModel) => __awaiter(voi
     var _a;
     const itsForme = yield checkOrgan(spinalListenerModel, (_a = organModel.id) === null || _a === void 0 ? void 0 : _a.get());
     if (itsForme)
-        SpinalMonitoring_1.spinalMonitoring.addToMonitoringList(spinalListenerModel);
+        SpinalMonitoring_1.spinalMonitoring.addToDeviceToMonitorQueue(spinalListenerModel);
 });
 exports.SpinalListnerCallback = SpinalListnerCallback;
 const SpinalDiscoverCallback = (spinalDisoverModel, organModel) => __awaiter(void 0, void 0, void 0, function* () {
@@ -267,24 +261,22 @@ function restartProcessById(instanceId) {
     });
 }
 exports.restartProcessById = restartProcessById;
-function consumeBatch(items, batchSize, callback) {
+function consumeBatch(functions, batchSize) {
     return __awaiter(this, void 0, void 0, function* () {
-        if (!items.length)
+        if (!functions.length)
             return [];
         const safeBatchSize = Math.max(1, batchSize);
-        const results = new Array(items.length);
-        for (let start = 0; start < items.length; start += safeBatchSize) {
-            const end = Math.min(start + safeBatchSize, items.length);
-            const batchPromises = [];
-            for (let index = start; index < end; index += 1) {
-                const item = items[index];
-                batchPromises.push(callback(item, index).then((result) => {
-                    results[index] = result;
-                }));
-            }
-            yield Promise.all(batchPromises);
+        const chunks = lodash.chunk(functions, safeBatchSize);
+        const result = [];
+        for (const chunk of chunks) {
+            const chunkResults = yield Promise.allSettled(chunk.map(fn => fn()));
+            result.push(...chunkResults);
         }
-        return results;
+        return result.reduce((acc, item) => {
+            if (item.status === "fulfilled")
+                acc.push(item.value);
+            return acc;
+        }, []);
     });
 }
 exports.consumeBatch = consumeBatch;
@@ -295,17 +287,22 @@ function clearnOrgan() {
 }
 exports.clearnOrgan = clearnOrgan;
 function organIsCompatible(organModel) {
-    if (organModel.discover instanceof spinal_model_opcua_1.SpinalOPCUADiscoverModel && organModel.listener instanceof spinal_model_opcua_1.SpinalOPCUAListener && organModel.pilot instanceof spinal_model_opcua_1.SpinalOPCUAPilot)
+    if (organModel.discover instanceof spinal_connector_service_1.ModelsInfo && organModel.listener instanceof spinal_connector_service_1.ModelsInfo && organModel.pilot instanceof spinal_connector_service_1.ModelsInfo)
         return true;
     return false;
 }
 function clearOrganModel(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
-        organModel.rem_attr("discover");
-        organModel.rem_attr("listener");
-        organModel.rem_attr("pilot");
-        yield (0, clearOrgan_1.clearOrgan)(organModel);
-        return organModel.initializeModelsList();
+        yield (0, clearOrgan_1.clearOrgan)(organModel)
+            .then(() => {
+            organModel.rem_attr("discover");
+            organModel.rem_attr("listener");
+            organModel.rem_attr("pilot");
+            return organModel.initializeModelsList(); // Reinitialize the models list after clearing the organ model
+        })
+            .catch((err) => {
+            displayLog_1.default.error("[clearOrganModel] - Error clearing organ model:", err);
+        });
     });
 }
 exports.clearOrganModel = clearOrganModel;

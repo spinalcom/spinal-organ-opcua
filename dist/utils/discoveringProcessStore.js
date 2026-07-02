@@ -3,6 +3,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.discoveringStore = void 0;
 const fs = require("fs");
 const path = require("path");
+const displayLog_1 = require("./displayLog");
 class DiscoveringStore {
     constructor() {
         this.discoveringFolder = path.resolve(__dirname + '../../../discover.db');
@@ -44,7 +45,7 @@ class DiscoveringStore {
             fs.writeFileSync(filePath, data);
         }
         catch (error) {
-            console.warn('Error writing file', error.message);
+            displayLog_1.default.warn('Error writing file', error.message);
         }
     }
     fileExist(url) {
@@ -57,7 +58,7 @@ class DiscoveringStore {
                 fs.mkdirSync(this.discoveringFolder);
         }
         catch (error) {
-            console.error('Error creating discovering folder', error);
+            displayLog_1.default.error('Error creating discovering folder', error);
         }
     }
     _createFilePath(url) {

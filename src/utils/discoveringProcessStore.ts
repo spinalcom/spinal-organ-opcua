@@ -1,5 +1,6 @@
 import * as fs from 'fs';
 import * as path from 'path';
+import spinalLog from "./displayLog";
 
 class DiscoveringStore {
     private static _instance: DiscoveringStore;
@@ -49,7 +50,7 @@ class DiscoveringStore {
 
             fs.writeFileSync(filePath, data);
         } catch (error) {
-            console.warn('Error writing file', error.message);
+            spinalLog.warn('Error writing file', error.message);
         }
 
     }
@@ -63,7 +64,7 @@ class DiscoveringStore {
         try {
             if (!fs.existsSync(path)) fs.mkdirSync(this.discoveringFolder);
         } catch (error) {
-            console.error('Error creating discovering folder', error);
+            spinalLog.error('Error creating discovering folder', error);
         }
     }
 

@@ -1,10 +1,20 @@
 "use strict";
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getNodeKey = exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
+exports.executeConcurrently = exports.getNodeKey = exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
 const path = require("path");
 const dotenv_1 = require("dotenv");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
+const lodash = require("lodash");
 (0, dotenv_1.config)({ path: path.resolve(__dirname, "../../.env"), override: true });
 function getConfig() {
     return {
@@ -99,7 +109,7 @@ exports.coerceStringToDataType = coerceStringToDataType;
 function discoverIsCancelled(_discoverModel) {
     var _a;
     if (!_discoverModel)
-        return true; // if no model is provided, we consider that the discover is not cancelled, as we have no way to know
+        return true; // if no model is provided, we consider that the discover is cancelled
     return !_discoverModel || ((_a = _discoverModel.state) === null || _a === void 0 ? void 0 : _a.get()) == spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled;
 }
 exports.discoverIsCancelled = discoverIsCancelled;
@@ -126,4 +136,15 @@ function getNodeKey(opcNode) {
     return normalizePath(opcNode.path || "") || ((_a = opcNode.nodeId) === null || _a === void 0 ? void 0 : _a.toString()) || ((_b = opcNode.idNetwork) === null || _b === void 0 ? void 0 : _b.toString()) || "";
 }
 exports.getNodeKey = getNodeKey;
+function executeConcurrently(list, fn, concurrencyLimit = 10) {
+    return __awaiter(this, void 0, void 0, function* () {
+        const results = [];
+        const chunks = lodash.chunk(list, concurrencyLimit);
+        for (const chunk of chunks) {
+            results.push(...(yield Promise.all(chunk.map(fn))));
+        }
+        return results;
+    });
+}
+exports.executeConcurrently = executeConcurrently;
 //# sourceMappingURL=utils.js.map

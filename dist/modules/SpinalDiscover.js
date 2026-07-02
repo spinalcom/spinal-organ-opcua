@@ -20,6 +20,7 @@ const discoveringProcessStore_1 = require("../utils/discoveringProcessStore");
 const utils_1 = require("../utils/utils");
 const SpinalQueuing_1 = require("../utils/SpinalQueuing");
 const OPCUAFactory_1 = require("../utils/OPCUAFactory");
+const displayLog_1 = require("../utils/displayLog");
 // import * as testJSON from "./test.json";
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
 class SpinalDiscover extends events_1.EventEmitter {
@@ -99,7 +100,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 if (discovered.length === 0)
                     throw "No Device found";
                 yield model.setTreeDiscovered({ nodeId: "root", displayName: "Root", children: discovered });
-                console.log(`${(_b = (_a = model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get()} discovered !!`);
+                displayLog_1.default.log(`${(_b = (_a = model.network) === null || _a === void 0 ? void 0 : _a.name) === null || _b === void 0 ? void 0 : _b.get()} discovered !!`);
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered);
                 return discovered;
             }
@@ -116,11 +117,11 @@ class SpinalDiscover extends events_1.EventEmitter {
             let useLastResult = false;
             // if file exist we ask the user if he wants to use the last result or start from scratch
             if (discoveringProcessStore_1.default.fileExist(_url)) {
-                // 	console.log("inside file exist");
+                // 	spinalLog.log("inside file exist");
                 // 	useLastResult = await this.askToContinueDiscovery(model);
                 useLastResult = (yield ((_a = model === null || model === void 0 ? void 0 : model.useLastResult) === null || _a === void 0 ? void 0 : _a.get())) || false;
             }
-            console.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
+            displayLog_1.default.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
             const discoverResult = yield this._getOPCUATree(server, useLastResult, model, true);
             if (!discoverResult)
                 return;
@@ -169,7 +170,7 @@ class SpinalDiscover extends events_1.EventEmitter {
                 return result;
             }))
                 .catch((err) => __awaiter(this, void 0, void 0, function* () {
-                console.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
+                displayLog_1.default.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
                 throw err;
                 // model.changeState(OPCUA_ORGAN_STATES.error);
             }))
@@ -183,7 +184,7 @@ class SpinalDiscover extends events_1.EventEmitter {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                console.log("creating networkTree");
+                displayLog_1.default.log("creating networkTree");
                 const { protocol, host, port } = (0, utils_1.getConfig)();
                 const hubPath = `${protocol}://${host}:${port}`;
                 const treeToCreate = yield model.getTreeToCreate(hubPath);
@@ -203,10 +204,10 @@ class SpinalDiscover extends events_1.EventEmitter {
                     yield (0, transformTreeToGraph_1._transformTreeToGraphRecursively)(context, nodeTocreate, deviceData.nodesAlreadyCreated, network, deviceData.values);
                 }
                 yield model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.created);
-                console.log("network", network.getName().get(), "created !!");
+                displayLog_1.default.log("network", network.getName().get(), "created !!");
             }
             catch (error) {
-                console.error(error);
+                displayLog_1.default.error(error);
                 model.changeState(spinal_model_opcua_1.OPCUA_ORGAN_STATES.error);
             }
         });

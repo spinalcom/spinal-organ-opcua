@@ -1,8 +1,7 @@
 import { OPCUAClient, NodeClass, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, DataValue, DataType, coerceNodeId, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, StatusCode, LocalizedText, DeadbandType, ObjectIds } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
-import * as lodash from "lodash";
-import { coerceStringToDataType, convertToBrowseDescription, discoverIsCancelled, normalizePath } from "./utils";
+import { coerceStringToDataType, convertToBrowseDescription, discoverIsCancelled, executeConcurrently, normalizePath } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
 import discoveringStore from "./discoveringProcessStore";
@@ -10,6 +9,8 @@ import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua
 import { ITreeOption } from "../interfaces/ITreeOption";
 import { NAMES_TO_IGNORE, noSessionError, noSubscriptionError } from "./constants";
 import OPCUAFactory from "./OPCUAFactory";
+import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
+import spinalLog from "./displayLog";
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 
@@ -47,14 +48,15 @@ export class OPCUAService extends EventEmitter {
 			securityMode: MessageSecurityMode.None,
 			securityPolicy: SecurityPolicy.None,
 			endpointMustExist: false,
-			defaultSecureTokenLifetime: 30 * 1000,
-			requestedSessionTimeout: 50 * 1000,
+			defaultSecureTokenLifetime: 2 * 60 * 1000, // 2 minutes
+			requestedSessionTimeout: 5 * 60 * 1000, // 5 minutes
 			keepSessionAlive: true,
-			transportTimeout: 30 * 1000,
+			transportTimeout: 90 * 1000, // 90 seconds
 			connectionStrategy: {
 				// maxRetry: 3,
 				initialDelay: 1000,
-				// maxDelay: 5 * 1000,
+				maxDelay: 10 * 1000,
+				randomisationFactor: 0.2 // 20% randomisation
 			},
 		});
 
@@ -66,7 +68,7 @@ export class OPCUAService extends EventEmitter {
 	private _listenClientEvents(client: OPCUAClient): void {
 		client.on("backoff", (number, delay) => {
 			// if (number === 1) return client.disconnect();
-			// console.log(`connection failed, retrying attempt ${number + 1}`)
+			// spinalLog.log(`connection failed, retrying attempt ${number + 1}`)
 		});
 
 		client.on("after_reconnection", () => {
@@ -81,7 +83,7 @@ export class OPCUAService extends EventEmitter {
 		});
 	}
 
-	public async checkAndRetablishConnection(): Promise<void> {
+	public async checkAndRetablishConnection(userIdentity?: UserIdentityInfo): Promise<void> {
 		if (this.client && this.session) return;
 
 		this.client = await this.createClient();
@@ -104,18 +106,18 @@ export class OPCUAService extends EventEmitter {
 
 			return session;
 		} catch (err) {
-			console.log(" Cannot create session ", (err as Error).toString());
+			spinalLog.log(" Cannot create session ", (err as Error).toString());
 			throw err;
 		}
 	}
 
 	private _listenSessionEvent(session: ClientSession): void {
 		session.on("session_closed", () => {
-			// console.log(" Warning => Session closed");
+			// spinalLog.log(" Warning => Session closed");
 			this.reconnect();
 		});
 		// session.on("keepalive", () => {
-		// 	// console.log("session keepalive");
+		// 	// spinalLog.log("session keepalive");
 		// })
 		session.on("keepalive_failure", () => {
 			this.reconnect();
@@ -137,7 +139,7 @@ export class OPCUAService extends EventEmitter {
 
 			return this.session.createSubscription2(parameters);
 		} catch (error) {
-			console.log("cannot create subscription !", (error as Error).message);
+			spinalLog.log("cannot create subscription !", (error as Error).message);
 			throw error;
 		}
 	}
@@ -151,7 +153,7 @@ export class OPCUAService extends EventEmitter {
 			this.session = await this._createSession();
 			this.subscription = await this.createSubscription();
 		} catch (error) {
-			console.log(`Cannot connect to ${this.endpointUrl} with userIdentity ${JSON.stringify(this.userIdentity)} !`, (error as Error).message);
+			spinalLog.log(`Cannot connect to ${this.endpointUrl} with userIdentity ${JSON.stringify(this.userIdentity)} !`, (error as Error).message);
 			throw error;
 		}
 	}
@@ -168,7 +170,7 @@ export class OPCUAService extends EventEmitter {
 
 			this.isReconnecting = false;
 		} catch (error) {
-			console.log(`Reconnection failed to ${this.endpointUrl}`, error);
+			spinalLog.log(`Reconnection failed to ${this.endpointUrl}`, error);
 			this.isReconnecting = false;
 			// OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
 		}
@@ -184,7 +186,8 @@ export class OPCUAService extends EventEmitter {
 
 		// get the queue and nodesObj from the last discover or create a new one
 		let { nodesObj, queue, browseMode } = await this._getDiscoverStarterData(entryPointPath, options.useLastResult);
-		console.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
+
+		spinalLog.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
 
 		while (queue.length && !discoverIsCancelled(this._discoverModel)) {
 			let discoverState = null;
@@ -200,8 +203,8 @@ export class OPCUAService extends EventEmitter {
 
 				queue.push(...newsItems);
 
-				if (newsItems.length) console.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
-				console.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
+				if (newsItems.length) spinalLog.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
+				spinalLog.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
 			} catch (error) {
 				queue.unshift(...chunked); // if an error occurs, put the nodes back in the queue
 				_error = error;
@@ -219,7 +222,7 @@ export class OPCUAService extends EventEmitter {
 		if (discoverIsCancelled(this._discoverModel)) return;
 
 		const { tree, variables } = await this._convertObjToTree(entryPointPath, nodesObj);
-		console.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
+		spinalLog.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
 		return { tree, variables };
 	}
 
@@ -268,25 +271,24 @@ export class OPCUAService extends EventEmitter {
 		if (!this.session) throw noSessionError;
 
 		node = Array.isArray(node) ? node : [node];
-		const chunckSize = 100; // read 100 nodes at a time to avoid timeout errors
-		const nodesChunk = lodash.chunk(node, chunckSize);
 
-		const promises = nodesChunk.map((chunk) => this.readNode(chunk));
+		const chunckSize = 10; // read 10 nodes at a time to avoid timeout errors
 
-		return Promise.allSettled(promises)
-			.then((results) => {
-				const dataValues = [];
-				for (const result of results) {
-					if (result.status === "fulfilled") {
-						dataValues.push(...result.value);
-					}
-				}
+		// execute the readNode function concurrently for each node in the array, 
+		// with a maximum of chunckSize concurrent executions
+		const results = await executeConcurrently<IOPCNode, DataValue[]>(node, (n) => {
+			spinalLog.log(`Reading node value for ${n.path} (${n.nodeId.toString()})`);
+			return this.readNode(n);
+		}, chunckSize);
+		
+		
+		const dataValues = [];
+		
+		for (const result of results) { 
+			dataValues.push(...result);
+		}
 
-				return dataValues.map((dataValue) => this._formatDataValue(dataValue));
-			})
-			.finally(async () => {
-				await this.disconnect();
-			});
+		return dataValues.map((dataValue) => this._formatDataValue(dataValue));
 	}
 
 	public async writeNode(node: IOPCNode, value: any): Promise<any> {
@@ -311,7 +313,7 @@ export class OPCUAService extends EventEmitter {
 				if (statusCode.isGoodish()) isGood = true;
 			}
 
-			console.log("statusCode", statusCode);
+			spinalLog.log("statusCode", statusCode);
 
 			if (!isGood) throw new Error("Cannot write value: " + value + " to node: " + node.nodeId + " with any data type");
 			return statusCode;
@@ -358,21 +360,14 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-	public async getNodeIdByPath(nodePath: string = ""): Promise<string | void> {
-		try {
-			const nodeInfo = await this.getNodeByPath(nodePath);
-			if (!nodeInfo) return;
-
-			return nodeInfo?.nodeId?.toString();
-		} catch (error) {
-			return;
-		}
-	}
-
 	public async getNodeByPath(nodePath: string = ""): Promise<IOPCNode | void> {
 		try {
+			await this.checkAndRetablishConnection();
 			if (!this.session) throw noSessionError;
+			const entryPoint: string = process.env.OPCUA_SERVER_ENTRYPOINT || "";
 
+			// TODO: edit the path to make sure it starts with /Objects and the entry point
+			// if(!nodePath.startsWith(entryPoint)) nodePath = entryPoint + nodePath;
 			if (!nodePath.startsWith("/Objects")) nodePath = "/Objects/" + nodePath;
 
 			nodePath = normalizePath(nodePath);
@@ -396,6 +391,18 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
+	public async getNodeIdByPath(nodePath: string = ""): Promise<string | void> {
+		try {
+			const nodeInfo = await this.getNodeByPath(nodePath);
+			if (!nodeInfo) return;
+
+			return nodeInfo?.nodeId?.toString();
+		} catch (error) {
+			return;
+		}
+	}
+
+
 	public static isVariable(node: IOPCNode): boolean {
 		return node.nodeClass === NodeClass.Variable;
 	}
@@ -404,25 +411,21 @@ export class OPCUAService extends EventEmitter {
 		return node.nodeClass === NodeClass.Object;
 	}
 
-	public getNodesNewInfoByPath(nodes: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
+	public async getNodesNewInfoByPath(nodes: IOPCNode | IOPCNode[]): Promise<IOPCNode[]> {
 		if (!Array.isArray(nodes)) nodes = [nodes];
+		const chunkSize = 10;
 
-		const promises = nodes.map((node) => this.getNodeByPath(node.path));
+		const paths = nodes.map((node) => node.path || "");
 
-		return Promise.all(promises).then((result) => {
-			const res = [];
-			for (let i = 0; i < result.length; i++) {
-				const element = result[i];
-				if (!element) {
-					console.log(`Node with path ${nodes[i].path} not found anymore, it may have been deleted`);
-					continue;
-				}
+		const result = await executeConcurrently<string, IOPCNode | void>(paths, this.getNodeByPath.bind(this), chunkSize);
 
-				res.push(element);
-			}
 
-			return res;
-		});
+		return result.reduce((acc: IOPCNode[], node: IOPCNode | void, index: number) => { 
+			if (node) acc.push(node);
+			else spinalLog.log(`Node with path ${nodes[index].path} not found anymore, it may have been deleted`);
+			return acc;
+		}, [])
+		
 	}
 
 	///////////////////////////////////////////////////////////////////////////
@@ -431,7 +434,7 @@ export class OPCUAService extends EventEmitter {
 		const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
 		const node = nodeIdToNode[nodeId];
 
-		console.log(`Monitor ${node.path} with COV`);
+		// spinalLog.log(`Monitor ${node.path} with COV`);
 
 		monitoredItem.on("changed", (dataValue: DataValue) => {
 			const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
@@ -444,7 +447,7 @@ export class OPCUAService extends EventEmitter {
 		monitoredItem.on("err", (err: Error) => {
 			const nodeId = monitoredItem.itemToMonitor.nodeId.toString();
 			const node = nodeIdToNode[nodeId];
-			console.log(`[Error - COV] - ${node.path} due to: ${err.message}`);
+			spinalLog.log(`[Error - COV] - ${node.path} due to: ${err.message}`);
 		});
 	}
 
@@ -528,7 +531,8 @@ export class OPCUAService extends EventEmitter {
 			{ nodeId, attributeId: AttributeIds.Value },
 		];
 
-		const [displayNameData, browseNameData, nodeClassData, valueData] = await this.session.read(attributesToRead);
+		const [browseNameData, displayNameData, nodeClassData, valueData] = await this.session.read(attributesToRead);
+
 		const displayName = this._formatDataValue(displayNameData);
 		const browseName = this._formatDataValue(browseNameData);
 		const nodeClass = nodeClassData.value.value as NodeClass;
@@ -702,7 +706,7 @@ export class OPCUAService extends EventEmitter {
 		const rootNodeId = resolveNodeId(ObjectIds.RootFolder).toString();
 
 		let currentNode: IOPCNode | undefined = await this.readNodeDescription(rootNodeId, ""); // RootFolder nodeId
-		if (!currentNode) console.log(`RootFolder node not found`);
+		if (!currentNode) spinalLog.log(`RootFolder node not found`);
 
 		const pathSplitted = path.split("/").filter((el) => el !== "");
 

@@ -16,6 +16,7 @@ const Functions_1 = require("./utils/Functions");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
 const spinal_connector_service_1 = require("spinal-connector-service");
 const nodePath = require("path");
+const displayLog_1 = require("./utils/displayLog");
 // dotenvConfig({ path: nodepath.resolve(__dirname, "../.env"), override: true });
 const { protocol, host, port, userId, password, path, name } = (0, utils_1.getConfig)();
 const url = `${protocol}://${userId}:${password}@${host}:${port}/`;
@@ -40,10 +41,10 @@ spinalConnectorService
         organModel.restart.bind(() => (0, Functions_1.restartProcessById)(pm2_id));
     // end of restart function to bind
     const message = alreadyExists ? "organ found !" : "organ not found, creating new organ !";
-    console.log(message);
+    displayLog_1.default.log(message);
     (0, Functions_1.bindModels)(organModel);
 }))
     .catch((err) => {
-    console.error(err);
+    displayLog_1.default.error(err);
 });
 //# sourceMappingURL=index.js.map

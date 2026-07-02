@@ -5,6 +5,7 @@ import { bindModels, GetPm2Instance, restartProcessById } from "./utils/Function
 import { OPCUA_ORGAN_TYPE, SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { IConnectorInfo, SpinalConnectorService } from "spinal-connector-service";
 import * as nodePath from "path";
+import spinalLog from "./utils/displayLog";
 
 // dotenvConfig({ path: nodepath.resolve(__dirname, "../.env"), override: true });
 
@@ -34,10 +35,10 @@ spinalConnectorService
 		// end of restart function to bind
 
 		const message = alreadyExists ? "organ found !" : "organ not found, creating new organ !";
-		console.log(message);
+		spinalLog.log(message);
 
 		bindModels(organModel);
 	})
 	.catch((err) => {
-		console.error(err);
+		spinalLog.error(err);
 	});

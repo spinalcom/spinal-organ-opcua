@@ -11,6 +11,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.clearOrgan = void 0;
 const spinal_model_bmsnetwork_1 = require("spinal-model-bmsnetwork");
+const displayLog_1 = require("./displayLog");
 function clearOrgan(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
         const references = yield getAllOrganReferences(organModel);
@@ -34,7 +35,7 @@ function getAllOrganReferences(organModel) {
 function clearReference(reference) {
     return __awaiter(this, void 0, void 0, function* () {
         const { devices, endpoints } = yield getDeviceAndEndpointsFromOrgan(reference);
-        console.log(`Clearing reference: ${reference.getName().get()} with ${devices.length} devices and ${endpoints.length} endpoints.`);
+        displayLog_1.default.log(`Clearing reference: ${reference.getName().get()} with ${devices.length} devices and ${endpoints.length} endpoints.`);
         devices.forEach(clearDevice);
         endpoints.forEach(clearEndpoint);
     });

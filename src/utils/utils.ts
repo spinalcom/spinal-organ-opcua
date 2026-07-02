@@ -5,6 +5,7 @@ import { SpinalNode } from "spinal-env-viewer-graph-service";
 import * as path from "path";
 import { config as dotenvConfig } from "dotenv";
 import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua";
+import * as lodash from "lodash";
 
 dotenvConfig({ path: path.resolve(__dirname, "../../.env"), override: true });
 
@@ -99,7 +100,7 @@ export function coerceStringToDataType(dataType: DataType, arrayType: number, Va
 }
 
 export function discoverIsCancelled(_discoverModel?: SpinalOPCUADiscoverModel): boolean {
-	if (!_discoverModel) return true; // if no model is provided, we consider that the discover is not cancelled, as we have no way to know
+	if (!_discoverModel) return true; // if no model is provided, we consider that the discover is cancelled
 
 	return !_discoverModel || _discoverModel.state?.get() == OPCUA_ORGAN_STATES.cancelled;
 }
@@ -127,4 +128,18 @@ export function normalizePath(nodePath: string): string {
 
 export function getNodeKey(opcNode: IOPCNode): string {
 	return normalizePath(opcNode.path || "") || opcNode.nodeId?.toString() || opcNode.idNetwork?.toString() || "";
+}
+
+
+export async function executeConcurrently<T, R>(list: T[], fn: (item: T) => Promise<R>, concurrencyLimit: number = 10): Promise<R[]> { 
+
+	const results: R[] = [];
+	const chunks: T[][] = lodash.chunk(list, concurrencyLimit);
+
+	for (const chunk of chunks) { 
+		results.push(...(await Promise.all(chunk.map(fn))));
+	}
+
+	return results;
+
 }

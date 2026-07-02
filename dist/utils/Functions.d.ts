@@ -1,7 +1,8 @@
 import { SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { IOPCNode, IServer } from "../interfaces/OPCNode";
-export declare const WaitModelReady: () => Promise<any>;
-export declare const GetPm2Instance: (organName: string) => Promise<unknown>;
+import * as pm2 from "pm2";
+export declare const WaitModelReady: () => Promise<boolean>;
+export declare const GetPm2Instance: (organName: string) => Promise<pm2.ProcessDescription | undefined>;
 export declare function bindModels(organModel: SpinalOrganOPCUA): Promise<void>;
 export declare const SpinalListnerCallback: (spinalListenerModel: SpinalOPCUAListener, organModel: SpinalOrganOPCUA) => Promise<void>;
 export declare const SpinalDiscoverCallback: (spinalDisoverModel: SpinalOPCUADiscoverModel, organModel: SpinalOrganOPCUA) => Promise<void | boolean>;
@@ -9,6 +10,6 @@ export declare const SpinalPilotCallback: (spinalPilotModel: SpinalOPCUAPilot, o
 export declare function getVariablesList(tree: IOPCNode): IOPCNode[];
 export declare function getServerUrl(serverInfo: IServer): string;
 export declare function restartProcessById(instanceId: string | number): Promise<boolean>;
-export declare function consumeBatch<T, R>(items: T[], batchSize: number, callback: (item: T, index: number) => Promise<R>): Promise<R[]>;
+export declare function consumeBatch<R>(functions: (() => Promise<R>)[], batchSize: number): Promise<R[]>;
 export declare function clearnOrgan(): boolean;
 export declare function clearOrganModel(organModel: SpinalOrganOPCUA): Promise<void>;

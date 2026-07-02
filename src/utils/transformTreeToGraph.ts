@@ -192,11 +192,11 @@ function _formatTree(tree: IOPCNode) {
 	const result: { children: IOPCNode[]; attributes: IOPCNode[] } = { children: [], attributes: [] };
 
 	for (const item of tree.children || []) {
-		if (item.nodeClass == NodeClass.Variable && (!item?.children || item?.children?.length == 0)) {
-			result.attributes.push(item);
-		} else {
+		// if (item.nodeClass == NodeClass.Variable && (!item?.children || item?.children?.length == 0)) {
+		// 	result.attributes.push(item);
+		// } else {
 			result.children.push(item);
-		}
+		// }
 	}
 
 	return result;

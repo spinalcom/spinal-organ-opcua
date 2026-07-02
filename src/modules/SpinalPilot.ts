@@ -4,6 +4,7 @@ import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalOPCUAPilot, IRequest } from "spinal-model-opcua";
 import OPCUAFactory from "../utils/OPCUAFactory";
 import { IOPCNode } from "../interfaces/OPCNode";
+import spinalLog from "../utils/displayLog";
 
 class SpinalPilot {
 	// private queue: SpinalQueuing = new SpinalQueuing();
@@ -22,7 +23,7 @@ class SpinalPilot {
 		try {
 			if (!request) throw new Error("No requests found in the pilot model");
 
-			console.log(`sending update request to ${request.path} with value ${request.value}`);
+			spinalLog.log(`sending update request to ${request.path} with value ${request.value}`);
 
 			const url = getServerUrl(request.networkInfo);
 
@@ -38,9 +39,9 @@ class SpinalPilot {
 			// await opcuaService.disconnect(); // disconnect after the write operation
 
 			this.spinalPilotModel?.setSuccessMode();
-			console.log(`[${request.path}] updated successfully`);
+			spinalLog.log(`[${request.path}] updated successfully`);
 		} catch (error) {
-			console.log(`the update of [${request.path}] failed due to error: ${(error as Error).message}`);
+			spinalLog.log(`the update of [${request.path}] failed due to error: ${(error as Error).message}`);
 			this.spinalPilotModel?.setErrorMode();
 		}
 

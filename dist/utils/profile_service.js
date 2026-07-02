@@ -9,7 +9,9 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OPCUAProfileService = exports.INTERVAL_TO_ITEM = exports.ITEM_LIST_TO_ITEM = exports.SUPERVISION_TO_INTERVAL = exports.PROFILE_TO_SUPERVISION = exports.PROFILE_TO_ITEMS_GROUP = exports.CONTEXT_TO_PROFILE_RELATION = exports.INTERVAL_TYPE = exports.SUPERVISION_TYPE = exports.ITEM_TYPE = exports.ITEM_LIST_TYPE = exports.PROFILE_TYPE = exports.CONTEXT_TYPE = exports.SUPERVISION_NAME = exports.ITEMS_GROUP_NAME = exports.CONTEXT_NAME = void 0;
+exports.OPCUAProfileService = exports.PROFILE_UPDATE_EVENT = exports.INTERVAL_TO_ITEM = exports.ITEM_LIST_TO_ITEM = exports.SUPERVISION_TO_INTERVAL = exports.PROFILE_TO_SUPERVISION = exports.PROFILE_TO_ITEMS_GROUP = exports.CONTEXT_TO_PROFILE_RELATION = exports.INTERVAL_TYPE = exports.SUPERVISION_TYPE = exports.ITEM_TYPE = exports.ITEM_LIST_TYPE = exports.PROFILE_TYPE = exports.CONTEXT_TYPE = exports.SUPERVISION_NAME = exports.ITEMS_GROUP_NAME = exports.CONTEXT_NAME = void 0;
+const events_1 = require("events");
+const displayLog_1 = require("./displayLog");
 // NAMES
 exports.CONTEXT_NAME = "OPCdeviceProfileContext";
 exports.ITEMS_GROUP_NAME = "Item_list";
@@ -28,9 +30,47 @@ exports.PROFILE_TO_SUPERVISION = "hasSupervision";
 exports.SUPERVISION_TO_INTERVAL = "hasIntervalTime";
 exports.ITEM_LIST_TO_ITEM = "hasItem";
 exports.INTERVAL_TO_ITEM = "hasItem";
-class OPCUAProfileService {
-    constructor() { }
-    static getItems(profile) {
+exports.PROFILE_UPDATE_EVENT = "profileUpdated";
+class OPCUAProfileService extends events_1.EventEmitter {
+    constructor() {
+        super();
+        this._profiles = new Map();
+        this._profileToDevices = new Map();
+        this._profileBinded = new Map();
+        this.setMaxListeners(0);
+    }
+    static getInstance() {
+        if (!OPCUAProfileService._instance) {
+            OPCUAProfileService._instance = new OPCUAProfileService();
+        }
+        return OPCUAProfileService._instance;
+    }
+    getProfile(profileId) {
+        return this._profiles.get(profileId);
+    }
+    initProfile(profile) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const profileId = profile.getId().get();
+            const profileInfo = this._profiles.get(profileId);
+            if (profileInfo && profileInfo.modificationDate === profile.info.indirectModificationDate.get()) {
+                return profileInfo;
+            }
+            const intervals = yield this.getIntervals(profile);
+            const data = { modificationDate: profile.info.indirectModificationDate.get(), node: profile, intervals };
+            this._profiles.set(profileId, data);
+            // this._addDeviceToProfile(profileId, deviceIds);
+            this._bindProfile(profile);
+            return data;
+        });
+    }
+    _addDeviceToProfile(profileId, deviceIds) {
+        if (!Array.isArray(deviceIds))
+            deviceIds = [deviceIds];
+        const ids = this._profileToDevices.get(profileId) || new Set();
+        deviceIds.forEach(id => ids.add(id));
+        this._profileToDevices.set(profileId, ids);
+    }
+    getItems(profile) {
         return __awaiter(this, void 0, void 0, function* () {
             const itemListNode = yield this.getItemListNode(profile);
             if (itemListNode)
@@ -38,13 +78,24 @@ class OPCUAProfileService {
             return [];
         });
     }
-    static getItemListNode(profile) {
+    getItemListNode(profile) {
         return __awaiter(this, void 0, void 0, function* () {
             const children = yield profile.getChildren([]);
             return children.find(el => el.getName().get() === exports.ITEMS_GROUP_NAME);
         });
     }
-    static getIntervals(profile) {
+    _bindProfile(profile) {
+        const profileId = profile.getId().get();
+        if (this._profileBinded.has(profileId))
+            return;
+        const bindProcess = profile.info.indirectModificationDate.bind(() => {
+            const devicesIds = this._profileToDevices.get(profileId) || new Set();
+            displayLog_1.default.log(`profile changed`);
+            this.emit(exports.PROFILE_UPDATE_EVENT, { profileId: profileId, devicesIds: Array.from(devicesIds) });
+        }, false);
+        this._profileBinded.set(profileId, bindProcess);
+    }
+    getIntervals(profile) {
         return __awaiter(this, void 0, void 0, function* () {
             const supervisionNode = yield this.getSupervisionNode(profile);
             if (supervisionNode) {
@@ -58,7 +109,7 @@ class OPCUAProfileService {
             return [];
         });
     }
-    static getSupervisionNode(profile) {
+    getSupervisionNode(profile) {
         return __awaiter(this, void 0, void 0, function* () {
             const children = yield profile.getChildren();
             return children.find(el => el.getName().get() === exports.SUPERVISION_NAME);
