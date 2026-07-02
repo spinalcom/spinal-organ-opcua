@@ -6,15 +6,14 @@ The purpose of this organ is to connect a client using OPC UA protocol with the 
 
 ## Table of Contents
 
--   [Installation](#installation)
--   [Configuration](#configuration)
--   [Usage] (#usage))
+-   [Usage](#usage)
+-   [Client] (#client plugin (interface))
 
 ## prerequisites
 
 spinal-organ-opcua requires at less : - node version 20+ - npm version 10+
 
-## Installation
+## Usage
 
 To install this connector clone it, then inside de folder run spinalcom-utils i.
 
@@ -42,7 +41,7 @@ OPCUA_SERVER_ENTRYPOINT="/"                     #if empty, the server will disco
 CLEAR_ORGAN_IF_NOT_COMPATIBLE="0" # clear organ if already use load_type version, possbible value 0 | 1
 ```
 
-## Usage
+After set .env informations, install it dependencies and launch the connector with npm run start
 
 ```
 # spinalcom-utils i
