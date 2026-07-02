@@ -56,7 +56,7 @@ export class OPCUAService extends EventEmitter {
 				// maxRetry: 3,
 				initialDelay: 1000,
 				maxDelay: 10 * 1000,
-				randomisationFactor: 0.2 // 20% randomisation
+				randomisationFactor: 0.2, // 20% randomisation
 			},
 		});
 
@@ -274,17 +274,20 @@ export class OPCUAService extends EventEmitter {
 
 		const chunckSize = 10; // read 10 nodes at a time to avoid timeout errors
 
-		// execute the readNode function concurrently for each node in the array, 
+		// execute the readNode function concurrently for each node in the array,
 		// with a maximum of chunckSize concurrent executions
-		const results = await executeConcurrently<IOPCNode, DataValue[]>(node, (n) => {
-			spinalLog.log(`Reading node value for ${n.path} (${n.nodeId.toString()})`);
-			return this.readNode(n);
-		}, chunckSize);
-		
-		
+		const results = await executeConcurrently<IOPCNode, DataValue[]>(
+			node,
+			(n) => {
+				spinalLog.log(`Reading node value for ${n.path} (${n.nodeId.toString()})`);
+				return this.readNode(n);
+			},
+			chunckSize,
+		);
+
 		const dataValues = [];
-		
-		for (const result of results) { 
+
+		for (const result of results) {
 			dataValues.push(...result);
 		}
 
@@ -402,7 +405,6 @@ export class OPCUAService extends EventEmitter {
 		}
 	}
 
-
 	public static isVariable(node: IOPCNode): boolean {
 		return node.nodeClass === NodeClass.Variable;
 	}
@@ -419,13 +421,11 @@ export class OPCUAService extends EventEmitter {
 
 		const result = await executeConcurrently<string, IOPCNode | void>(paths, this.getNodeByPath.bind(this), chunkSize);
 
-
-		return result.reduce((acc: IOPCNode[], node: IOPCNode | void, index: number) => { 
+		return result.reduce((acc: IOPCNode[], node: IOPCNode | void, index: number) => {
 			if (node) acc.push(node);
 			else spinalLog.log(`Node with path ${nodes[index].path} not found anymore, it may have been deleted`);
 			return acc;
-		}, [])
-		
+		}, []);
 	}
 
 	///////////////////////////////////////////////////////////////////////////
@@ -717,6 +717,7 @@ export class OPCUAService extends EventEmitter {
 			currentNode = children.find((el) => [el.browseName?.toLowerCase(), el.displayName?.toLowerCase()].includes(currentPath));
 		}
 
+		if (currentNode) return this.readNodeDescription(currentNode.nodeId.toString(), path);
 		return currentNode;
 	}
 

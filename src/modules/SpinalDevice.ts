@@ -156,7 +156,7 @@ export class SpinalDevice extends EventEmitter {
 
 			// avertir du changement de valeur, le log du cov est fait dans son callback
 			const prefix = cov ? "[COV]" : "[PULLING]";
-			spinalLog.log(`${prefix} - Updating [${endpointNode.info?.path?.get().replace("/Objects", "")}] value to ${value} in graph`);
+			spinalLog.log(`${prefix} - Updating [${endpointNode.info?.path?.get().replace("/Objects", "")}] in graph, value :`, value);
 
 			if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value))) await this._saveTimeSeries(endpointNode, value, date);
 
