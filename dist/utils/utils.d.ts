@@ -22,3 +22,4 @@ export declare function discoverIsCancelled(_discoverModel?: SpinalOPCUADiscover
 export declare function normalizePath(nodePath: string): string;
 export declare function getNodeKey(opcNode: IOPCNode): string;
 export declare function executeConcurrently<T, R>(list: T[], fn: (item: T) => Promise<R>, concurrencyLimit?: number): Promise<R[]>;
+export declare function isNumericDataType(dataType: string | number): boolean;

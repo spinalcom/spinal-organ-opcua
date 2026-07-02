@@ -27,6 +27,7 @@ declare class OPCUAProfileService extends EventEmitter {
     static getInstance(): OPCUAProfileService;
     getProfile(profileId: string): IProfile | undefined;
     initProfile(profile: SpinalNode): Promise<IProfile>;
+    private _updateProfileData;
     private _addDeviceToProfile;
     private getItems;
     private getItemListNode;

@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.executeConcurrently = exports.getNodeKey = exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
+exports.isNumericDataType = exports.executeConcurrently = exports.getNodeKey = exports.normalizePath = exports.discoverIsCancelled = exports.coerceStringToDataType = exports.coerceFunc = exports.coerceNoop = exports.coerceNumberR = exports.coerceNumber = exports.coerceBoolean = exports.convertSpinalNodeToOPCNode = exports.convertToBrowseDescription = exports.getConfig = void 0;
 const node_opcua_1 = require("node-opcua");
 const path = require("path");
 const dotenv_1 = require("dotenv");
@@ -147,4 +147,10 @@ function executeConcurrently(list, fn, concurrencyLimit = 10) {
     });
 }
 exports.executeConcurrently = executeConcurrently;
+function isNumericDataType(dataType) {
+    const numericDataTypes = [node_opcua_1.DataType.Int16, node_opcua_1.DataType.Int32, node_opcua_1.DataType.Int64, node_opcua_1.DataType.UInt16, node_opcua_1.DataType.UInt32, node_opcua_1.DataType.UInt64, node_opcua_1.DataType.Float, node_opcua_1.DataType.Double];
+    const found = numericDataTypes.find((el) => el == dataType);
+    return typeof found !== "undefined";
+}
+exports.isNumericDataType = isNumericDataType;
 //# sourceMappingURL=utils.js.map

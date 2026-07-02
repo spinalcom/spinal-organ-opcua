@@ -130,16 +130,19 @@ export function getNodeKey(opcNode: IOPCNode): string {
 	return normalizePath(opcNode.path || "") || opcNode.nodeId?.toString() || opcNode.idNetwork?.toString() || "";
 }
 
-
-export async function executeConcurrently<T, R>(list: T[], fn: (item: T) => Promise<R>, concurrencyLimit: number = 10): Promise<R[]> { 
-
+export async function executeConcurrently<T, R>(list: T[], fn: (item: T) => Promise<R>, concurrencyLimit: number = 10): Promise<R[]> {
 	const results: R[] = [];
 	const chunks: T[][] = lodash.chunk(list, concurrencyLimit);
 
-	for (const chunk of chunks) { 
+	for (const chunk of chunks) {
 		results.push(...(await Promise.all(chunk.map(fn))));
 	}
 
 	return results;
+}
 
+export function isNumericDataType(dataType: string | number): boolean {
+	const numericDataTypes = [DataType.Int16, DataType.Int32, DataType.Int64, DataType.UInt16, DataType.UInt32, DataType.UInt64, DataType.Float, DataType.Double];
+	const found = numericDataTypes.find((el) => el == dataType);
+	return typeof found !== "undefined";
 }

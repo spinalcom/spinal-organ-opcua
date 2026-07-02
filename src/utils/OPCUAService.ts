@@ -1,7 +1,7 @@
-import { OPCUAClient, NodeClass, ClientSession, BrowseResult, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, DataValue, DataType, coerceNodeId, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, StatusCode, LocalizedText, DeadbandType, ObjectIds } from "node-opcua";
+import { OPCUAClient, NodeClass, ClientSession, ReferenceDescription, BrowseDescriptionLike, ClientSubscription, UserIdentityInfo, ClientAlarmList, UserTokenType, MessageSecurityMode, SecurityPolicy, NodeId, QualifiedName, AttributeIds, BrowseDirection, StatusCodes, makeBrowsePath, resolveNodeId, sameNodeId, VariantArrayType, TimestampsToReturn, DataValue, DataType, coerceNodeId, ClientMonitoredItemBase, DataChangeFilter, DataChangeTrigger, StatusCode, LocalizedText, DeadbandType, ObjectIds } from "node-opcua";
 import { EventEmitter } from "events";
 import { IOPCNode } from "../interfaces/OPCNode";
-import { coerceStringToDataType, convertToBrowseDescription, discoverIsCancelled, executeConcurrently, normalizePath } from "./utils";
+import { convertToBrowseDescription, discoverIsCancelled, executeConcurrently, isNumericDataType, normalizePath } from "./utils";
 
 import certificatProm from "../utils/make_certificate";
 import discoveringStore from "./discoveringProcessStore";
@@ -9,7 +9,6 @@ import { OPCUA_ORGAN_STATES, SpinalOPCUADiscoverModel } from "spinal-model-opcua
 import { ITreeOption } from "../interfaces/ITreeOption";
 import { NAMES_TO_IGNORE, noSessionError, noSubscriptionError } from "./constants";
 import OPCUAFactory from "./OPCUAFactory";
-import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 import spinalLog from "./displayLog";
 
 const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
@@ -42,7 +41,7 @@ export class OPCUAService extends EventEmitter {
 	private async createClient(): Promise<OPCUAClient> {
 		if (this.client) return this.client; // if the client already exists, return it
 
-		const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
+		// const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
 
 		const client = OPCUAClient.create({
 			securityMode: MessageSecurityMode.None,
@@ -78,12 +77,10 @@ export class OPCUAService extends EventEmitter {
 			}
 		});
 
-		client.on("connection_lost", () => {
-			this.reconnect();
-		});
+		client.on("connection_lost", () => this.reconnect());
 	}
 
-	public async checkAndRetablishConnection(userIdentity?: UserIdentityInfo): Promise<void> {
+	public async checkAndReestablishConnection(userIdentity?: UserIdentityInfo): Promise<void> {
 		if (this.client && this.session) return;
 
 		this.client = await this.createClient();
@@ -91,7 +88,7 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	public async disconnect(): Promise<void> {
-		if (this.session) this.session.close();
+		if (this.session) await this.session.close();
 
 		OPCUAFactory.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
 		if (this.client) await this.client.disconnect();
@@ -182,7 +179,7 @@ export class OPCUAService extends EventEmitter {
 	///////////////////////////////////////////////////////////////////////////
 
 	public async getTree(entryPointPath: string, options: ITreeOption = { useLastResult: false, useBroadCast: true }): Promise<{ tree: IOPCNode; variables: string[] } | void> {
-		if (!this.session) await this.connect(userIdentity);
+		await this.checkAndReestablishConnection(userIdentity);
 
 		// get the queue and nodesObj from the last discover or create a new one
 		let { nodesObj, queue, browseMode } = await this._getDiscoverStarterData(entryPointPath, options.useLastResult);
@@ -266,7 +263,7 @@ export class OPCUAService extends EventEmitter {
 	}
 
 	public async readNodeValue(node: IOPCNode | IOPCNode[]): Promise<({ dataType: string; value: any } | null)[]> {
-		await this.checkAndRetablishConnection();
+		await this.checkAndReestablishConnection();
 
 		if (!this.session) throw noSessionError;
 
@@ -329,13 +326,6 @@ export class OPCUAService extends EventEmitter {
 		if (!this.subscription) throw noSubscriptionError;
 
 		nodes = Array.isArray(nodes) ? nodes : [nodes];
-		const nodeIdToNode: { [key: string]: IOPCNode } = {};
-
-		const nodeIds = nodes.map((n) => {
-			const nodeId = n.nodeId.toString();
-			nodeIdToNode[nodeId] = n;
-			return nodeId;
-		});
 
 		// if not reconnection save the monitored items for reconnexion}
 		if (!isReconnection) {
@@ -343,14 +333,23 @@ export class OPCUAService extends EventEmitter {
 			this.monitoredItemsData.push(data);
 		}
 
-		const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: AttributeIds.Value }));
+		const { numericNodes, nonNumericNodes, nodeIdToNodeObj } = this._splitNumericAndNonNumericNodes(nodes);
+
+		await this._monitorNodeGroup(numericNodes, callback, nodeIdToNodeObj, true);
+		await this._monitorNodeGroup(nonNumericNodes, callback, nodeIdToNodeObj, false);
+	}
+
+	private async _monitorNodeGroup(nodeIds: string[], callback: CovCallbackType, nodeIdToNodeObj: Record<string, IOPCNode>, isNumeric: boolean = false): Promise<void> {
+		if (!this.subscription || nodeIds.length === 0) return;
+
+		const monitoredItems = nodeIds.map((nodeId: string) => ({ nodeId, attributeId: AttributeIds.Value }));
 
 		const parameters = {
-			samplingInterval: 3 * 1000, // 10 seconds
+			samplingInterval: 3 * 1000,
 			filter: new DataChangeFilter({
 				trigger: DataChangeTrigger.StatusValue,
-				deadbandType: DeadbandType.Absolute,
-				deadbandValue: 0.1,
+				// if the node is numeric, set a deadband of 0.1 to avoid too many notifications
+				...(isNumeric ? { deadbandType: DeadbandType.Absolute, deadbandValue: 0.1 } : {}),
 			}),
 			discardOldest: true,
 			queueSize: 1,
@@ -359,15 +358,14 @@ export class OPCUAService extends EventEmitter {
 		const monitoredItemGroup = await this.subscription.monitorItems(monitoredItems, parameters, TimestampsToReturn.Both);
 
 		for (const monitoredItem of monitoredItemGroup.monitoredItems) {
-			this._listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNode);
+			this._listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNodeObj);
 		}
 	}
 
 	public async getNodeByPath(nodePath: string = ""): Promise<IOPCNode | void> {
 		try {
-			await this.checkAndRetablishConnection();
+			await this.checkAndReestablishConnection();
 			if (!this.session) throw noSessionError;
-			const entryPoint: string = process.env.OPCUA_SERVER_ENTRYPOINT || "";
 
 			// TODO: edit the path to make sure it starts with /Objects and the entry point
 			// if(!nodePath.startsWith(entryPoint)) nodePath = entryPoint + nodePath;
@@ -699,7 +697,7 @@ export class OPCUAService extends EventEmitter {
 		return node.value.value;
 	}
 
-	////////////////////////////////////////////////// REMOVE BELLOW
+	////////////////////////////////////////////////// REMOVE BELOW
 	public async searchNodeUsingTreeBrowse(path?: string): Promise<IOPCNode | void> {
 		if (!path?.startsWith("/Objects")) path = normalizePath("/Objects" + `/${path}`);
 
@@ -721,35 +719,24 @@ export class OPCUAService extends EventEmitter {
 		return currentNode;
 	}
 
-	// private async _getEntryPointWithPath(start: any, entryPointPath: string): Promise<IOPCNode> {
-	// 	if (!entryPointPath.startsWith("/Objects")) entryPointPath = "/Objects" + entryPointPath;
+	private _splitNumericAndNonNumericNodes(nodes: IOPCNode[]): { numericNodes: string[]; nonNumericNodes: string[]; nodeIdToNodeObj: { [key: string]: IOPCNode } } {
+		const numericNodes: string[] = [];
+		const nonNumericNodes: string[] = [];
+		const nodeIdToNodeObj: { [key: string]: IOPCNode } = {};
 
-	// 	const paths = entryPointPath.split("/").filter((el) => el !== "");
-	// 	let error;
-	// 	let node = start;
-	// 	let lastNode;
+		for (const node of nodes) {
+			const nodeIdStr = node.nodeId.toString();
+			if (typeof node.value?.dataType !== "undefined" && isNumericDataType(node.value?.dataType)) {
+				numericNodes.push(nodeIdStr);
+			} else {
+				nonNumericNodes.push(nodeIdStr);
+			}
 
-	// 	while (paths.length && !error) {
-	// 		const path = paths.shift();
-	// 		const children = await this._browseNode(node);
-	// 		let found = children.find((el) => {
-	// 			const names = [el.displayName?.toLocaleLowerCase(), el.browseName?.toLocaleLowerCase()];
-	// 			return names.includes(path?.toLocaleLowerCase());
-	// 		});
+			nodeIdToNodeObj[nodeIdStr] = node;
+		}
 
-	// 		if (!found) {
-	// 			error = `No node found with entry point : ${entryPointPath}`;
-	// 			break;
-	// 		}
-
-	// 		node = found;
-	// 		if (paths.length === 0) lastNode = node;
-	// 	}
-
-	// 	if (error) throw new Error(error);
-
-	// 	return { ...lastNode, children: [], path: `/${paths.join("/")}` };
-	// }
+		return { numericNodes, nonNumericNodes, nodeIdToNodeObj };
+	}
 }
 
 export default OPCUAService;

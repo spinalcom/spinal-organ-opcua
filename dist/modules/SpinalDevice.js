@@ -146,7 +146,7 @@ class SpinalDevice extends events_1.EventEmitter {
                     element.currentValue.set(value);
                 // avertir du changement de valeur, le log du cov est fait dans son callback
                 const prefix = cov ? "[COV]" : "[PULLING]";
-                displayLog_1.default.log(`${prefix} - Updating [${(_d = (_c = endpointNode.info) === null || _c === void 0 ? void 0 : _c.path) === null || _d === void 0 ? void 0 : _d.get().replace("/Objects", "")}] value to ${value} in graph`);
+                displayLog_1.default.log(`${prefix} - Updating [${(_d = (_c = endpointNode.info) === null || _c === void 0 ? void 0 : _c.path) === null || _d === void 0 ? void 0 : _d.get().replace("/Objects", "")}] in graph, value :`, value);
                 if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value)))
                     yield this._saveTimeSeries(endpointNode, value, date);
                 return true;

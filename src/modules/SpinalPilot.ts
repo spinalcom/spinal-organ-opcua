@@ -28,7 +28,7 @@ class SpinalPilot {
 			const url = getServerUrl(request.networkInfo);
 
 			const opcuaService = OPCUAFactory.getOPCUAInstance(url);
-			await opcuaService.checkAndRetablishConnection();
+			await opcuaService.checkAndReestablishConnection();
 
 			const newNodeId = await opcuaService.getNodeIdByPath(request.path); // in case the nodeId has changed
 			if (newNodeId) request.nodeId = newNodeId; // update the nodeId

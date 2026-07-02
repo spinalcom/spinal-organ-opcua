@@ -72,7 +72,7 @@
 // 	const ex_path = `opc.tcp://spinalcom:5011/IcoFwxServer`;
 // 	const nodeId = "ns=1;s=ac:Metiers/CVC/Test pilotage";
 // 	const opcuaService = OPCUAFactory.getOPCUAInstance(ex_path);
-// 	await opcuaService.checkAndRetablishConnection();
+// 	await opcuaService.checkAndReestablishConnection();
 
 // 	opcuaService.monitorItem([nodeId], (id, dataValue) => {
 // 		spinalLog.log(`Node id: ${id} value: ${dataValue}`);
@@ -87,7 +87,7 @@ import { OPCUAFactory } from "./utils/OPCUAFactory";
 function getNodePaht(ip: string, port: number, nodePath: string) {
 	const opcuaService = OPCUAFactory.getOPCUAInstance(`opc.tcp://${ip}:${port}`);
 	opcuaService
-		.checkAndRetablishConnection()
+		.checkAndReestablishConnection()
 		.then(() => {
 			// opcuaService
 			// 	.getNodeIdByPath(nodePath)

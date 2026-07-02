@@ -57,7 +57,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 // 	const ex_path = `opc.tcp://spinalcom:5011/IcoFwxServer`;
 // 	const nodeId = "ns=1;s=ac:Metiers/CVC/Test pilotage";
 // 	const opcuaService = OPCUAFactory.getOPCUAInstance(ex_path);
-// 	await opcuaService.checkAndRetablishConnection();
+// 	await opcuaService.checkAndReestablishConnection();
 // 	opcuaService.monitorItem([nodeId], (id, dataValue) => {
 // 		spinalLog.log(`Node id: ${id} value: ${dataValue}`);
 // 	});
@@ -67,7 +67,7 @@ const OPCUAFactory_1 = require("./utils/OPCUAFactory");
 function getNodePaht(ip, port, nodePath) {
     const opcuaService = OPCUAFactory_1.OPCUAFactory.getOPCUAInstance(`opc.tcp://${ip}:${port}`);
     opcuaService
-        .checkAndRetablishConnection()
+        .checkAndReestablishConnection()
         .then(() => {
         // opcuaService
         // 	.getNodeIdByPath(nodePath)

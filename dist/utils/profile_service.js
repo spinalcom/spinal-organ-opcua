@@ -55,11 +55,17 @@ class OPCUAProfileService extends events_1.EventEmitter {
             if (profileInfo && profileInfo.modificationDate === profile.info.indirectModificationDate.get()) {
                 return profileInfo;
             }
-            const intervals = yield this.getIntervals(profile);
-            const data = { modificationDate: profile.info.indirectModificationDate.get(), node: profile, intervals };
-            this._profiles.set(profileId, data);
+            const data = yield this._updateProfileData(profile);
             // this._addDeviceToProfile(profileId, deviceIds);
             this._bindProfile(profile);
+            return data;
+        });
+    }
+    _updateProfileData(profile) {
+        return __awaiter(this, void 0, void 0, function* () {
+            const intervals = yield this.getIntervals(profile);
+            const data = { modificationDate: profile.info.indirectModificationDate.get(), node: profile, intervals };
+            this._profiles.set(profile.getId().get(), data);
             return data;
         });
     }
@@ -67,7 +73,7 @@ class OPCUAProfileService extends events_1.EventEmitter {
         if (!Array.isArray(deviceIds))
             deviceIds = [deviceIds];
         const ids = this._profileToDevices.get(profileId) || new Set();
-        deviceIds.forEach(id => ids.add(id));
+        deviceIds.forEach((id) => ids.add(id));
         this._profileToDevices.set(profileId, ids);
     }
     getItems(profile) {
@@ -81,18 +87,22 @@ class OPCUAProfileService extends events_1.EventEmitter {
     getItemListNode(profile) {
         return __awaiter(this, void 0, void 0, function* () {
             const children = yield profile.getChildren([]);
-            return children.find(el => el.getName().get() === exports.ITEMS_GROUP_NAME);
+            return children.find((el) => el.getName().get() === exports.ITEMS_GROUP_NAME);
         });
     }
     _bindProfile(profile) {
         const profileId = profile.getId().get();
         if (this._profileBinded.has(profileId))
             return;
-        const bindProcess = profile.info.indirectModificationDate.bind(() => {
-            const devicesIds = this._profileToDevices.get(profileId) || new Set();
-            displayLog_1.default.log(`profile changed`);
-            this.emit(exports.PROFILE_UPDATE_EVENT, { profileId: profileId, devicesIds: Array.from(devicesIds) });
-        }, false);
+        const bindProcess = profile.info.indirectModificationDate.bind(() => __awaiter(this, void 0, void 0, function* () {
+            displayLog_1.default.log(`[${profileId}] - profile changed, updating profile Data`);
+            yield this._updateProfileData(profile);
+            displayLog_1.default.log(`[${profileId}] - profile updated, emitting event`);
+            this.emit(exports.PROFILE_UPDATE_EVENT, { profileId: profileId });
+            // const devicesIds: Set<string> | undefined = this._profileToDevices.get(profileId) || new Set();
+            // spinalLog.log(`profile changed`);
+            // this.emit(PROFILE_UPDATE_EVENT, { profileId: profileId, devicesIds: Array.from(devicesIds) });
+        }), false);
         this._profileBinded.set(profileId, bindProcess);
     }
     getIntervals(profile) {
@@ -102,7 +112,7 @@ class OPCUAProfileService extends events_1.EventEmitter {
                 const intervals = yield supervisionNode.getChildren(exports.SUPERVISION_TO_INTERVAL);
                 const promises = intervals.map((node) => __awaiter(this, void 0, void 0, function* () {
                     const children = yield node.getChildren(exports.INTERVAL_TO_ITEM);
-                    return Object.assign(Object.assign({}, (node.info.get())), { children: children.map(el => el.info.get()) });
+                    return Object.assign(Object.assign({}, node.info.get()), { children: children.map((el) => el.info.get()) });
                 }));
                 return Promise.all(promises);
             }
@@ -112,7 +122,7 @@ class OPCUAProfileService extends events_1.EventEmitter {
     getSupervisionNode(profile) {
         return __awaiter(this, void 0, void 0, function* () {
             const children = yield profile.getChildren();
-            return children.find(el => el.getName().get() === exports.SUPERVISION_NAME);
+            return children.find((el) => el.getName().get() === exports.SUPERVISION_NAME);
         });
     }
 }

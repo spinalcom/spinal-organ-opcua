@@ -28,6 +28,7 @@
     "ts-priority-queue": "^0.1.1"
   },
   "devDependencies": {
+    "@types/lodash": "^4.17.24",
     "@types/node": "^18.7.6",
     "babel-cli": "^6.26.0",
     "babel-preset-es2015": "^6.24.1",

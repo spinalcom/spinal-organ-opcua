@@ -23,7 +23,7 @@ export declare class OPCUAService extends EventEmitter {
     constructor(url: string, model?: SpinalOPCUADiscoverModel);
     private createClient;
     private _listenClientEvents;
-    checkAndRetablishConnection(userIdentity?: UserIdentityInfo): Promise<void>;
+    checkAndReestablishConnection(userIdentity?: UserIdentityInfo): Promise<void>;
     disconnect(): Promise<void>;
     private _createSession;
     private _listenSessionEvent;
@@ -42,6 +42,7 @@ export declare class OPCUAService extends EventEmitter {
     } | null)[]>;
     writeNode(node: IOPCNode, value: any): Promise<any>;
     monitorItem(nodes: IOPCNode | IOPCNode[], callback: CovCallbackType, isReconnection?: boolean): Promise<void>;
+    private _monitorNodeGroup;
     getNodeByPath(nodePath?: string): Promise<IOPCNode | void>;
     getNodeIdByPath(nodePath?: string): Promise<string | void>;
     static isVariable(node: IOPCNode): boolean;
@@ -62,5 +63,6 @@ export declare class OPCUAService extends EventEmitter {
     private _formatRealValue;
     private _readBrowseName;
     searchNodeUsingTreeBrowse(path?: string): Promise<IOPCNode | void>;
+    private _splitNumericAndNonNumericNodes;
 }
 export default OPCUAService;

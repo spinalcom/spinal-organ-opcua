@@ -32,7 +32,7 @@ class SpinalPilot {
                 displayLog_1.default.log(`sending update request to ${request.path} with value ${request.value}`);
                 const url = (0, Functions_1.getServerUrl)(request.networkInfo);
                 const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
-                yield opcuaService.checkAndRetablishConnection();
+                yield opcuaService.checkAndReestablishConnection();
                 const newNodeId = yield opcuaService.getNodeIdByPath(request.path); // in case the nodeId has changed
                 if (newNodeId)
                     request.nodeId = newNodeId; // update the nodeId

@@ -13,7 +13,6 @@ exports.OPCUAService = void 0;
 const node_opcua_1 = require("node-opcua");
 const events_1 = require("events");
 const utils_1 = require("./utils");
-const make_certificate_1 = require("../utils/make_certificate");
 const discoveringProcessStore_1 = require("./discoveringProcessStore");
 const spinal_model_opcua_1 = require("spinal-model-opcua");
 const constants_1 = require("./constants");
@@ -39,7 +38,7 @@ class OPCUAService extends events_1.EventEmitter {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.client)
                 return this.client; // if the client already exists, return it
-            const { certificateFile, clientCertificateManager, applicationUri, applicationName } = yield make_certificate_1.default;
+            // const { certificateFile, clientCertificateManager, applicationUri, applicationName } = await certificatProm;
             const client = node_opcua_1.OPCUAClient.create({
                 securityMode: node_opcua_1.MessageSecurityMode.None,
                 securityPolicy: node_opcua_1.SecurityPolicy.None,
@@ -52,7 +51,7 @@ class OPCUAService extends events_1.EventEmitter {
                     // maxRetry: 3,
                     initialDelay: 1000,
                     maxDelay: 10 * 1000,
-                    randomisationFactor: 0.2 // 20% randomisation
+                    randomisationFactor: 0.2, // 20% randomisation
                 },
             });
             this._listenClientEvents(client);
@@ -70,11 +69,9 @@ class OPCUAService extends events_1.EventEmitter {
                 this.monitorItem(nodes, callback, isReconnection);
             }
         });
-        client.on("connection_lost", () => {
-            this.reconnect();
-        });
+        client.on("connection_lost", () => this.reconnect());
     }
-    checkAndRetablishConnection(userIdentity) {
+    checkAndReestablishConnection(userIdentity) {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.client && this.session)
                 return;
@@ -85,7 +82,7 @@ class OPCUAService extends events_1.EventEmitter {
     disconnect() {
         return __awaiter(this, void 0, void 0, function* () {
             if (this.session)
-                this.session.close();
+                yield this.session.close();
             OPCUAFactory_1.default.resetOPCUAInstance(this.endpointUrl); // reset the instance in the factory
             if (this.client)
                 yield this.client.disconnect();
@@ -180,8 +177,7 @@ class OPCUAService extends events_1.EventEmitter {
     ///////////////////////////////////////////////////////////////////////////
     getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
         return __awaiter(this, void 0, void 0, function* () {
-            if (!this.session)
-                yield this.connect(userIdentity);
+            yield this.checkAndReestablishConnection(userIdentity);
             // get the queue and nodesObj from the last discover or create a new one
             let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(entryPointPath, options.useLastResult);
             displayLog_1.default.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
@@ -257,12 +253,12 @@ class OPCUAService extends events_1.EventEmitter {
     }
     readNodeValue(node) {
         return __awaiter(this, void 0, void 0, function* () {
-            yield this.checkAndRetablishConnection();
+            yield this.checkAndReestablishConnection();
             if (!this.session)
                 throw constants_1.noSessionError;
             node = Array.isArray(node) ? node : [node];
             const chunckSize = 10; // read 10 nodes at a time to avoid timeout errors
-            // execute the readNode function concurrently for each node in the array, 
+            // execute the readNode function concurrently for each node in the array,
             // with a maximum of chunckSize concurrent executions
             const results = yield (0, utils_1.executeConcurrently)(node, (n) => {
                 displayLog_1.default.log(`Reading node value for ${n.path} (${n.nodeId.toString()})`);
@@ -310,31 +306,30 @@ class OPCUAService extends events_1.EventEmitter {
             if (!this.subscription)
                 throw constants_1.noSubscriptionError;
             nodes = Array.isArray(nodes) ? nodes : [nodes];
-            const nodeIdToNode = {};
-            const nodeIds = nodes.map((n) => {
-                const nodeId = n.nodeId.toString();
-                nodeIdToNode[nodeId] = n;
-                return nodeId;
-            });
             // if not reconnection save the monitored items for reconnexion}
             if (!isReconnection) {
                 const data = { nodes, callback };
                 this.monitoredItemsData.push(data);
             }
-            const monitoredItems = nodeIds.map((nodeId) => ({ nodeId: nodeId, attributeId: node_opcua_1.AttributeIds.Value }));
+            const { numericNodes, nonNumericNodes, nodeIdToNodeObj } = this._splitNumericAndNonNumericNodes(nodes);
+            yield this._monitorNodeGroup(numericNodes, callback, nodeIdToNodeObj, true);
+            yield this._monitorNodeGroup(nonNumericNodes, callback, nodeIdToNodeObj, false);
+        });
+    }
+    _monitorNodeGroup(nodeIds, callback, nodeIdToNodeObj, isNumeric = false) {
+        return __awaiter(this, void 0, void 0, function* () {
+            if (!this.subscription || nodeIds.length === 0)
+                return;
+            const monitoredItems = nodeIds.map((nodeId) => ({ nodeId, attributeId: node_opcua_1.AttributeIds.Value }));
             const parameters = {
                 samplingInterval: 3 * 1000,
-                filter: new node_opcua_1.DataChangeFilter({
-                    trigger: node_opcua_1.DataChangeTrigger.StatusValue,
-                    deadbandType: node_opcua_1.DeadbandType.Absolute,
-                    deadbandValue: 0.1,
-                }),
+                filter: new node_opcua_1.DataChangeFilter(Object.assign({ trigger: node_opcua_1.DataChangeTrigger.StatusValue }, (isNumeric ? { deadbandType: node_opcua_1.DeadbandType.Absolute, deadbandValue: 0.1 } : {}))),
                 discardOldest: true,
                 queueSize: 1,
             };
             const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, parameters, node_opcua_1.TimestampsToReturn.Both);
             for (const monitoredItem of monitoredItemGroup.monitoredItems) {
-                this._listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNode);
+                this._listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNodeObj);
             }
         });
     }
@@ -342,10 +337,9 @@ class OPCUAService extends events_1.EventEmitter {
         var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
-                yield this.checkAndRetablishConnection();
+                yield this.checkAndReestablishConnection();
                 if (!this.session)
                     throw constants_1.noSessionError;
-                const entryPoint = process.env.OPCUA_SERVER_ENTRYPOINT || "";
                 // TODO: edit the path to make sure it starts with /Objects and the entry point
                 // if(!nodePath.startsWith(entryPoint)) nodePath = entryPoint + nodePath;
                 if (!nodePath.startsWith("/Objects"))
@@ -650,7 +644,7 @@ class OPCUAService extends events_1.EventEmitter {
             return node.value.value;
         });
     }
-    ////////////////////////////////////////////////// REMOVE BELLOW
+    ////////////////////////////////////////////////// REMOVE BELOW
     searchNodeUsingTreeBrowse(path) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!(path === null || path === void 0 ? void 0 : path.startsWith("/Objects")))
@@ -665,8 +659,27 @@ class OPCUAService extends events_1.EventEmitter {
                 const children = yield this._browseNode(currentNode);
                 currentNode = children.find((el) => { var _a, _b; return [(_a = el.browseName) === null || _a === void 0 ? void 0 : _a.toLowerCase(), (_b = el.displayName) === null || _b === void 0 ? void 0 : _b.toLowerCase()].includes(currentPath); });
             }
+            if (currentNode)
+                return this.readNodeDescription(currentNode.nodeId.toString(), path);
             return currentNode;
         });
+    }
+    _splitNumericAndNonNumericNodes(nodes) {
+        var _a, _b;
+        const numericNodes = [];
+        const nonNumericNodes = [];
+        const nodeIdToNodeObj = {};
+        for (const node of nodes) {
+            const nodeIdStr = node.nodeId.toString();
+            if (typeof ((_a = node.value) === null || _a === void 0 ? void 0 : _a.dataType) !== "undefined" && (0, utils_1.isNumericDataType)((_b = node.value) === null || _b === void 0 ? void 0 : _b.dataType)) {
+                numericNodes.push(nodeIdStr);
+            }
+            else {
+                nonNumericNodes.push(nodeIdStr);
+            }
+            nodeIdToNodeObj[nodeIdStr] = node;
+        }
+        return { numericNodes, nonNumericNodes, nodeIdToNodeObj };
     }
 }
 exports.OPCUAService = OPCUAService;

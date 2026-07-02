@@ -62,7 +62,6 @@ class SpinalMonitoring {
 		return this.spinalNetworkUtils.initAllListenersModels(spinalListenerModels);
 	}
 
-
 	public async startMonitoring() {
 		let p = true;
 		while (p) {
@@ -134,7 +133,7 @@ class SpinalMonitoring {
 			this.spinalDevicesStore.set(spinalDevice.deviceInfo.id, spinalDevice); // save the device in the map to be able to retrieve it later
 
 			const spinalModel = spinalDevice.spinalListenerModel;
-			const profile = (spinalDevice.profileId);
+			const profile = spinalDevice.profileId;
 
 			spinalModel.monitored.bind(async () => {
 				const deviceIsMonitored = spinalModel.monitored.get();
@@ -165,7 +164,7 @@ class SpinalMonitoring {
 		for (const { url, spinalDevice } of queueData) {
 			const profileData = OPCUAProfileService.getInstance().getProfile(spinalDevice.profileId || "");
 
-			if (!profileData) { 
+			if (!profileData) {
 				spinalLog.warn(`Profile data not found for device ${spinalDevice.deviceInfo.name} with profileId ${spinalDevice.profileId}`);
 				continue;
 			}
@@ -297,7 +296,7 @@ class SpinalMonitoring {
 
 			const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 			const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(endpointUrl);
-			await opcuaService.checkAndRetablishConnection();
+			await opcuaService.checkAndReestablishConnection();
 
 			return opcuaService.getNodesNewInfoByPath(variableNodes).then(async (result) => {
 				// Disable disconnect to keep the connection alive for future operations
@@ -335,7 +334,7 @@ class SpinalMonitoring {
 
 		// connect to the OPCUA server and monitor the items
 		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
-		await opcuaService.checkAndRetablishConnection();
+		await opcuaService.checkAndReestablishConnection();
 
 		const chunked = lodash.chunk(opcNodes, 100);
 
