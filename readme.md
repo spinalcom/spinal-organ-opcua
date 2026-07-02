@@ -1,19 +1,17 @@
 # Spinal-organ-opcua
 
-
 ## Description
 
 The purpose of this organ is to connect a client using OPC UA protocol with the BOS (Building Operating System) thus allowing device discovery , data extraction and device monitoring.
 
 ## Table of Contents
 
-- [Installation](#installation)
-- [Usage](#usage)
+-   [Installation](#installation)
+-   [Usage](#usage)
 
 ## prerequisites
-spinal-organ-opcua requires at less :
-    - node version 16 
-    - npm version 6 
+
+spinal-organ-opcua requires at less : - node version 16 - npm version 6
 
 ## Installation
 
@@ -28,8 +26,7 @@ To install this connector clone it, then inside de folder run npm install.
 
 Running this connector requires private information in .env file.
 
-Rename ```.env copy``` file as ```.env```, then modify the following information :
-
+Rename `.env copy` file as `.env`, then modify the following information :
 
 ```
 ORGAN_NAME="name"                               # the connector config name
@@ -42,7 +39,8 @@ ORGAN_FOLDER_PATH="/__users__/admin/organs"     # the path to store/retrieve the
 
 OPCUA_SERVER_ENTRYPOINT="/"                     #if empty, the server will discover the default entry point (Objects Folder) otherwise, it will use the provided path.
 
-```
 
+CLEAR_ORGAN_IF_NOT_COMPATIBLE="0" # clear organ if already use load_type version, possbible value 0 | 1
+```
 
 This connector also requires the viewer plugin https://github.com/spinalcom/spinal-env-viewer-plugin-opcua-manager. you can follow the link to know how to intall it.
