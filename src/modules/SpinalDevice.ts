@@ -68,34 +68,29 @@ export class SpinalDevice extends EventEmitter {
 		this._browseHistoryQueue = [device]; // Initialize the queue with the root device node
 
 		this._listenToProfileUpdate();
-	
 	}
 
-	
-
 	public async init() {
-		try { 
-
+		try {
 			spinalLog.log(`[SpinalDevice] - initializing device ${this.deviceInfo.name} with profile ${this.profileId}`);
-			
+
 			if (this.isInit) return;
-		
-			this._checkInitAndUpdate(); 
+
+			this._checkInitAndUpdate();
 
 			const result = await this._collectGraphData();
 			this.isInit = true;
-			
+
 			spinalLog.log(`[SpinalDevice] - device ${this.deviceInfo.name} initialized with ${Object.keys(this.endpoints).length} endpoints`);
 			return result;
-		} catch (error: Error | any) { 
+		} catch (error: Error | any) {
 			spinalLog.error(`[SpinalDevice] - failed to init device ${this.deviceInfo.name} due to error: ${error.message}`);
 		}
-		
 	}
 
-	public updateEndpoints(nodes: IOPCNode[], isCov: boolean = false) { 
+	public updateEndpoints(nodes: IOPCNode[], isCov: boolean = false) {
 		if (this.isInit) return this.updateEndpointsDirectly(nodes, isCov);
-		
+
 		spinalLog.log(`[SpinalDevice] - ${this.deviceInfo.name} not initialized yet, the update will be queued and executed after initialization`);
 		this._updateQueue.push({ nodes, isCov, date: Date.now() });
 	}
@@ -106,7 +101,7 @@ export class SpinalDevice extends EventEmitter {
 		for (const opcNode of nodes) {
 			const key = getNodeKey(opcNode);
 			const spinalnode = await this._getEndpoint(key);
-			
+
 			if (!spinalnode) {
 				spinalLog.warn(`[SpinalDevice] - endpoint ${key} not found in device ${this.deviceInfo.name}`);
 				continue;
@@ -150,9 +145,7 @@ export class SpinalDevice extends EventEmitter {
 		try {
 			if (value === null) value = "null";
 
-			//TODO: correct logic after testing, for now we don't save time series to avoid filling the database with useless data
-			// const saveTimeSeries = this.spinalListenerModel.saveTimeSeries?.get();
-			const saveTimeSeries = false;
+			const saveTimeSeries = this.spinalListenerModel?.saveTimeSeries?.get();
 
 			const element = await endpointNode.getElement(true);
 			if (!element) return false;
@@ -174,11 +167,11 @@ export class SpinalDevice extends EventEmitter {
 		}
 	}
 
-	private async _saveTimeSeries(endpointNode: SpinalNode, value: any, date: number | null = null) { 
+	private async _saveTimeSeries(endpointNode: SpinalNode, value: any, date: number | null = null) {
 		const spinalServiceTimeseries = new SpinalServiceTimeseries();
 		SpinalGraphService._addNode(endpointNode);
 
-		if(!date) return spinalServiceTimeseries.pushFromEndpoint(endpointNode.getId().get(), value);
+		if (!date) return spinalServiceTimeseries.pushFromEndpoint(endpointNode.getId().get(), value);
 
 		return spinalServiceTimeseries.insertFromEndpoint(endpointNode.getId().get(), value, date);
 	}
@@ -200,13 +193,11 @@ export class SpinalDevice extends EventEmitter {
 		}
 	}
 
-
 	private async _getEndpoint(id: string): Promise<SpinalNode | undefined> {
 		return this.endpoints[id] || this.nodes[id] || this._findNodeInTree(id);
 	}
 
-	private async _findNodeInTree(id: string): Promise<SpinalNode | undefined> {	
-
+	private async _findNodeInTree(id: string): Promise<SpinalNode | undefined> {
 		const existingNode = this.nodes[id];
 		if (existingNode) {
 			return existingNode;
@@ -217,7 +208,6 @@ export class SpinalDevice extends EventEmitter {
 		const batchSize = 50;
 
 		while (queue.length > 0) {
-
 			const currentBatch = queue.splice(0, batchSize);
 			const childrenResults = await Promise.all(currentBatch.map((node) => node.getChildrenInContext(this.context)));
 
@@ -241,7 +231,6 @@ export class SpinalDevice extends EventEmitter {
 
 					queue.push(child);
 				}
-
 			}
 
 			this._browseHistoryQueue = queue;
@@ -257,13 +246,13 @@ export class SpinalDevice extends EventEmitter {
 		if (key && type === SpinalBmsEndpoint.nodeTypeName) this.endpoints[key] = node;
 	}
 
-	private _listenToProfileUpdate() { 
-		OPCUAProfileService.getInstance().on(PROFILE_UPDATE_EVENT, ({ profileId }) => { 
-			if (profileId === this.profileId) { 
+	private _listenToProfileUpdate() {
+		OPCUAProfileService.getInstance().on(PROFILE_UPDATE_EVENT, ({ profileId }) => {
+			if (profileId === this.profileId) {
 				spinalLog.log(`[SpinalDevice] - profile ${profileId} updated, restarting monitoring for device ${this.deviceInfo.name}`);
 				this.restartMonitoring();
 			}
-		})
+		});
 	}
 
 	private async _collectGraphData(): Promise<SpinalNode[]> {
@@ -273,7 +262,6 @@ export class SpinalDevice extends EventEmitter {
 		const allNodes: SpinalNode[] = [];
 
 		while (queue.length > 0) {
-
 			const currentBatch = queue.splice(0, batchSize);
 			const childrenResults = await Promise.all(currentBatch.map((node) => node.getChildrenInContext(this.context)));
 
@@ -291,7 +279,6 @@ export class SpinalDevice extends EventEmitter {
 					this.addNode(key, child);
 					queue.push(child);
 				}
-
 			}
 
 			this._browseHistoryQueue = queue;
@@ -300,7 +287,7 @@ export class SpinalDevice extends EventEmitter {
 		return allNodes; // Return all collected nodes
 	}
 
-	private async _checkInitAndUpdate() { 
+	private async _checkInitAndUpdate() {
 		const waitInitProm = new Promise((resolve, reject) => {
 			const initFinished = () => {
 				if (!this.isInit) {
@@ -309,15 +296,14 @@ export class SpinalDevice extends EventEmitter {
 				}
 
 				resolve(true);
-			}
+			};
 			initFinished();
-		})
-
+		});
 
 		return waitInitProm.then(() => {
 			const promises = this._updateQueue.map(({ nodes, isCov, date }) => this.updateEndpointsDirectly(nodes, isCov, date));
 			this._updateQueue = [];
 			return Promise.all(promises);
-		})
+		});
 	}
 }

@@ -130,14 +130,12 @@ class SpinalDevice extends events_1.EventEmitter {
     //						PRIVATES METHODS
     /////////////////////////////////////////////////////////////////////////
     _updateEndpointInGraph(endpointNode, value, cov = false, date = null) {
-        var _a, _b;
+        var _a, _b, _c, _d;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 if (value === null)
                     value = "null";
-                //TODO: correct logic after testing, for now we don't save time series to avoid filling the database with useless data
-                // const saveTimeSeries = this.spinalListenerModel.saveTimeSeries?.get();
-                const saveTimeSeries = false;
+                const saveTimeSeries = (_b = (_a = this.spinalListenerModel) === null || _a === void 0 ? void 0 : _a.saveTimeSeries) === null || _b === void 0 ? void 0 : _b.get();
                 const element = yield endpointNode.getElement(true);
                 if (!element)
                     return false;
@@ -148,7 +146,7 @@ class SpinalDevice extends events_1.EventEmitter {
                     element.currentValue.set(value);
                 // avertir du changement de valeur, le log du cov est fait dans son callback
                 const prefix = cov ? "[COV]" : "[PULLING]";
-                displayLog_1.default.log(`${prefix} - Updating [${(_b = (_a = endpointNode.info) === null || _a === void 0 ? void 0 : _a.path) === null || _b === void 0 ? void 0 : _b.get().replace("/Objects", "")}] value to ${value} in graph`);
+                displayLog_1.default.log(`${prefix} - Updating [${(_d = (_c = endpointNode.info) === null || _c === void 0 ? void 0 : _c.path) === null || _d === void 0 ? void 0 : _d.get().replace("/Objects", "")}] value to ${value} in graph`);
                 if (saveTimeSeries && (typeof value === "boolean" || !isNaN(value)))
                     yield this._saveTimeSeries(endpointNode, value, date);
                 return true;

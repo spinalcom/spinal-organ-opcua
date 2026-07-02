@@ -44,5 +44,8 @@
     "spinal-model-timeseries": "spinal-model-timeseries",
     "spinal-models-documentation": "spinal-models-documentation",
     "spinal-connector-service": "spinal-connector-service"
+  },
+  "overrides": {
+    "hexy": "0.2.11"
   }
 }
