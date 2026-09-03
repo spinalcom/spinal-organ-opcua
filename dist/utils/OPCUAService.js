@@ -147,8 +147,7 @@ class OPCUAService extends events_1.EventEmitter {
                 this.subscription = yield this.createSubscription();
             }
             catch (error) {
-                displayLog_1.default.log(`Cannot connect to ${this.endpointUrl} with userIdentity ${JSON.stringify(this.userIdentity)} !`, error.message);
-                throw error;
+                throw `failed to connect to ${this.endpointUrl}! due to ${error.message}`;
             }
         });
     }

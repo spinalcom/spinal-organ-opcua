@@ -1,11 +1,13 @@
 // import { config as dotenvConfig } from "dotenv";
 import { SpinalCallBackError, spinalCore } from "spinal-core-connectorjs_type";
 import { getConfig } from "./utils/utils";
-import { bindModels, GetPm2Instance, restartProcessById } from "./utils/Functions";
+import { bindModels, clearOrganModel, GetPm2Instance, restartProcessById } from "./utils/Functions";
 import { OPCUA_ORGAN_TYPE, SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { IConnectorInfo, SpinalConnectorService } from "spinal-connector-service";
 import * as nodePath from "path";
 import spinalLog from "./utils/displayLog";
+import { clear } from "console";
+import { clearOrgan } from "./utils/clearOrgan";
 
 // dotenvConfig({ path: nodepath.resolve(__dirname, "../.env"), override: true });
 
@@ -27,6 +29,19 @@ spinalConnectorService
 		// initialize the list of models to bind with the organ,
 		// this is necessary to be able to bind the models with the organ when it is created or when it is found in the graph
 		await organModel.initializeModelsList();
+
+		if (alreadyExists) {
+			const { valid, message } = await organModel.checkOrganDataValidity();
+			console.log(valid, message);
+			if (!valid) {
+				const clear = process.env.CLEAR_ORGAN_IF_NOT_COMPATIBLE == "1" || process.env.CLEAR_ORGAN_IF_NOT_COMPATIBLE == "true";
+
+				// if the organ is not compatible and the clear flag is not set, throw an error
+				if (!clear) throw new Error(message);
+
+				await clearOrganModel(organModel);
+			}
+		}
 
 		// Bind the restart function to PM2 events
 		const pm2_instance = GetPm2Instance(name);

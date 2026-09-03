@@ -43,9 +43,9 @@ class SpinalPilot {
 		} catch (error) {
 			spinalLog.log(`the update of [${request.path}] failed due to error: ${(error as Error).message}`);
 			this.spinalPilotModel?.setErrorMode();
+		} finally {
+			await this.spinalPilotModel?.removeFromGraph();
 		}
-
-		await this.spinalPilotModel?.removeFromGraph();
 	}
 }
 

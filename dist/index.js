@@ -34,6 +34,17 @@ spinalConnectorService
     // initialize the list of models to bind with the organ,
     // this is necessary to be able to bind the models with the organ when it is created or when it is found in the graph
     yield organModel.initializeModelsList();
+    if (alreadyExists) {
+        const { valid, message } = yield organModel.checkOrganDataValidity();
+        console.log(valid, message);
+        if (!valid) {
+            const clear = process.env.CLEAR_ORGAN_IF_NOT_COMPATIBLE == "1" || process.env.CLEAR_ORGAN_IF_NOT_COMPATIBLE == "true";
+            // if the organ is not compatible and the clear flag is not set, throw an error
+            if (!clear)
+                throw new Error(message);
+            yield (0, Functions_1.clearOrganModel)(organModel);
+        }
+    }
     // Bind the restart function to PM2 events
     const pm2_instance = (0, Functions_1.GetPm2Instance)(name);
     const pm2_id = pm2_instance ? pm2_instance.pm_id : null;

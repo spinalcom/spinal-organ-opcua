@@ -90,13 +90,13 @@ export const GetPm2Instance = (organName: string): Promise<pm2.ProcessDescriptio
 ////////////////////////////////////////////////
 
 export async function bindModels(organModel: SpinalOrganOPCUA): Promise<void> {
-	if (!organIsCompatible(organModel)) {
-		if (!clearnOrgan()) throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
+	// if (!organIsCompatible(organModel)) {
+	// 	if (!clearnOrgan()) throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
 
-		spinalLog.log("[bindModels] - Clearing organ model...");
-		await clearOrganModel(organModel);
-		spinalLog.log("[bindModels] - Organ model cleared. Rebinding models...");
-	}
+	// 	spinalLog.log("[bindModels] - Clearing organ model...");
+	// 	await clearOrganModel(organModel);
+	// 	spinalLog.log("[bindModels] - Organ model cleared. Rebinding models...");
+	// }
 
 	const { discover, listener, pilot } = await organModel.getModels();
 
@@ -279,20 +279,15 @@ export async function consumeBatch<R>(functions: (() => Promise<R>)[], batchSize
 	const chunks: (() => Promise<R>)[][] = lodash.chunk(functions, safeBatchSize);
 	const result: PromiseSettledResult<R>[] = [];
 
-	for (const chunk of chunks) { 
-		const chunkResults = await Promise.allSettled(chunk.map(fn => fn()));
+	for (const chunk of chunks) {
+		const chunkResults = await Promise.allSettled(chunk.map((fn) => fn()));
 		result.push(...chunkResults);
 	}
 
 	return result.reduce((acc, item: PromiseSettledResult<R>) => {
-		if(item.status === "fulfilled") acc.push(item.value);
+		if (item.status === "fulfilled") acc.push(item.value);
 		return acc;
 	}, [] as R[]);
-}
-
-export function clearnOrgan(): boolean {
-	if (process.env.CLEAR_ORGAN_IF_NOT_COMPATIBLE == "1") return true;
-	return false;
 }
 
 function organIsCompatible(organModel: SpinalOrganOPCUA): boolean {
@@ -301,7 +296,7 @@ function organIsCompatible(organModel: SpinalOrganOPCUA): boolean {
 }
 
 export async function clearOrganModel(organModel: SpinalOrganOPCUA): Promise<void> {
-	await clearOrgan(organModel)
+	return clearOrgan(organModel)
 		.then(() => {
 			organModel.rem_attr("discover");
 			organModel.rem_attr("listener");

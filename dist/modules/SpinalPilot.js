@@ -46,7 +46,9 @@ class SpinalPilot {
                 displayLog_1.default.log(`the update of [${request.path}] failed due to error: ${error.message}`);
                 (_c = this.spinalPilotModel) === null || _c === void 0 ? void 0 : _c.setErrorMode();
             }
-            yield ((_d = this.spinalPilotModel) === null || _d === void 0 ? void 0 : _d.removeFromGraph());
+            finally {
+                yield ((_d = this.spinalPilotModel) === null || _d === void 0 ? void 0 : _d.removeFromGraph());
+            }
         });
     }
 }

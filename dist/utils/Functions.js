@@ -32,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.clearOrganModel = exports.clearnOrgan = exports.consumeBatch = exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindModels = exports.GetPm2Instance = exports.WaitModelReady = void 0;
+exports.clearOrganModel = exports.consumeBatch = exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindModels = exports.GetPm2Instance = exports.WaitModelReady = void 0;
 const displayLog_1 = require("./displayLog");
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
 const node_opcua_1 = require("node-opcua");
@@ -92,13 +92,12 @@ exports.GetPm2Instance = GetPm2Instance;
 ////////////////////////////////////////////////
 function bindModels(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
-        if (!organIsCompatible(organModel)) {
-            if (!clearnOrgan())
-                throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
-            displayLog_1.default.log("[bindModels] - Clearing organ model...");
-            yield clearOrganModel(organModel);
-            displayLog_1.default.log("[bindModels] - Organ model cleared. Rebinding models...");
-        }
+        // if (!organIsCompatible(organModel)) {
+        // 	if (!clearnOrgan()) throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
+        // 	spinalLog.log("[bindModels] - Clearing organ model...");
+        // 	await clearOrganModel(organModel);
+        // 	spinalLog.log("[bindModels] - Organ model cleared. Rebinding models...");
+        // }
         const { discover, listener, pilot } = yield organModel.getModels();
         if (!discover || !listener || !pilot) {
             throw new Error("[bindModels] - Organ model is missing one or more required models (discover, listener, pilot).");
@@ -269,7 +268,7 @@ function consumeBatch(functions, batchSize) {
         const chunks = lodash.chunk(functions, safeBatchSize);
         const result = [];
         for (const chunk of chunks) {
-            const chunkResults = yield Promise.allSettled(chunk.map(fn => fn()));
+            const chunkResults = yield Promise.allSettled(chunk.map((fn) => fn()));
             result.push(...chunkResults);
         }
         return result.reduce((acc, item) => {
@@ -280,12 +279,6 @@ function consumeBatch(functions, batchSize) {
     });
 }
 exports.consumeBatch = consumeBatch;
-function clearnOrgan() {
-    if (process.env.CLEAR_ORGAN_IF_NOT_COMPATIBLE == "1")
-        return true;
-    return false;
-}
-exports.clearnOrgan = clearnOrgan;
 function organIsCompatible(organModel) {
     if (organModel.discover instanceof spinal_connector_service_1.ModelsInfo && organModel.listener instanceof spinal_connector_service_1.ModelsInfo && organModel.pilot instanceof spinal_connector_service_1.ModelsInfo)
         return true;
@@ -293,7 +286,7 @@ function organIsCompatible(organModel) {
 }
 function clearOrganModel(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
-        yield (0, clearOrgan_1.clearOrgan)(organModel)
+        return (0, clearOrgan_1.clearOrgan)(organModel)
             .then(() => {
             organModel.rem_attr("discover");
             organModel.rem_attr("listener");

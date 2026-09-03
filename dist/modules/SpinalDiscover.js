@@ -232,7 +232,9 @@ class SpinalDiscover extends events_1.EventEmitter {
     _getVariablesValues(url, variables) {
         return __awaiter(this, void 0, void 0, function* () {
             const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
-            return opcuaService.readNodeValue(variables).then((result) => {
+            return opcuaService
+                .readNodeValue(variables)
+                .then((result) => {
                 const obj = {};
                 for (let index = 0; index < result.length; index++) {
                     const element = result[index];
@@ -241,6 +243,10 @@ class SpinalDiscover extends events_1.EventEmitter {
                     obj[key] = element;
                 }
                 return obj;
+            })
+                .catch((error) => {
+                displayLog_1.default.error(`[_getVariablesValues] - Failed to read node values from ${url} due to:`, error);
+                return {};
             });
         });
     }

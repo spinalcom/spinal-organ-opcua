@@ -288,25 +288,30 @@ class SpinalMonitoring {
     // }
     monitorWithCov(url, spinalDevice, nodes) {
         return __awaiter(this, void 0, void 0, function* () {
-            // spinalLog.log(`Monitoring ${nodes.length} nodes with COV for device ${spinalDevice.deviceInfo.name} at ${url}`);
-            const isCov = true;
-            // const idsToPaths: { [key: string]: string } = {};
-            const opcNodes = yield this._getVariablesValues(url, nodes);
-            yield spinalDevice.updateEndpoints(opcNodes, isCov); // update the endpoints node with the new values (name, path, value)
-            // // get new ids from opcNodes and save the path to be able to retrieve it later
-            // const ids = opcNodes.map((el) => {
-            //     const nodeId = el.nodeId.toString();
-            //     idsToPaths[nodeId] = normalizePath(el.path || "") || nodeId; // save the path to be able to retrieve it later
-            //     return nodeId;
-            // });
-            // connect to the OPCUA server and monitor the items
-            const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
-            yield opcuaService.checkAndReestablishConnection();
-            const chunked = lodash.chunk(opcNodes, 100);
-            for (const itemsChunked of chunked) {
-                opcuaService.monitorItem(itemsChunked, (node, dataValue, monitorItem) => {
-                    this._monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov);
-                });
+            try {
+                // spinalLog.log(`Monitoring ${nodes.length} nodes with COV for device ${spinalDevice.deviceInfo.name} at ${url}`);
+                const isCov = true;
+                // const idsToPaths: { [key: string]: string } = {};
+                const opcNodes = yield this._getVariablesValues(url, nodes);
+                yield spinalDevice.updateEndpoints(opcNodes, isCov); // update the endpoints node with the new values (name, path, value)
+                // // get new ids from opcNodes and save the path to be able to retrieve it later
+                // const ids = opcNodes.map((el) => {
+                //     const nodeId = el.nodeId.toString();
+                //     idsToPaths[nodeId] = normalizePath(el.path || "") || nodeId; // save the path to be able to retrieve it later
+                //     return nodeId;
+                // });
+                // connect to the OPCUA server and monitor the items
+                const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(url);
+                yield opcuaService.checkAndReestablishConnection();
+                const chunked = lodash.chunk(opcNodes, 100);
+                for (const itemsChunked of chunked) {
+                    opcuaService.monitorItem(itemsChunked, (node, dataValue, monitorItem) => {
+                        this._monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov);
+                    });
+                }
+            }
+            catch (error) {
+                displayLog_1.default.log(`Failed to monitor nodes with COV for device ${spinalDevice.deviceInfo.name} at ${url} due to:`, error);
             }
         });
     }

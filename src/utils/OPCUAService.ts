@@ -150,8 +150,7 @@ export class OPCUAService extends EventEmitter {
 			this.session = await this._createSession();
 			this.subscription = await this.createSubscription();
 		} catch (error) {
-			spinalLog.log(`Cannot connect to ${this.endpointUrl} with userIdentity ${JSON.stringify(this.userIdentity)} !`, (error as Error).message);
-			throw error;
+			throw `failed to connect to ${this.endpointUrl}! due to ${(error as Error).message}`;
 		}
 	}
 

@@ -254,18 +254,24 @@ class SpinalDiscover extends EventEmitter {
 	private async _getVariablesValues(url: string, variables: IOPCNode[]): Promise<{ [key: string]: { dataType: string; value: any } }> {
 		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url);
 
-		return opcuaService.readNodeValue(variables).then((result) => {
-			const obj: { [key: string]: { dataType: string; value: any } } = {};
+		return opcuaService
+			.readNodeValue(variables)
+			.then((result) => {
+				const obj: { [key: string]: { dataType: string; value: any } } = {};
 
-			for (let index = 0; index < result.length; index++) {
-				const element = result[index];
-				const variable = variables[index];
-				const key = getNodeKey(variable);
-				obj[key] = element;
-			}
+				for (let index = 0; index < result.length; index++) {
+					const element = result[index];
+					const variable = variables[index];
+					const key = getNodeKey(variable);
+					obj[key] = element;
+				}
 
-			return obj;
-		});
+				return obj;
+			})
+			.catch((error) => {
+				spinalLog.error(`[_getVariablesValues] - Failed to read node values from ${url} due to:`, error);
+				return {};
+			});
 	}
 
 	private delay(ms: number) {
