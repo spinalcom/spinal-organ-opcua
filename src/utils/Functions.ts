@@ -298,5 +298,6 @@ function organIsCompatible(organModel: SpinalOrganOPCUA): boolean {
 export async function clearOrganModel(organModel: SpinalOrganOPCUA) {
 	return clearOrgan(organModel).catch((err) => {
 		spinalLog.error("[clearOrganModel] - Error clearing organ model:", err);
+		process.exit(1);
 	});
 }

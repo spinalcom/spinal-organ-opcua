@@ -7,19 +7,15 @@ import spinalLog from "./displayLog";
 export async function clearOrgan(organModel: SpinalOrganOPCUA) {
 	const references = await getAllOrganReferences(organModel);
 	const promises = references.map(clearReference);
-	return Promise.all(promises)
-		.then((result) => {
-			organModel.rem_attr("discover");
-			organModel.rem_attr("listener");
-			organModel.rem_attr("pilot");
+	return Promise.all(promises).then((result) => {
+		organModel.rem_attr("discover");
+		organModel.rem_attr("listener");
+		organModel.rem_attr("pilot");
 
-			organModel.initializeModelsList(); // Reinitialize the models list after clearing the organ model
-			spinalLog.log("Successfully cleared organ references:", result);
-			return result;
-		})
-		.catch((err) => {
-			spinalLog.error("Failed to clear organ references:", err);
-		});
+		organModel.initializeModelsList(); // Reinitialize the models list after clearing the organ model
+		spinalLog.log("Successfully cleared organ references:", result);
+		return result;
+	});
 }
 
 function getAllOrganReferences(organModel: SpinalOrganOPCUA): Promise<SpinalNode[]> {
