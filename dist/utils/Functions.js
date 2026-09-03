@@ -286,14 +286,7 @@ function organIsCompatible(organModel) {
 }
 function clearOrganModel(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
-        return (0, clearOrgan_1.clearOrgan)(organModel)
-            .then(() => {
-            organModel.rem_attr("discover");
-            organModel.rem_attr("listener");
-            organModel.rem_attr("pilot");
-            return organModel.initializeModelsList(); // Reinitialize the models list after clearing the organ model
-        })
-            .catch((err) => {
+        return (0, clearOrgan_1.clearOrgan)(organModel).catch((err) => {
             displayLog_1.default.error("[clearOrganModel] - Error clearing organ model:", err);
         });
     });

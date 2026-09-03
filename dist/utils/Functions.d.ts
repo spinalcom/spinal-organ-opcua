@@ -11,4 +11,4 @@ export declare function getVariablesList(tree: IOPCNode): IOPCNode[];
 export declare function getServerUrl(serverInfo: IServer): string;
 export declare function restartProcessById(instanceId: string | number): Promise<boolean>;
 export declare function consumeBatch<R>(functions: (() => Promise<R>)[], batchSize: number): Promise<R[]>;
-export declare function clearOrganModel(organModel: SpinalOrganOPCUA): Promise<void>;
+export declare function clearOrganModel(organModel: SpinalOrganOPCUA): Promise<void | void[]>;

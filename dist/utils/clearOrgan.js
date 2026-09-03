@@ -16,7 +16,18 @@ function clearOrgan(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
         const references = yield getAllOrganReferences(organModel);
         const promises = references.map(clearReference);
-        return Promise.all(promises);
+        return Promise.all(promises)
+            .then((result) => {
+            organModel.rem_attr("discover");
+            organModel.rem_attr("listener");
+            organModel.rem_attr("pilot");
+            organModel.initializeModelsList(); // Reinitialize the models list after clearing the organ model
+            displayLog_1.default.log("Successfully cleared organ references:", result);
+            return result;
+        })
+            .catch((err) => {
+            displayLog_1.default.error("Failed to clear organ references:", err);
+        });
     });
 }
 exports.clearOrgan = clearOrgan;
@@ -34,13 +45,14 @@ function getAllOrganReferences(organModel) {
 }
 function clearReference(reference) {
     return __awaiter(this, void 0, void 0, function* () {
-        const { devices, endpoints } = yield getDeviceAndEndpointsFromOrgan(reference);
+        const { devices, endpoints } = yield getAndClearDeviceAndEndpointsFromOrgan(reference);
         displayLog_1.default.log(`Clearing reference: ${reference.getName().get()} with ${devices.length} devices and ${endpoints.length} endpoints.`);
-        devices.forEach(clearDevice);
-        endpoints.forEach(clearEndpoint);
+        // devices.forEach(clearDevice);
+        // endpoints.forEach(clearEndpoint);
+        console.log(`${devices.length} devices and ${endpoints.length} endpoints cleared`);
     });
 }
-function getDeviceAndEndpointsFromOrgan(organNode) {
+function getAndClearDeviceAndEndpointsFromOrgan(organNode) {
     return __awaiter(this, void 0, void 0, function* () {
         const data = { devices: [], endpoints: [] };
         const context = yield organNode.findOneParent(["hasBmsNetworkOrgan"], (node) => node.getType().get() === "Network");
@@ -48,10 +60,14 @@ function getDeviceAndEndpointsFromOrgan(organNode) {
             return data;
         return organNode
             .findInContext(context, (node) => {
-            if (node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName)
+            if (node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsDevice.nodeTypeName) {
                 data.devices.push(node);
-            else if (node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName)
+                clearDevice(node);
+            }
+            else if (node.getType().get() === spinal_model_bmsnetwork_1.SpinalBmsEndpoint.nodeTypeName) {
                 data.endpoints.push(node);
+                clearEndpoint(node);
+            }
             return true;
         })
             .then(() => {
