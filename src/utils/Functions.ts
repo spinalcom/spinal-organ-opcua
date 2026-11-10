@@ -252,14 +252,12 @@ export function getVariablesList(tree: IOPCNode): IOPCNode[] {
 
 export function getServerUrl(serverInfo: IServer): string {
 	const prefix = "opc.tcp://";
-	let endpoint = serverInfo.endpoint || "";
 
-	// if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
-	// if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
+	const ip = (serverInfo.address || serverInfo.ip)?.trim();
+	const port = serverInfo.port?.toString()?.trim();
+	let endpoint = (serverInfo.endpoint || "")?.trim();
 
-	const ip = serverInfo.address || serverInfo.ip;
-
-	return normalizePath(`${prefix}/${ip}:${serverInfo.port}/${endpoint}`);
+	return normalizePath(`${prefix}/${ip}:${port}/${endpoint}`);
 }
 
 export function restartProcessById(instanceId: string | number): Promise<boolean> {

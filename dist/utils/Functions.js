@@ -242,12 +242,12 @@ function getVariablesList(tree) {
 }
 exports.getVariablesList = getVariablesList;
 function getServerUrl(serverInfo) {
+    var _a, _b, _c, _d;
     const prefix = "opc.tcp://";
-    let endpoint = serverInfo.endpoint || "";
-    // if (endpoint.substring(0, 1) !== "/") endpoint = `/${endpoint}`;
-    // if (endpoint.substring(endpoint.length - 1) === "/") endpoint = endpoint.substring(0, endpoint.length - 1);
-    const ip = serverInfo.address || serverInfo.ip;
-    return (0, utils_1.normalizePath)(`${prefix}/${ip}:${serverInfo.port}/${endpoint}`);
+    const ip = (_a = (serverInfo.address || serverInfo.ip)) === null || _a === void 0 ? void 0 : _a.trim();
+    const port = (_c = (_b = serverInfo.port) === null || _b === void 0 ? void 0 : _b.toString()) === null || _c === void 0 ? void 0 : _c.trim();
+    let endpoint = (_d = (serverInfo.endpoint || "")) === null || _d === void 0 ? void 0 : _d.trim();
+    return (0, utils_1.normalizePath)(`${prefix}/${ip}:${port}/${endpoint}`);
 }
 exports.getServerUrl = getServerUrl;
 function restartProcessById(instanceId) {
