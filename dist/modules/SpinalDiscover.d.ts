@@ -10,6 +10,8 @@ declare class SpinalDiscover extends EventEmitter {
     private _discoverNext;
     private _bindDiscoverModel;
     private _discoverDevices;
+    private _retryFailedServerDiscovery;
+    private _fetchServerDiscovery;
     private _discoverDevice;
     private askToContinueDiscovery;
     private _getOPCUATree;

@@ -31,6 +31,7 @@ const spinalConnectorService = spinal_connector_service_1.SpinalConnectorService
 spinalConnectorService
     .initialize(connect, organInfo)
     .then(({ alreadyExists, node: organModel }) => __awaiter(void 0, void 0, void 0, function* () {
+    var _a, _b;
     // initialize the list of models to bind with the organ,
     // this is necessary to be able to bind the models with the organ when it is created or when it is found in the graph
     yield organModel.initializeModelsList();
@@ -46,14 +47,20 @@ spinalConnectorService
         }
     }
     // Bind the restart function to PM2 events
-    const pm2_instance = (0, Functions_1.GetPm2Instance)(name);
+    const pm2_instance = yield (0, Functions_1.GetPm2Instance)(name);
     const pm2_id = pm2_instance ? pm2_instance.pm_id : null;
-    if (pm2_id)
-        organModel.restart.bind(() => (0, Functions_1.restartProcessById)(pm2_id));
+    if (pm2_id) {
+        (_a = organModel.restart) === null || _a === void 0 ? void 0 : _a.set(false);
+        (_b = organModel.restart) === null || _b === void 0 ? void 0 : _b.bind(() => {
+            var _a;
+            if ((_a = organModel.restart) === null || _a === void 0 ? void 0 : _a.get())
+                (0, Functions_1.restartProcessById)(pm2_id);
+        });
+    }
     // end of restart function to bind
     const message = alreadyExists ? "organ found !" : "organ not found, creating new organ !";
     displayLog_1.default.log(message);
-    (0, Functions_1.bindModels)(organModel);
+    yield (0, Functions_1.bindOrganModels)(organModel);
 }))
     .catch((err) => {
     displayLog_1.default.error(err);

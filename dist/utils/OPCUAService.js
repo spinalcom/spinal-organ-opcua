@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.OPCUAService = void 0;
+exports.OPCUAService = exports.OPCUAConnectionError = void 0;
 const node_opcua_1 = require("node-opcua");
 const events_1 = require("events");
 const utils_1 = require("./utils");
@@ -19,6 +19,23 @@ const constants_1 = require("./constants");
 const OPCUAFactory_1 = require("./OPCUAFactory");
 const displayLog_1 = require("./displayLog");
 const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
+const DISCOVER_CHECKPOINT_BATCH_COUNT = 25; // Number of nodes to process before saving a checkpoint during discovery
+const INITIAL_DISCOVER_BATCH_SIZE = 10; // Initial number of nodes to process in a batch during discovery
+const MAX_DISCOVER_BATCH_SIZE = 100; // Maximum number of nodes to process in a batch during discovery
+const MAX_READ_BATCH_SIZE = 100;
+const MAX_CONCURRENT_READ_BATCHES = 4;
+function isTooManyBrowseOperations(error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return /BadTooManyOperations|TooManyRequests?/i.test(message);
+}
+class OPCUAConnectionError extends Error {
+    constructor(endpointUrl, error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        super(`failed to connect to ${endpointUrl}! due to ${reason}`);
+        this.name = "OPCUAConnectionError";
+    }
+}
+exports.OPCUAConnectionError = OPCUAConnectionError;
 class OPCUAService extends events_1.EventEmitter {
     constructor(url, model) {
         super();
@@ -46,9 +63,10 @@ class OPCUAService extends events_1.EventEmitter {
                 defaultSecureTokenLifetime: 2 * 60 * 1000,
                 requestedSessionTimeout: 5 * 60 * 1000,
                 keepSessionAlive: true,
+                defaultTransactionTimeout: 60 * 1000,
                 transportTimeout: 90 * 1000,
                 connectionStrategy: {
-                    // maxRetry: 3,
+                    maxRetry: 3,
                     initialDelay: 1000,
                     maxDelay: 10 * 1000,
                     randomisationFactor: 0.2, // 20% randomisation
@@ -60,13 +78,12 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _listenClientEvents(client) {
         client.on("backoff", (number, delay) => {
-            // if (number === 1) return client.disconnect();
-            // spinalLog.log(`connection failed, retrying attempt ${number + 1}`)
+            displayLog_1.default.warn(`[${this.endpointUrl}] connection attempt ${number} failed; retrying in ${delay}ms`);
         });
         client.on("after_reconnection", () => {
             const isReconnection = true;
-            for (const { nodes, callback } of this.monitoredItemsData) {
-                this.monitorItem(nodes, callback, isReconnection);
+            for (const { nodes, callback, onMonitorItem } of this.monitoredItemsData) {
+                this.monitorItem(nodes, callback, isReconnection, onMonitorItem);
             }
         });
         client.on("connection_lost", () => this.reconnect());
@@ -147,7 +164,7 @@ class OPCUAService extends events_1.EventEmitter {
                 this.subscription = yield this.createSubscription();
             }
             catch (error) {
-                throw `failed to connect to ${this.endpointUrl}! due to ${error.message}`;
+                throw new OPCUAConnectionError(this.endpointUrl, error);
             }
         });
     }
@@ -174,43 +191,100 @@ class OPCUAService extends events_1.EventEmitter {
     //              Exemple 1 : [getTree] - Browse several node              //
     //              May have timeout error if the tree is too big            //
     ///////////////////////////////////////////////////////////////////////////
-    getTree(entryPointPath, options = { useLastResult: false, useBroadCast: true }) {
+    getTree(options = { useLastResult: false, useBroadCast: true, entryPointPath: "" }) {
         return __awaiter(this, void 0, void 0, function* () {
             yield this.checkAndReestablishConnection(userIdentity);
             // get the queue and nodesObj from the last discover or create a new one
-            let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(entryPointPath, options.useLastResult);
+            let { nodesObj, queue, browseMode } = yield this._getDiscoverStarterData(options.entryPointPath, options.useLastResult);
+            const queuedNodeIds = new Set();
+            // Initialize the queuedNodeIds set with the nodeIds already in the queue to avoid duplicates
+            queue = queue.filter((node) => {
+                const nodeId = node.nodeId.toString();
+                if (queuedNodeIds.has(nodeId))
+                    return false;
+                queuedNodeIds.add(nodeId);
+                return true;
+            });
+            let { maxBrowseBatchSize, batchesSinceCheckpoint } = yield this._fetchBatchingLimits(options, queue);
+            let browseBatchSize = Math.min(INITIAL_DISCOVER_BATCH_SIZE, maxBrowseBatchSize);
             displayLog_1.default.log(`browsing ${this.endpointUrl} using "${browseMode}" , it may take a long time...`);
             while (queue.length && !(0, utils_1.discoverIsCancelled)(this._discoverModel)) {
                 let discoverState = null;
                 let _error = null;
-                // chunk the queue to avoid timeout errors
-                const chunked = options.useBroadCast ? queue.splice(0, 10) : [queue.shift()];
+                const chunked = options.useBroadCast ? queue.splice(0, browseBatchSize) : [queue.shift()];
                 try {
                     discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovering; // set the state to discovering
                     const children = yield this._browseNode(chunked); // browse the nodes in the queue
                     const newsItems = yield this._addNodeToNodesObject(children, nodesObj); // add the new nodes to the nodesObj
                     queue.push(...newsItems);
+                    if (options.useBroadCast && chunked.length === browseBatchSize && browseBatchSize < MAX_DISCOVER_BATCH_SIZE) {
+                        browseBatchSize++;
+                    }
                     if (newsItems.length)
                         displayLog_1.default.log(`[${browseMode}] - ${newsItems.length} new nodes found !`); // log the number of new nodes found
                     displayLog_1.default.log(`[${browseMode}] - ${queue.length} nodes remaining in queue`); // log the number of nodes remaining in queue
                 }
                 catch (error) {
                     queue.unshift(...chunked); // if an error occurs, put the nodes back in the queue
+                    if (options.useBroadCast && isTooManyBrowseOperations(error) && browseBatchSize > 1) {
+                        const previousBatchSize = browseBatchSize;
+                        maxBrowseBatchSize = Math.min(maxBrowseBatchSize, previousBatchSize - 1);
+                        browseBatchSize = Math.max(1, Math.floor(browseBatchSize / 2));
+                        browseBatchSize = Math.min(browseBatchSize, maxBrowseBatchSize);
+                        continue;
+                    }
                     _error = error;
                     discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.error; // set the state to error
                 }
                 if (!_error && queue.length === 0)
                     discoverState = spinal_model_opcua_1.OPCUA_ORGAN_STATES.discovered; // if the queue is empty, set the state to discovered
-                yield discoveringProcessStore_1.default.saveProgress(this.endpointUrl, nodesObj, queue, discoverState); // save the progress in the store
+                batchesSinceCheckpoint++;
+                if (_error || queue.length === 0 || batchesSinceCheckpoint >= DISCOVER_CHECKPOINT_BATCH_COUNT) {
+                    yield discoveringProcessStore_1.default.saveProgress(this.endpointUrl, nodesObj, queue, discoverState);
+                    batchesSinceCheckpoint = 0;
+                }
                 if (_error)
                     throw _error; // if an error occurs, throw it to stop the process
             }
             // if the discovering process is interrupted by user, stop the process
-            if ((0, utils_1.discoverIsCancelled)(this._discoverModel))
+            if ((0, utils_1.discoverIsCancelled)(this._discoverModel)) {
+                yield discoveringProcessStore_1.default.saveProgress(this.endpointUrl, nodesObj, queue, spinal_model_opcua_1.OPCUA_ORGAN_STATES.cancelled);
                 return;
-            const { tree, variables } = yield this._convertObjToTree(entryPointPath, nodesObj);
+            }
+            const { tree, variables } = yield this._convertObjToTree(options.entryPointPath, nodesObj);
             displayLog_1.default.log(`${this.endpointUrl} discovered, ${Object.keys(nodesObj).length} nodes found.`);
             return { tree, variables };
+        });
+    }
+    _fetchBatchingLimits(options, queue) {
+        return __awaiter(this, void 0, void 0, function* () {
+            let batchesSinceCheckpoint = 0;
+            let maxBrowseBatchSize = MAX_DISCOVER_BATCH_SIZE;
+            if (options.useBroadCast && queue.length) {
+                try {
+                    if (!this.session)
+                        throw constants_1.noSessionError;
+                    const dataValue = yield this.session.read({
+                        nodeId: node_opcua_1.VariableIds.Server_ServerCapabilities_OperationLimits_MaxNodesPerBrowse,
+                        attributeId: node_opcua_1.AttributeIds.Value,
+                    });
+                    const advertisedLimit = dataValue.value.value;
+                    if (dataValue.statusCode.value === node_opcua_1.StatusCodes.Good.value && typeof advertisedLimit === "number" && advertisedLimit > 0) {
+                        maxBrowseBatchSize = Math.min(MAX_DISCOVER_BATCH_SIZE, advertisedLimit);
+                        displayLog_1.default.log(`[${this.endpointUrl}] MaxNodesPerBrowse=${advertisedLimit}; using batch cap ${maxBrowseBatchSize}`);
+                    }
+                    else if (dataValue.statusCode.value === node_opcua_1.StatusCodes.Good.value && advertisedLimit === 0) {
+                        displayLog_1.default.log(`[${this.endpointUrl}] server reports no MaxNodesPerBrowse limit; using local cap ${MAX_DISCOVER_BATCH_SIZE}`);
+                    }
+                    else {
+                        displayLog_1.default.warn(`[${this.endpointUrl}] MaxNodesPerBrowse is unavailable (${dataValue.statusCode.toString()}); using adaptive batch sizing`);
+                    }
+                }
+                catch (error) {
+                    displayLog_1.default.warn(`[${this.endpointUrl}] could not read MaxNodesPerBrowse; using adaptive batch sizing: ${error instanceof Error ? error.message : String(error)}`);
+                }
+            }
+            return { maxBrowseBatchSize, batchesSinceCheckpoint };
         });
     }
     ///////////////////////////////////////////////////////////////////////////
@@ -252,22 +326,73 @@ class OPCUAService extends events_1.EventEmitter {
     }
     readNodeValue(node) {
         return __awaiter(this, void 0, void 0, function* () {
+            return (yield this.readNodeValueWithInvalidNodeIds(node)).values;
+        });
+    }
+    readNodeValueWithInvalidNodeIds(node) {
+        return __awaiter(this, void 0, void 0, function* () {
             yield this.checkAndReestablishConnection();
             if (!this.session)
                 throw constants_1.noSessionError;
             node = Array.isArray(node) ? node : [node];
-            const chunckSize = 10; // read 10 nodes at a time to avoid timeout errors
-            // execute the readNode function concurrently for each node in the array,
-            // with a maximum of chunckSize concurrent executions
-            const results = yield (0, utils_1.executeConcurrently)(node, (n) => {
-                displayLog_1.default.log(`Reading node value for ${n.path} (${n.nodeId.toString()})`);
-                return this.readNode(n);
-            }, chunckSize);
-            const dataValues = [];
-            for (const result of results) {
-                dataValues.push(...result);
+            if (node.length === 0)
+                return { values: [], invalidNodeIds: new Set() };
+            const batchSize = yield this._getMaxNodesPerRead();
+            const batches = [];
+            for (let i = 0; i < node.length; i += batchSize) {
+                batches.push(node.slice(i, i + batchSize));
             }
-            return dataValues.map((dataValue) => this._formatDataValue(dataValue));
+            const session = this.session;
+            const results = yield (0, utils_1.executeConcurrently)(batches, (batch) => {
+                const nodesToRead = batch.map((currentNode) => ({
+                    nodeId: currentNode.nodeId,
+                    attributeId: node_opcua_1.AttributeIds.Value,
+                }));
+                displayLog_1.default.log(`Reading ${batch.length} node values from ${this.endpointUrl}`);
+                return session.read(nodesToRead);
+            }, MAX_CONCURRENT_READ_BATCHES);
+            const dataValues = [];
+            for (const result of results)
+                dataValues.push(...result);
+            const invalidNodeIds = new Set();
+            const values = dataValues.map((dataValue, index) => {
+                if (!dataValue.statusCode.isGoodish()) {
+                    if (dataValue.statusCode.value === node_opcua_1.StatusCodes.BadNodeIdUnknown.value || dataValue.statusCode.value === node_opcua_1.StatusCodes.BadNodeIdInvalid.value) {
+                        invalidNodeIds.add(node[index].nodeId.toString());
+                    }
+                    return null;
+                }
+                return this._formatDataValue(dataValue);
+            });
+            return { values, invalidNodeIds };
+        });
+    }
+    _getMaxNodesPerRead() {
+        var _a;
+        return __awaiter(this, void 0, void 0, function* () {
+            if (this.maxNodesPerRead !== undefined)
+                return this.maxNodesPerRead;
+            if (!this.session)
+                throw constants_1.noSessionError;
+            try {
+                const result = yield this.session.read({
+                    nodeId: (0, node_opcua_1.resolveNodeId)(node_opcua_1.VariableIds.Server_ServerCapabilities_OperationLimits_MaxNodesPerRead),
+                    attributeId: node_opcua_1.AttributeIds.Value,
+                });
+                const serverLimit = (_a = result.value) === null || _a === void 0 ? void 0 : _a.value;
+                if (result.statusCode.isGood() && typeof serverLimit === "number" && serverLimit > 0) {
+                    this.maxNodesPerRead = Math.min(serverLimit, MAX_READ_BATCH_SIZE);
+                }
+                else {
+                    this.maxNodesPerRead = MAX_READ_BATCH_SIZE;
+                    displayLog_1.default.warn(`Could not read a valid MaxNodesPerRead from ${this.endpointUrl}; using ${MAX_READ_BATCH_SIZE}`);
+                }
+            }
+            catch (error) {
+                this.maxNodesPerRead = MAX_READ_BATCH_SIZE;
+                displayLog_1.default.warn(`Could not read MaxNodesPerRead from ${this.endpointUrl}; using ${MAX_READ_BATCH_SIZE}`, error);
+            }
+            return this.maxNodesPerRead;
         });
     }
     writeNode(node, value) {
@@ -300,22 +425,22 @@ class OPCUAService extends events_1.EventEmitter {
             }
         });
     }
-    monitorItem(nodes, callback, isReconnection = false) {
+    monitorItem(nodes, callback, isReconnection = false, onMonitorItem) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!this.subscription)
                 throw constants_1.noSubscriptionError;
             nodes = Array.isArray(nodes) ? nodes : [nodes];
             // if not reconnection save the monitored items for reconnexion}
             if (!isReconnection) {
-                const data = { nodes, callback };
+                const data = { nodes, callback, onMonitorItem };
                 this.monitoredItemsData.push(data);
             }
             const { numericNodes, nonNumericNodes, nodeIdToNodeObj } = this._splitNumericAndNonNumericNodes(nodes);
-            yield this._monitorNodeGroup(numericNodes, callback, nodeIdToNodeObj, true);
-            yield this._monitorNodeGroup(nonNumericNodes, callback, nodeIdToNodeObj, false);
+            yield this._monitorNodeGroup(numericNodes, callback, nodeIdToNodeObj, true, onMonitorItem);
+            yield this._monitorNodeGroup(nonNumericNodes, callback, nodeIdToNodeObj, false, onMonitorItem);
         });
     }
-    _monitorNodeGroup(nodeIds, callback, nodeIdToNodeObj, isNumeric = false) {
+    _monitorNodeGroup(nodeIds, callback, nodeIdToNodeObj, isNumeric = false, onMonitorItem) {
         return __awaiter(this, void 0, void 0, function* () {
             if (!this.subscription || nodeIds.length === 0)
                 return;
@@ -329,6 +454,7 @@ class OPCUAService extends events_1.EventEmitter {
             const monitoredItemGroup = yield this.subscription.monitorItems(monitoredItems, parameters, node_opcua_1.TimestampsToReturn.Both);
             for (const monitoredItem of monitoredItemGroup.monitoredItems) {
                 this._listenMonitoredItemEvents(monitoredItem, callback, nodeIdToNodeObj);
+                onMonitorItem === null || onMonitorItem === void 0 ? void 0 : onMonitorItem(monitoredItem);
             }
         });
     }
@@ -418,7 +544,7 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _browseNode(node) {
         node = Array.isArray(node) ? node : [node];
-        const nodeToBrowse = node.map((n) => (0, utils_1.convertToBrowseDescription)(n)).flat();
+        const nodeToBrowse = node.map((n) => (0, utils_1.convertToBrowseDescription)(n));
         return this._browseUsingBrowseDescription(nodeToBrowse);
     }
     _browseUsingBrowseDescription(descriptions) {
@@ -430,6 +556,9 @@ class OPCUAService extends events_1.EventEmitter {
             const children = [];
             for (let i = 0; i < browseResults.length; i++) {
                 const browseResult = browseResults[i];
+                if (browseResult.statusCode === node_opcua_1.StatusCodes.BadTooManyOperations) {
+                    throw new Error(browseResult.statusCode.toString());
+                }
                 const parentId = (_b = (_a = descriptions[i]) === null || _a === void 0 ? void 0 : _a.nodeId) === null || _b === void 0 ? void 0 : _b.toString();
                 const refs = (_c = browseResult.references) !== null && _c !== void 0 ? _c : [];
                 for (let j = 0; j < refs.length; j++) {
@@ -445,14 +574,19 @@ class OPCUAService extends events_1.EventEmitter {
     }
     _addNodeToNodesObject(nodes, nodesObj = {}) {
         return __awaiter(this, void 0, void 0, function* () {
+            const addedNodes = [];
             for (const child of nodes) {
+                const nodeId = child.nodeId.toString();
+                if (Object.prototype.hasOwnProperty.call(nodesObj, nodeId))
+                    continue;
                 const parent = nodesObj[child.parentId];
                 // create the path based on the parent node
                 const nodePath = parent ? `${parent.path}/${child.browseName}/` : `/${child.browseName}`;
                 child.path = (0, utils_1.normalizePath)(nodePath);
-                nodesObj[child.nodeId.toString()] = child;
+                nodesObj[nodeId] = child;
+                addedNodes.push(child);
             }
-            return nodes;
+            return addedNodes;
         });
     }
     _getPossibleDataType(value) {

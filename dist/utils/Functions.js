@@ -32,7 +32,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.clearOrganModel = exports.consumeBatch = exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindModels = exports.GetPm2Instance = exports.WaitModelReady = void 0;
+exports.clearOrganModel = exports.consumeBatch = exports.restartProcessById = exports.getServerUrl = exports.getVariablesList = exports.SpinalPilotCallback = exports.SpinalDiscoverCallback = exports.SpinalListnerCallback = exports.bindOrganModels = exports.GetPm2Instance = exports.WaitModelReady = void 0;
 const displayLog_1 = require("./displayLog");
 const spinal_core_connectorjs_type_1 = require("spinal-core-connectorjs_type");
 const node_opcua_1 = require("node-opcua");
@@ -90,7 +90,7 @@ exports.GetPm2Instance = GetPm2Instance;
 ////////////////////////////////////////////////
 ////                 CALLBACKS                //
 ////////////////////////////////////////////////
-function bindModels(organModel) {
+function bindOrganModels(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
         // if (!organIsCompatible(organModel)) {
         // 	if (!clearnOrgan()) throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
@@ -118,7 +118,7 @@ function bindModels(organModel) {
         bindListenerModel(listener, organModel, listenerAlreadyBinded);
     });
 }
-exports.bindModels = bindModels;
+exports.bindOrganModels = bindOrganModels;
 function bindListenerModel(listenerModel, organModel, listenerAlreadyBinded) {
     if (!(listenerModel === null || listenerModel === void 0 ? void 0 : listenerModel.modification_date))
         return;
@@ -288,6 +288,7 @@ function clearOrganModel(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
         return (0, clearOrgan_1.clearOrgan)(organModel).catch((err) => {
             displayLog_1.default.error("[clearOrganModel] - Error clearing organ model:", err);
+            process.exit(1);
         });
     });
 }

@@ -27,6 +27,7 @@ declare class SpinalMonitoring {
     private _addDeviceDataToMaps;
     private _addItemTointervalMap;
     private _addItemToPriorityQueue;
+    private _getServerNodeKey;
     private _removeFromMaps;
     private _stopCovItems;
     private waitFct;

@@ -5,7 +5,7 @@ import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalDevice } from "./SpinalDevice";
 import * as lodash from "lodash";
 import { SpinalNetworkUtils } from "../utils/SpinalNetworkUtils";
-import { ClientMonitoredItemBase, coerceNodeId, UserIdentityInfo, UserTokenType } from "node-opcua";
+import { ClientMonitoredItemBase, coerceNodeId } from "node-opcua";
 import OPCUAService from "../utils/OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { consumeBatch, getServerUrl } from "../utils/Functions";
@@ -27,7 +27,7 @@ class SpinalMonitoring {
 	private spinalDevicesStore: Map<string, SpinalDevice> = new Map();
 	private idNetworkToSpinalDevice: Map<string, SpinalDevice> = new Map();
 	private spinalNetworkUtils: SpinalNetworkUtils = SpinalNetworkUtils.getInstance();
-	private covItemToMonitoring: Map<string, ClientMonitoredItemBase> = new Map();
+	private covItemToMonitoring: Map<string, Map<string, ClientMonitoredItemBase>> = new Map();
 	private monitoringMapQueue: SpinalQueuing = new SpinalQueuing();
 
 	constructor() {}
@@ -98,25 +98,15 @@ class SpinalMonitoring {
 			const valuesObj = await this._getOPCValues(data);
 			const deviceIds = Object.keys(valuesObj);
 
-			for (const deviceId of deviceIds) {
-				if (this.spinalDevicesStore.has(deviceId)) {
-					const device = this.spinalDevicesStore.get(deviceId);
-					device?.updateEndpoints(valuesObj[deviceId]);
+			for (const deviceIdsBatch of lodash.chunk(deviceIds, 4)) {
+				const updates: Promise<void>[] = [];
+				for (const deviceId of deviceIdsBatch) {
+					const update = this.spinalDevicesStore.get(deviceId)?.updateEndpoints(valuesObj[deviceId]);
+					if (update) updates.push(update);
 				}
+
+				await Promise.all(updates);
 			}
-
-			// const promises = Object.keys(valuesObj).map((deviceId) => {
-			//     const device = this.spinalDevicesStore.get(deviceId);
-			//     try {
-			//         if (!device) return;
-
-			//         return device.updateEndpoints(valuesObj[deviceId]);
-			//     } catch (error) {
-			//         spinalLog.error(`Error updating endpoints for device ${deviceId}:`, error);
-			//     }
-			// });
-
-			// await Promise.all(promises);
 
 			// this.priorityQueue.enqueue({ interval }, Date.now() + interval);
 		} catch (error) {
@@ -200,11 +190,19 @@ class SpinalMonitoring {
 
 		const nodeToUpdate = intervalData.children.map((child: any) => {
 			const key = getNodeKey(child);
-			this.idNetworkToSpinalDevice.set(key, spinalDevice); // save the device in the map to be able to retrieve it later
+			this.idNetworkToSpinalDevice.set(this._getServerNodeKey(url, key), spinalDevice);
 			return { path: normalizePath(child.path), nodeId: child.nodeId || child.idNetwork };
 		});
 
-		intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate });
+		const existingIndex = intervalList.findIndex((entry) => entry.id === spinalDevice.deviceInfo.id);
+		if (existingIndex >= 0) {
+			const existingNodes = intervalList[existingIndex].nodeToUpdate;
+			const uniqueNodes = new Map(existingNodes.map((node) => [getNodeKey(node), node]));
+			for (const node of nodeToUpdate) uniqueNodes.set(getNodeKey(node), node);
+			intervalList[existingIndex] = { id: spinalDevice.deviceInfo.id, nodeToUpdate: Array.from(uniqueNodes.values()) };
+		} else {
+			intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate });
+		}
 
 		intervalObj[url] = intervalList;
 
@@ -222,10 +220,23 @@ class SpinalMonitoring {
 		return intervalFound;
 	}
 
+	private _getServerNodeKey(url: string, nodeKey: string): string {
+		return JSON.stringify([url, nodeKey]);
+	}
+
 	private _removeFromMaps(deviceId: string, url: string) {
 		this.intervalTimesMap.forEach((valueObj, key) => {
 			if (valueObj[url]) {
-				valueObj[url] = valueObj[url].filter((el) => el.id !== deviceId);
+				valueObj[url] = valueObj[url].filter((entry) => {
+					if (entry.id !== deviceId) return true;
+
+					for (const node of entry.nodeToUpdate) {
+						const nodeKey = this._getServerNodeKey(url, getNodeKey(node));
+						if (this.idNetworkToSpinalDevice.get(nodeKey)?.deviceInfo.id === deviceId) this.idNetworkToSpinalDevice.delete(nodeKey);
+					}
+
+					return false;
+				});
 				this.intervalTimesMap.set(key, valueObj);
 			}
 			//    this.intervalTimesMap.set(key, value.filter(el => el.id !== deviceId));
@@ -233,18 +244,18 @@ class SpinalMonitoring {
 	}
 
 	private async _stopCovItems(deviceId: string) {
-		const keys = Array.from(this.covItemToMonitoring.keys()).filter((key: string) => key.startsWith(deviceId));
-		const promises = keys.map(async (key) => {
-			try {
-				const item = this.covItemToMonitoring.get(key);
-				if (!item) return;
+		const monitoredItems = this.covItemToMonitoring.get(deviceId);
+		if (!monitoredItems) return;
 
+		const promises = Array.from(monitoredItems.entries()).map(async ([nodeId, item]) => {
+			try {
 				await item.terminate();
-				this.covItemToMonitoring.delete(key);
+				monitoredItems.delete(nodeId);
 			} catch (error) {}
 		});
 
 		await Promise.all(promises);
+		if (monitoredItems.size === 0) this.covItemToMonitoring.delete(deviceId);
 	}
 
 	private waitFct(nb: number): Promise<void> {
@@ -272,18 +283,20 @@ class SpinalMonitoring {
 			const opcNodeObj: { [key: string]: IOPCNode[] } = {};
 
 			// result is an array of arrays, we need to flatten it and classify by device id
-			for (const opcNode of result.flat()) {
-				if (!opcNode || !opcNode.nodeId) continue; // skip if no nodeId
+			for (let index = 0; index < result.length; index++) {
+				for (const opcNode of result[index]) {
+					if (!opcNode || !opcNode.nodeId) continue; // skip if no nodeId
 
-				const key = getNodeKey(opcNode);
-				const device = this.idNetworkToSpinalDevice.get(key);
+					const key = this._getServerNodeKey(urls[index], getNodeKey(opcNode));
+					const device = this.idNetworkToSpinalDevice.get(key);
 
-				if (!device) continue;
+					if (!device) continue;
 
-				const deviceId = device.deviceInfo.id;
-				if (!opcNodeObj[deviceId]) opcNodeObj[deviceId] = [];
+					const deviceId = device.deviceInfo.id;
+					if (!opcNodeObj[deviceId]) opcNodeObj[deviceId] = [];
 
-				opcNodeObj[deviceId].push(opcNode);
+					opcNodeObj[deviceId].push(opcNode);
+				}
 			}
 
 			return opcNodeObj;
@@ -294,16 +307,28 @@ class SpinalMonitoring {
 		try {
 			if (!Array.isArray(variableNodes)) variableNodes = [variableNodes];
 
-			const userIdentity: UserIdentityInfo = { type: UserTokenType.Anonymous };
 			const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(endpointUrl);
 			await opcuaService.checkAndReestablishConnection();
 
-			return opcuaService.getNodesNewInfoByPath(variableNodes).then(async (result) => {
-				// Disable disconnect to keep the connection alive for future operations
-				// await opcuaService.disconnect();
-				return result;
-			});
+			const { values, invalidNodeIds } = await opcuaService.readNodeValueWithInvalidNodeIds(variableNodes);
+			const staleNodes = variableNodes.filter((node) => invalidNodeIds.has(node.nodeId.toString()));
+			const refreshedNodes = staleNodes.length ? await opcuaService.getNodesNewInfoByPath(staleNodes) : [];
+			const refreshedByKey = new Map(refreshedNodes.map((node) => [getNodeKey(node), node]));
+
+			const result: IOPCNode[] = [];
+			for (let index = 0; index < variableNodes.length; index++) {
+				const node = variableNodes[index];
+				if (invalidNodeIds.has(node.nodeId.toString())) {
+					const refreshedNode = refreshedByKey.get(getNodeKey(node));
+					if (refreshedNode) result.push(refreshedNode);
+				} else {
+					result.push({ ...node, value: values[index] });
+				}
+			}
+
+			return result;
 		} catch (error) {
+			spinalLog.error(`[_getVariablesValues] - Failed to read node values from ${endpointUrl}:`, error);
 			return [];
 		}
 	}
@@ -340,16 +365,24 @@ class SpinalMonitoring {
 			const chunked = lodash.chunk(opcNodes, 100);
 
 			for (const itemsChunked of chunked) {
-				opcuaService.monitorItem(itemsChunked, (node, dataValue, monitorItem) => {
-					this._monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov);
-				});
+				await opcuaService.monitorItem(
+					itemsChunked,
+					(node, dataValue) => this._monitorCallback(node, dataValue, spinalDevice, isCov),
+					false,
+					(monitorItem) => {
+						const nodeId = monitorItem.itemToMonitor.nodeId.toString();
+						const monitoredItems = this.covItemToMonitoring.get(spinalDevice.deviceInfo.id) || new Map();
+						monitoredItems.set(nodeId, monitorItem);
+						this.covItemToMonitoring.set(spinalDevice.deviceInfo.id, monitoredItems);
+					},
+				);
 			}
 		} catch (error) {
 			spinalLog.log(`Failed to monitor nodes with COV for device ${spinalDevice.deviceInfo.name} at ${url} due to:`, error);
 		}
 	}
 
-	private _monitorCallback(node: IOPCNode, dataValue: any, monitorItem: ClientMonitoredItemBase, spinalDevice: SpinalDevice, isCov: boolean) {
+	private _monitorCallback(node: IOPCNode, dataValue: any, spinalDevice: SpinalDevice, isCov: boolean) {
 		if (!dataValue || typeof dataValue?.value == "undefined") return;
 		// const value = ["string", "number", "boolean"].includes(typeof dataValue?.value) ? dataValue?.value : null;
 		const value = dataValue?.value ?? null;
@@ -357,10 +390,6 @@ class SpinalMonitoring {
 		const nodeId = node.nodeId.toString();
 
 		spinalLog.log(`[COV] - receive COV notif from OPCUA server: ${nodePath} change event ${value}`);
-
-		const temp_id = `${spinalDevice.deviceInfo.id}_${nodeId}`;
-
-		if (!this.covItemToMonitoring.has(temp_id)) this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
 
 		spinalDevice.updateEndpoints([{ path: nodePath, nodeId: coerceNodeId(nodeId), value: { value: value, dataType: typeof value } }], isCov);
 	}

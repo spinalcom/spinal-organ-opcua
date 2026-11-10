@@ -23,29 +23,13 @@ export function getConfig(): IConfig {
 }
 
 export function convertToBrowseDescription(node: IOPCNode) {
-	return [
-		{
-			nodeId: node.nodeId,
-			referenceTypeId: ReferenceTypeIds.Organizes,
-			includeSubtypes: true,
-			browseDirection: BrowseDirection.Forward,
-			resultMask: 0x3f,
-		},
-		{
-			nodeId: node.nodeId,
-			referenceTypeId: ReferenceTypeIds.Aggregates,
-			includeSubtypes: true,
-			browseDirection: BrowseDirection.Forward,
-			resultMask: 0x3f,
-		},
-		{
-			nodeId: node.nodeId,
-			referenceTypeId: ReferenceTypeIds.HasSubtype,
-			includeSubtypes: true,
-			browseDirection: BrowseDirection.Forward,
-			resultMask: 0x3f,
-		},
-	];
+	return {
+		nodeId: node.nodeId,
+		referenceTypeId: ReferenceTypeIds.HierarchicalReferences,
+		includeSubtypes: true,
+		browseDirection: BrowseDirection.Forward,
+		resultMask: 0x1c,
+	};
 }
 
 export function convertSpinalNodeToOPCNode(node: SpinalNode | string): IOPCNode {

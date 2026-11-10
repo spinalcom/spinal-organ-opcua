@@ -96,30 +96,32 @@ export class SpinalDevice extends EventEmitter {
 	}
 
 	public async updateEndpointsDirectly(nodes: IOPCNode[], isCov: boolean = false, date: number | null = null) {
-		const promises = [];
+		const batchSize = 25;
 
-		for (const opcNode of nodes) {
-			const key = getNodeKey(opcNode);
-			const spinalnode = await this._getEndpoint(key);
+		try {
+			for (let i = 0; i < nodes.length; i += batchSize) {
+				const batch = nodes.slice(i, i + batchSize);
+				await Promise.all(
+					batch.map(async (opcNode) => {
+						const key = getNodeKey(opcNode);
+						const spinalnode = await this._getEndpoint(key);
 
-			if (!spinalnode) {
-				spinalLog.warn(`[SpinalDevice] - endpoint ${key} not found in device ${this.deviceInfo.name}`);
-				continue;
+						if (!spinalnode) {
+							spinalLog.warn(`[SpinalDevice] - endpoint ${key} not found in device ${this.deviceInfo.name}`);
+							return;
+						}
+
+						await this._updateNodeInfo(opcNode, spinalnode);
+						await this._updateEndpointInGraph(spinalnode, opcNode.value?.value, isCov, date);
+					}),
+				);
 			}
 
-			await this._updateNodeInfo(opcNode, spinalnode);
-			// const value = opcNode.value?.value || null; // may be bad if value is boolean
-			const value = opcNode.value?.value;
-			promises.push(this._updateEndpointInGraph(spinalnode, value, isCov, date));
+			if (!isCov) spinalLog.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
+		} catch (error) {
+			spinalLog.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name}:`, error);
+			throw error;
 		}
-
-		return Promise.all(promises)
-			.then((result) => {
-				if (!isCov) spinalLog.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
-			})
-			.catch((err) => {
-				if (!isCov) spinalLog.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
-			});
 	}
 
 	stopMonitoring() {

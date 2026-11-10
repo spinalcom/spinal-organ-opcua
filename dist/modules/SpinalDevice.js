@@ -88,30 +88,30 @@ class SpinalDevice extends events_1.EventEmitter {
         this._updateQueue.push({ nodes, isCov, date: Date.now() });
     }
     updateEndpointsDirectly(nodes, isCov = false, date = null) {
-        var _a;
         return __awaiter(this, void 0, void 0, function* () {
-            const promises = [];
-            for (const opcNode of nodes) {
-                const key = (0, utils_1.getNodeKey)(opcNode);
-                const spinalnode = yield this._getEndpoint(key);
-                if (!spinalnode) {
-                    displayLog_1.default.warn(`[SpinalDevice] - endpoint ${key} not found in device ${this.deviceInfo.name}`);
-                    continue;
+            const batchSize = 25;
+            try {
+                for (let i = 0; i < nodes.length; i += batchSize) {
+                    const batch = nodes.slice(i, i + batchSize);
+                    yield Promise.all(batch.map((opcNode) => __awaiter(this, void 0, void 0, function* () {
+                        var _a;
+                        const key = (0, utils_1.getNodeKey)(opcNode);
+                        const spinalnode = yield this._getEndpoint(key);
+                        if (!spinalnode) {
+                            displayLog_1.default.warn(`[SpinalDevice] - endpoint ${key} not found in device ${this.deviceInfo.name}`);
+                            return;
+                        }
+                        yield this._updateNodeInfo(opcNode, spinalnode);
+                        yield this._updateEndpointInGraph(spinalnode, (_a = opcNode.value) === null || _a === void 0 ? void 0 : _a.value, isCov, date);
+                    })));
                 }
-                yield this._updateNodeInfo(opcNode, spinalnode);
-                // const value = opcNode.value?.value || null; // may be bad if value is boolean
-                const value = (_a = opcNode.value) === null || _a === void 0 ? void 0 : _a.value;
-                promises.push(this._updateEndpointInGraph(spinalnode, value, isCov, date));
-            }
-            return Promise.all(promises)
-                .then((result) => {
                 if (!isCov)
                     displayLog_1.default.log(`[SpinalDevice] - device ${this.deviceInfo.name} updated`);
-            })
-                .catch((err) => {
-                if (!isCov)
-                    displayLog_1.default.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name} due to error: ${err.message}`);
-            });
+            }
+            catch (error) {
+                displayLog_1.default.error(`[SpinalDevice] - failed to update device ${this.deviceInfo.name}:`, error);
+                throw error;
+            }
         });
     }
     stopMonitoring() {

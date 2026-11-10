@@ -89,7 +89,7 @@ export const GetPm2Instance = (organName: string): Promise<pm2.ProcessDescriptio
 ////                 CALLBACKS                //
 ////////////////////////////////////////////////
 
-export async function bindModels(organModel: SpinalOrganOPCUA): Promise<void> {
+export async function bindOrganModels(organModel: SpinalOrganOPCUA): Promise<void> {
 	// if (!organIsCompatible(organModel)) {
 	// 	if (!clearnOrgan()) throw new Error("[bindModels] - Organ model incompatible. Update it or set CLEAR_ORGAN_IF_NOT_COMPATIBLE=1.");
 

@@ -85,6 +85,7 @@ class SpinalMonitoring {
         });
     }
     updateData(data, interval, date) {
+        var _a;
         return __awaiter(this, void 0, void 0, function* () {
             try {
                 // if a date is provided, we wait for the next update
@@ -94,22 +95,15 @@ class SpinalMonitoring {
                 }
                 const valuesObj = yield this._getOPCValues(data);
                 const deviceIds = Object.keys(valuesObj);
-                for (const deviceId of deviceIds) {
-                    if (this.spinalDevicesStore.has(deviceId)) {
-                        const device = this.spinalDevicesStore.get(deviceId);
-                        device === null || device === void 0 ? void 0 : device.updateEndpoints(valuesObj[deviceId]);
+                for (const deviceIdsBatch of lodash.chunk(deviceIds, 4)) {
+                    const updates = [];
+                    for (const deviceId of deviceIdsBatch) {
+                        const update = (_a = this.spinalDevicesStore.get(deviceId)) === null || _a === void 0 ? void 0 : _a.updateEndpoints(valuesObj[deviceId]);
+                        if (update)
+                            updates.push(update);
                     }
+                    yield Promise.all(updates);
                 }
-                // const promises = Object.keys(valuesObj).map((deviceId) => {
-                //     const device = this.spinalDevicesStore.get(deviceId);
-                //     try {
-                //         if (!device) return;
-                //         return device.updateEndpoints(valuesObj[deviceId]);
-                //     } catch (error) {
-                //         spinalLog.error(`Error updating endpoints for device ${deviceId}:`, error);
-                //     }
-                // });
-                // await Promise.all(promises);
                 // this.priorityQueue.enqueue({ interval }, Date.now() + interval);
             }
             catch (error) {
@@ -185,10 +179,20 @@ class SpinalMonitoring {
         let intervalList = intervalObj[url] || [];
         const nodeToUpdate = intervalData.children.map((child) => {
             const key = (0, utils_1.getNodeKey)(child);
-            this.idNetworkToSpinalDevice.set(key, spinalDevice); // save the device in the map to be able to retrieve it later
+            this.idNetworkToSpinalDevice.set(this._getServerNodeKey(url, key), spinalDevice);
             return { path: (0, utils_1.normalizePath)(child.path), nodeId: child.nodeId || child.idNetwork };
         });
-        intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate });
+        const existingIndex = intervalList.findIndex((entry) => entry.id === spinalDevice.deviceInfo.id);
+        if (existingIndex >= 0) {
+            const existingNodes = intervalList[existingIndex].nodeToUpdate;
+            const uniqueNodes = new Map(existingNodes.map((node) => [(0, utils_1.getNodeKey)(node), node]));
+            for (const node of nodeToUpdate)
+                uniqueNodes.set((0, utils_1.getNodeKey)(node), node);
+            intervalList[existingIndex] = { id: spinalDevice.deviceInfo.id, nodeToUpdate: Array.from(uniqueNodes.values()) };
+        }
+        else {
+            intervalList.push({ id: spinalDevice.deviceInfo.id, nodeToUpdate });
+        }
         intervalObj[url] = intervalList;
         this.intervalTimesMap.set(interval, intervalObj);
         return { interval, intervalObj };
@@ -201,10 +205,23 @@ class SpinalMonitoring {
             this.priorityQueue.enqueue({ interval }, interval + Date.now());
         return intervalFound;
     }
+    _getServerNodeKey(url, nodeKey) {
+        return JSON.stringify([url, nodeKey]);
+    }
     _removeFromMaps(deviceId, url) {
         this.intervalTimesMap.forEach((valueObj, key) => {
             if (valueObj[url]) {
-                valueObj[url] = valueObj[url].filter((el) => el.id !== deviceId);
+                valueObj[url] = valueObj[url].filter((entry) => {
+                    var _a;
+                    if (entry.id !== deviceId)
+                        return true;
+                    for (const node of entry.nodeToUpdate) {
+                        const nodeKey = this._getServerNodeKey(url, (0, utils_1.getNodeKey)(node));
+                        if (((_a = this.idNetworkToSpinalDevice.get(nodeKey)) === null || _a === void 0 ? void 0 : _a.deviceInfo.id) === deviceId)
+                            this.idNetworkToSpinalDevice.delete(nodeKey);
+                    }
+                    return false;
+                });
                 this.intervalTimesMap.set(key, valueObj);
             }
             //    this.intervalTimesMap.set(key, value.filter(el => el.id !== deviceId));
@@ -212,18 +229,19 @@ class SpinalMonitoring {
     }
     _stopCovItems(deviceId) {
         return __awaiter(this, void 0, void 0, function* () {
-            const keys = Array.from(this.covItemToMonitoring.keys()).filter((key) => key.startsWith(deviceId));
-            const promises = keys.map((key) => __awaiter(this, void 0, void 0, function* () {
+            const monitoredItems = this.covItemToMonitoring.get(deviceId);
+            if (!monitoredItems)
+                return;
+            const promises = Array.from(monitoredItems.entries()).map(([nodeId, item]) => __awaiter(this, void 0, void 0, function* () {
                 try {
-                    const item = this.covItemToMonitoring.get(key);
-                    if (!item)
-                        return;
                     yield item.terminate();
-                    this.covItemToMonitoring.delete(key);
+                    monitoredItems.delete(nodeId);
                 }
                 catch (error) { }
             }));
             yield Promise.all(promises);
+            if (monitoredItems.size === 0)
+                this.covItemToMonitoring.delete(deviceId);
         });
     }
     waitFct(nb) {
@@ -245,17 +263,19 @@ class SpinalMonitoring {
         return Promise.all(promises).then((result) => {
             const opcNodeObj = {};
             // result is an array of arrays, we need to flatten it and classify by device id
-            for (const opcNode of result.flat()) {
-                if (!opcNode || !opcNode.nodeId)
-                    continue; // skip if no nodeId
-                const key = (0, utils_1.getNodeKey)(opcNode);
-                const device = this.idNetworkToSpinalDevice.get(key);
-                if (!device)
-                    continue;
-                const deviceId = device.deviceInfo.id;
-                if (!opcNodeObj[deviceId])
-                    opcNodeObj[deviceId] = [];
-                opcNodeObj[deviceId].push(opcNode);
+            for (let index = 0; index < result.length; index++) {
+                for (const opcNode of result[index]) {
+                    if (!opcNode || !opcNode.nodeId)
+                        continue; // skip if no nodeId
+                    const key = this._getServerNodeKey(urls[index], (0, utils_1.getNodeKey)(opcNode));
+                    const device = this.idNetworkToSpinalDevice.get(key);
+                    if (!device)
+                        continue;
+                    const deviceId = device.deviceInfo.id;
+                    if (!opcNodeObj[deviceId])
+                        opcNodeObj[deviceId] = [];
+                    opcNodeObj[deviceId].push(opcNode);
+                }
             }
             return opcNodeObj;
         });
@@ -265,16 +285,28 @@ class SpinalMonitoring {
             try {
                 if (!Array.isArray(variableNodes))
                     variableNodes = [variableNodes];
-                const userIdentity = { type: node_opcua_1.UserTokenType.Anonymous };
                 const opcuaService = OPCUAFactory_1.default.getOPCUAInstance(endpointUrl);
                 yield opcuaService.checkAndReestablishConnection();
-                return opcuaService.getNodesNewInfoByPath(variableNodes).then((result) => __awaiter(this, void 0, void 0, function* () {
-                    // Disable disconnect to keep the connection alive for future operations
-                    // await opcuaService.disconnect();
-                    return result;
-                }));
+                const { values, invalidNodeIds } = yield opcuaService.readNodeValueWithInvalidNodeIds(variableNodes);
+                const staleNodes = variableNodes.filter((node) => invalidNodeIds.has(node.nodeId.toString()));
+                const refreshedNodes = staleNodes.length ? yield opcuaService.getNodesNewInfoByPath(staleNodes) : [];
+                const refreshedByKey = new Map(refreshedNodes.map((node) => [(0, utils_1.getNodeKey)(node), node]));
+                const result = [];
+                for (let index = 0; index < variableNodes.length; index++) {
+                    const node = variableNodes[index];
+                    if (invalidNodeIds.has(node.nodeId.toString())) {
+                        const refreshedNode = refreshedByKey.get((0, utils_1.getNodeKey)(node));
+                        if (refreshedNode)
+                            result.push(refreshedNode);
+                    }
+                    else {
+                        result.push(Object.assign(Object.assign({}, node), { value: values[index] }));
+                    }
+                }
+                return result;
             }
             catch (error) {
+                displayLog_1.default.error(`[_getVariablesValues] - Failed to read node values from ${endpointUrl}:`, error);
                 return [];
             }
         });
@@ -305,8 +337,11 @@ class SpinalMonitoring {
                 yield opcuaService.checkAndReestablishConnection();
                 const chunked = lodash.chunk(opcNodes, 100);
                 for (const itemsChunked of chunked) {
-                    opcuaService.monitorItem(itemsChunked, (node, dataValue, monitorItem) => {
-                        this._monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov);
+                    yield opcuaService.monitorItem(itemsChunked, (node, dataValue) => this._monitorCallback(node, dataValue, spinalDevice, isCov), false, (monitorItem) => {
+                        const nodeId = monitorItem.itemToMonitor.nodeId.toString();
+                        const monitoredItems = this.covItemToMonitoring.get(spinalDevice.deviceInfo.id) || new Map();
+                        monitoredItems.set(nodeId, monitorItem);
+                        this.covItemToMonitoring.set(spinalDevice.deviceInfo.id, monitoredItems);
                     });
                 }
             }
@@ -315,7 +350,7 @@ class SpinalMonitoring {
             }
         });
     }
-    _monitorCallback(node, dataValue, monitorItem, spinalDevice, isCov) {
+    _monitorCallback(node, dataValue, spinalDevice, isCov) {
         var _a;
         if (!dataValue || typeof (dataValue === null || dataValue === void 0 ? void 0 : dataValue.value) == "undefined")
             return;
@@ -324,9 +359,6 @@ class SpinalMonitoring {
         const nodePath = (0, utils_1.getNodeKey)(node);
         const nodeId = node.nodeId.toString();
         displayLog_1.default.log(`[COV] - receive COV notif from OPCUA server: ${nodePath} change event ${value}`);
-        const temp_id = `${spinalDevice.deviceInfo.id}_${nodeId}`;
-        if (!this.covItemToMonitoring.has(temp_id))
-            this.covItemToMonitoring.set(temp_id, monitorItem); // save the monitor item to be able to stop it later
         spinalDevice.updateEndpoints([{ path: nodePath, nodeId: (0, node_opcua_1.coerceNodeId)(nodeId), value: { value: value, dataType: typeof value } }], isCov);
     }
 }

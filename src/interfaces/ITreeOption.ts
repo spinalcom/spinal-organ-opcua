@@ -1,4 +1,5 @@
 export interface ITreeOption {
-    useLastResult: boolean;
-    useBroadCast: boolean;
+	useLastResult: boolean;
+	useBroadCast: boolean;
+	entryPointPath: string;
 }

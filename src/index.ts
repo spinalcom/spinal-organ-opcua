@@ -1,7 +1,7 @@
 // import { config as dotenvConfig } from "dotenv";
 import { SpinalCallBackError, spinalCore } from "spinal-core-connectorjs_type";
 import { getConfig } from "./utils/utils";
-import { bindModels, clearOrganModel, GetPm2Instance, restartProcessById } from "./utils/Functions";
+import { bindOrganModels, clearOrganModel, GetPm2Instance, restartProcessById } from "./utils/Functions";
 import { OPCUA_ORGAN_TYPE, SpinalOrganOPCUA, SpinalOPCUADiscoverModel, SpinalOPCUAListener, SpinalOPCUAPilot } from "spinal-model-opcua";
 import { IConnectorInfo, SpinalConnectorService } from "spinal-connector-service";
 import * as nodePath from "path";
@@ -44,15 +44,21 @@ spinalConnectorService
 		}
 
 		// Bind the restart function to PM2 events
-		const pm2_instance = GetPm2Instance(name);
+		const pm2_instance = await GetPm2Instance(name);
 		const pm2_id = pm2_instance ? (pm2_instance as any).pm_id : null;
-		if (pm2_id) organModel.restart.bind(() => restartProcessById(pm2_id));
+		if (pm2_id) {
+			organModel.restart?.set(false);
+
+			organModel.restart?.bind(() => {
+				if (organModel.restart?.get()) restartProcessById(pm2_id);
+			});
+		}
 		// end of restart function to bind
 
 		const message = alreadyExists ? "organ found !" : "organ not found, creating new organ !";
 		spinalLog.log(message);
 
-		bindModels(organModel);
+		await bindOrganModels(organModel);
 	})
 	.catch((err) => {
 		spinalLog.error(err);

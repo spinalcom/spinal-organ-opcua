@@ -2,19 +2,21 @@ import { EventEmitter } from "events";
 import { UserIdentityInfo, UserTokenType } from "node-opcua";
 import { SpinalOPCUADiscoverModel, OPCUA_ORGAN_STATES, OPCUA_ORGAN_USER_CHOICE, IServer } from "spinal-model-opcua";
 
+import { IDiscoverGateway } from "../interfaces/IDiscoverGateway";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { ITreeOption } from "../interfaces/ITreeOption";
 
-import { _transformTreeToGraphRecursively, getNodeAlreadyCreated } from "../utils/transformTreeToGraph";
+import { _transformTreeToGraphRecursively, createExistingDeviceIndex, getNodeAlreadyCreated } from "../utils/transformTreeToGraph";
 import { getServerUrl, getVariablesList } from "../utils/Functions";
 import { getOrGenNetworkNode } from "../utils/addNetworkToGraph";
-import OPCUAService from "../utils/OPCUAService";
+import OPCUAService, { OPCUAConnectionError } from "../utils/OPCUAService";
 import discoveringStore from "../utils/discoveringProcessStore";
-import { discoverIsCancelled, getConfig, getNodeKey, normalizePath } from "../utils/utils";
+import { discoverIsCancelled, executeConcurrently, getConfig, getNodeKey, normalizePath } from "../utils/utils";
 import { SpinalQueuing } from "../utils/SpinalQueuing";
 import { SpinalContext, SpinalNode } from "spinal-env-viewer-graph-service";
 import OPCUAFactory from "../utils/OPCUAFactory";
 import spinalLog from "../utils/displayLog";
+import { Model } from "spinal-core-connectorjs";
 
 // import * as testJSON from "./test.json";
 
@@ -77,25 +79,9 @@ class SpinalDiscover extends EventEmitter {
 
 	private async _discoverDevices(model: SpinalOPCUADiscoverModel) {
 		try {
-			const servers = model.network.gateways;
-			let index = 0;
-			const discovered = [];
+			const { failedServers, discovered }: { failedServers: spinal.Model[]; discovered: any[] } = await this._fetchServerDiscovery(model);
 
-			while (index < servers.length && !discoverIsCancelled(model)) {
-				try {
-					const tree = await this._discoverDevice(servers[index], model);
-					if (!tree || !tree.children) throw new Error("No tree discovered");
-
-					discovered.push(...tree.children);
-					const count = model.progress.finished.get();
-					model.progress.finished.set(count + 1);
-				} catch (err) {
-					const count = model.progress.failed.get();
-					model.progress.failed.set(count + 1);
-				}
-
-				index++;
-			}
+			await this._retryFailedServerDiscovery(failedServers, model, discovered);
 
 			if (discoverIsCancelled(model)) return;
 
@@ -106,41 +92,72 @@ class SpinalDiscover extends EventEmitter {
 			model.changeState(OPCUA_ORGAN_STATES.discovered);
 			return discovered;
 		} catch (error) {
+			console.error(error);
 			model.changeState(OPCUA_ORGAN_STATES.error);
 		}
 	}
 
-	private async _discoverDevice(gateway: spinal.Model, model: SpinalOPCUADiscoverModel) {
-		const server: IServer = gateway.get();
-		const _url = getServerUrl(server);
+	private async _retryFailedServerDiscovery(failedServers: Model[], model: SpinalOPCUADiscoverModel, discovered: any[]) {
+		for (const server of failedServers) {
+			if (discoverIsCancelled(model)) break;
 
-		let useLastResult = false;
+			try {
+				const tree = await this._discoverDevice(server, model);
+				if (!tree || !tree.children) throw new Error("No tree discovered");
 
-		// if file exist we ask the user if he wants to use the last result or start from scratch
-		if (discoveringStore.fileExist(_url)) {
-			// 	spinalLog.log("inside file exist");
-			// 	useLastResult = await this.askToContinueDiscovery(model);
-			useLastResult = (await model?.useLastResult?.get()) || false;
+				discovered.push(...tree.children);
+				const count = model.progress.finished.get();
+				model.progress.finished.set(count + 1);
+			} catch (error) {
+				const gateway = server.get() as IServer;
+				spinalLog.warn(`[${getServerUrl(gateway)}] sequential discovery retry failed: "${error instanceof Error ? error.message : String(error)}"`);
+				const count = model.progress.failed.get();
+				model.progress.failed.set(count + 1);
+			}
 		}
+	}
 
-		spinalLog.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
-		const discoverResult = await this._getOPCUATree(server, useLastResult, model, true);
+	private async _fetchServerDiscovery(model: SpinalOPCUADiscoverModel) {
+		const servers = model.network.gateways;
+		const discovered = [];
+
+		const serverArr: spinal.Model[] = Array.from(servers as ArrayLike<spinal.Model>);
+
+		const promises = serverArr.map(async (server) => {
+			const tree = await this._discoverDevice(server, model);
+			if (!tree || !tree.children) throw new Error("No tree discovered");
+			const count = model.progress.finished.get();
+			model.progress.finished.set(count + 1);
+			return tree;
+		});
+
+		const parallelResults = await Promise.allSettled(promises);
+		const failedServers: spinal.Model[] = [];
+
+		for (let index = 0; index < parallelResults.length; index++) {
+			const result = parallelResults[index];
+			if (result.status === "fulfilled") {
+				discovered.push(...(result.value.children ?? []));
+			} else if (result.reason instanceof OPCUAConnectionError) {
+				const server = serverArr[index].get() as IServer;
+				spinalLog.warn(`[${getServerUrl(server)}] connection failed; skipping sequential retry: "${result.reason.message}"`);
+				const count = model.progress.failed.get();
+				model.progress.failed.set(count + 1);
+			} else {
+				failedServers.push(serverArr[index]);
+				const server = serverArr[index].get() as IServer;
+				spinalLog.warn(`[${getServerUrl(server)}] parallel discovery failed, will retry sequentially: "${result.reason instanceof Error ? result.reason.message : String(result.reason)}"`);
+			}
+		}
+		return { failedServers, discovered };
+	}
+
+	private async _discoverDevice(gateway: spinal.Model, model: SpinalOPCUADiscoverModel) {
+		const server: IDiscoverGateway = gateway.get();
+		const discoverResult = await this._getOPCUATree(server, model);
 		if (!discoverResult) return;
 
 		return discoverResult.tree;
-		// return this._getOPCUATree(model, useLastResult, true)
-		// 	.then(async ({ tree }: any) => {
-		// 		if (!tree) return;
-
-		// 		await model.setTreeDiscovered(tree);
-		// 		spinalLog.log(server.name, "discovered !!");
-		// 		model.changeState(OPCUA_ORGAN_STATES.discovered);
-		// 		return tree;
-
-		// 	}).catch((err) => {
-		// 		error: spinalLog.log(`${model?.network?.name?.get()} discovery failed !! reason: "${err.message}"`);
-		// 		model.changeState(OPCUA_ORGAN_STATES.error);
-		// 	});
 	}
 
 	private askToContinueDiscovery(model: SpinalOPCUADiscoverModel): Promise<boolean> {
@@ -168,16 +185,22 @@ class SpinalDiscover extends EventEmitter {
 
 	// tryTree2 is used to try the second method to get the tree if the first one failed
 	// private async _getOPCUATree(model: SpinalOPCUADiscoverModel, useLastResult: boolean, tryTree2: boolean = true) {
-	private async _getOPCUATree(server: IServer, useLastResult: boolean, model: SpinalOPCUADiscoverModel, tryTree2: boolean = true) {
-		const { entryPointPath } = getConfig();
-		const url = getServerUrl(server);
+	private async _getOPCUATree(server: IDiscoverGateway, model: SpinalOPCUADiscoverModel) {
+		const _url = getServerUrl(server);
 
-		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(url, model);
+		let useLastResult = server?.useLastResult || false;
+		if (useLastResult && !discoveringStore.fileExist(_url)) useLastResult = false;
 
-		const options: ITreeOption = { useLastResult, useBroadCast: true };
+		let entryPointPath = server?.entryPoint || "";
+
+		spinalLog.log("discovering", server.address, useLastResult ? "using last result" : "starting from scratch");
+
+		const opcuaService: OPCUAService = OPCUAFactory.getOPCUAInstance(_url, model);
+
+		const options: ITreeOption = { useLastResult, useBroadCast: true, entryPointPath };
 		let err;
 		return opcuaService
-			.getTree(entryPointPath, options)
+			.getTree(options)
 			.then(async (result) => {
 				if (!result || !result.tree || !result.tree.children) throw new Error("No tree discovered");
 
@@ -189,7 +212,7 @@ class SpinalDiscover extends EventEmitter {
 				return result;
 			})
 			.catch(async (err) => {
-				spinalLog.log(`[${server.address}] discovery failed !! reason: "${err.message}"`);
+				spinalLog.log(`[${server.address}] discovery failed !! reason: "${err instanceof Error ? err.message : String(err)}"`);
 				throw err;
 				// model.changeState(OPCUA_ORGAN_STATES.error);
 			})
@@ -212,7 +235,8 @@ class SpinalDiscover extends EventEmitter {
 			const dataObject = await this._getDataByGateway(treeToCreate.children, context, network);
 
 			for (const nodeTocreate of treeToCreate.children) {
-				const gatewayData = dataObject[nodeTocreate.server?.address] || [];
+				const serverKey = nodeTocreate.server ? getServerUrl(nodeTocreate.server) : "";
+				const gatewayData = dataObject[serverKey] || [];
 				if (!gatewayData || gatewayData.length <= 0) continue;
 
 				const deviceData = gatewayData.find((el: { node: IOPCNode }) => {
@@ -234,21 +258,57 @@ class SpinalDiscover extends EventEmitter {
 	}
 
 	private async _getDataByGateway(nodes: IOPCNode[], context: SpinalContext, network: SpinalNode) {
-		const obj: { [key: string]: any } = {};
+		const existingDeviceIndex = createExistingDeviceIndex(await network.getChildrenInContext(context));
+		const records = nodes
+			.filter((node): node is IOPCNode & { server: NonNullable<IOPCNode["server"]> } => !!node.server)
+			.map((node) => ({
+				node,
+				variables: getVariablesList(node),
+				url: getServerUrl(node.server),
+			}));
 
-		for (const node of nodes) {
-			if (!node.server) continue;
+		const preparedRecords = await executeConcurrently(
+			records,
+			async (record) => ({
+				...record,
+				nodesAlreadyCreated: await getNodeAlreadyCreated(context, network, record.node, existingDeviceIndex),
+			}),
+			5,
+		);
+		const recordsByGateway = new Map<string, typeof preparedRecords>();
 
-			const variables = getVariablesList(node);
-			const url = getServerUrl(node.server);
-			const nodesAlreadyCreated = await getNodeAlreadyCreated(context, network, node);
-			const values = await this._getVariablesValues(url, variables);
-			if (!obj[node.server.address]) obj[node.server.address] = [];
-
-			obj[node.server.address].push({ variables, values, node, nodesAlreadyCreated });
+		for (const record of preparedRecords) {
+			const gatewayRecords = recordsByGateway.get(record.url) || [];
+			gatewayRecords.push(record);
+			recordsByGateway.set(record.url, gatewayRecords);
 		}
 
-		return obj;
+		const gatewayRequests = Array.from(recordsByGateway.entries()).map(([url, gatewayRecords]) => {
+			const variablesByKey = new Map<string, IOPCNode>();
+			for (const record of gatewayRecords) {
+				for (const variable of record.variables) {
+					variablesByKey.set(getNodeKey(variable), variable);
+				}
+			}
+
+			return { url, records: gatewayRecords, variables: Array.from(variablesByKey.values()) };
+		});
+
+		const gatewayResults = await executeConcurrently(
+			gatewayRequests,
+			async ({ url, records: gatewayRecords, variables }) => {
+				const values = await this._getVariablesValues(url, variables);
+				return {
+					url,
+					data: gatewayRecords.map((record) => ({ ...record, values })),
+				};
+			},
+			4,
+		);
+
+		const result: { [key: string]: any } = {};
+		for (const gatewayResult of gatewayResults) result[gatewayResult.url] = gatewayResult.data;
+		return result;
 	}
 
 	private async _getVariablesValues(url: string, variables: IOPCNode[]): Promise<{ [key: string]: { dataType: string; value: any } }> {
@@ -260,10 +320,12 @@ class SpinalDiscover extends EventEmitter {
 				const obj: { [key: string]: { dataType: string; value: any } } = {};
 
 				for (let index = 0; index < result.length; index++) {
-					const element = result[index];
+					const value = result[index];
+					if (value === null) continue;
+
 					const variable = variables[index];
 					const key = getNodeKey(variable);
-					obj[key] = element;
+					obj[key] = value;
 				}
 
 				return obj;

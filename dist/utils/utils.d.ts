@@ -10,7 +10,7 @@ export declare function convertToBrowseDescription(node: IOPCNode): {
     includeSubtypes: boolean;
     browseDirection: BrowseDirection;
     resultMask: number;
-}[];
+};
 export declare function convertSpinalNodeToOPCNode(node: SpinalNode | string): IOPCNode;
 export declare const coerceBoolean: (data: any) => boolean;
 export declare const coerceNumber: (data: any) => number;

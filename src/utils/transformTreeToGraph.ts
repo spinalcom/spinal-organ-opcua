@@ -7,18 +7,42 @@ import OPCUAService from "./OPCUAService";
 import { IOPCNode } from "../interfaces/OPCNode";
 import { getNodeKey, normalizePath } from "./utils";
 
-export async function _transformTreeToGraphRecursively(context: SpinalContext, opcNode: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
-	const { node, relation, alreadyExist } = await getNodeAndRelation(opcNode, nodesAlreadyCreated, values, depth);
+type GraphOperationLimiter = <T>(operation: () => Promise<T>) => Promise<T>;
+
+function createGraphOperationLimiter(maxConcurrent: number): GraphOperationLimiter {
+	let activeOperations = 0;
+	const waitingOperations: Array<() => void> = [];
+
+	return async <T>(operation: () => Promise<T>): Promise<T> => {
+		if (activeOperations >= maxConcurrent) {
+			await new Promise<void>((resolve) => waitingOperations.push(resolve));
+		} else {
+			activeOperations++;
+		}
+
+		try {
+			return await operation();
+		} finally {
+			const nextOperation = waitingOperations.shift();
+			if (nextOperation) nextOperation();
+			else activeOperations--;
+		}
+	};
+}
+
+export async function _transformTreeToGraphRecursively(context: SpinalContext, opcNode: IOPCNode, nodesAlreadyCreated: { [key: string]: SpinalNode }, parent?: SpinalNode, values: { [key: string]: any } = {}, depth: number = 0, limiter?: GraphOperationLimiter): Promise<{ node: SpinalNode; relation: string; alreadyExist: boolean }> {
+	const operationLimiter = limiter || createGraphOperationLimiter(10);
+	const { node, relation, alreadyExist } = await operationLimiter(() => getNodeAndRelation(opcNode, nodesAlreadyCreated, values, depth));
 
 	const { children, attributes } = _formatTree(opcNode);
-	if (attributes && attributes.length > 0) await _createNodeAttributes(node, attributes, values);
+	if (attributes && attributes.length > 0) await operationLimiter(() => _createNodeAttributes(node, attributes, values));
 
 	if (parent && !alreadyExist) {
-		await parent.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context);
+		await operationLimiter(() => parent.addChildInContext(node, relation, SPINAL_RELATION_PTR_LST_TYPE, context));
 	}
 
 	const promises = (children || []).map(async (el) => {
-		const childNodeInfo = await _transformTreeToGraphRecursively(context, el, nodesAlreadyCreated, node, values, depth + 1);
+		const childNodeInfo = await _transformTreeToGraphRecursively(context, el, nodesAlreadyCreated, node, values, depth + 1, operationLimiter);
 		return childNodeInfo;
 	});
 
@@ -27,19 +51,35 @@ export async function _transformTreeToGraphRecursively(context: SpinalContext, o
 	});
 }
 
-export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, opcNode: IOPCNode): Promise<{ [key: string]: SpinalNode }> {
-	const devices = await network.getChildrenInContext(context);
+function createDeviceIndexKey(address: string, port: string | number, nodeKey: string): string {
+	return JSON.stringify([address, String(port), nodeKey]);
+}
+
+export function createExistingDeviceIndex(devices: SpinalNode[]): Map<string, SpinalNode> {
+	const index = new Map<string, SpinalNode>();
+
+	for (const device of devices) {
+		const address = device.info.server?.address?.get();
+		const port = device.info.server?.port?.get();
+		const key = getNodeKey(device.info.get());
+		if (address == null || port == null || !key) continue;
+
+		index.set(createDeviceIndexKey(address, port, key), device);
+	}
+
+	return index;
+}
+
+export async function getNodeAlreadyCreated(context: SpinalContext, network: SpinalNode, opcNode: IOPCNode, deviceIndex?: Map<string, SpinalNode>): Promise<{ [key: string]: SpinalNode }> {
+	const index = deviceIndex || createExistingDeviceIndex(await network.getChildrenInContext(context));
 
 	const serverInfo: IOPCNode["server"] = opcNode.server;
+	const address = serverInfo?.address;
+	const port = serverInfo?.port;
+	if (address == null || port == null) return {};
 
-	const device = devices.find((el) => {
-		const serverIsMatch = el.info.server?.address?.get() == serverInfo?.address && el.info.server?.port?.get() == serverInfo?.port;
-		if (!serverIsMatch) return false;
-
-		const info = el.info.get();
-		const key = getNodeKey(info);
-		return normalizePath(opcNode.path || "") === key || opcNode.nodeId.toString() === key;
-	});
+	const pathKey = normalizePath(opcNode.path || "");
+	const device = index.get(createDeviceIndexKey(address, port, pathKey)) || index.get(createDeviceIndexKey(address, port, opcNode.nodeId.toString()));
 
 	if (!device) return {}; // If no device found, return an empty object
 	const info = device.info.get();

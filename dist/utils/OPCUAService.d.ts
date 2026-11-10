@@ -8,6 +8,9 @@ type CovCallbackType = (node: IOPCNode, data: {
     value: any;
     dataType: string;
 }, monitorItem: ClientMonitoredItemBase) => void;
+export declare class OPCUAConnectionError extends Error {
+    constructor(endpointUrl: string, error: unknown);
+}
 export declare class OPCUAService extends EventEmitter {
     private client?;
     private session?;
@@ -16,6 +19,7 @@ export declare class OPCUAService extends EventEmitter {
     verbose: boolean;
     private endpointUrl;
     private monitoredItemsData;
+    private maxNodesPerRead?;
     private clientAlarms;
     private _discoverModel;
     isVariable: typeof OPCUAService.isVariable;
@@ -30,18 +34,27 @@ export declare class OPCUAService extends EventEmitter {
     private createSubscription;
     private connect;
     private reconnect;
-    getTree(entryPointPath: string, options?: ITreeOption): Promise<{
+    getTree(options?: ITreeOption): Promise<{
         tree: IOPCNode;
         variables: string[];
     } | void>;
+    private _fetchBatchingLimits;
     readNode(node: IOPCNode | IOPCNode[]): Promise<DataValue[]>;
     getNodePath(nodeId: string | NodeId): Promise<string>;
     readNodeValue(node: IOPCNode | IOPCNode[]): Promise<({
         dataType: string;
         value: any;
     } | null)[]>;
+    readNodeValueWithInvalidNodeIds(node: IOPCNode | IOPCNode[]): Promise<{
+        values: ({
+            dataType: string;
+            value: any;
+        } | null)[];
+        invalidNodeIds: Set<string>;
+    }>;
+    private _getMaxNodesPerRead;
     writeNode(node: IOPCNode, value: any): Promise<any>;
-    monitorItem(nodes: IOPCNode | IOPCNode[], callback: CovCallbackType, isReconnection?: boolean): Promise<void>;
+    monitorItem(nodes: IOPCNode | IOPCNode[], callback: CovCallbackType, isReconnection?: boolean, onMonitorItem?: (item: ClientMonitoredItemBase) => void): Promise<void>;
     private _monitorNodeGroup;
     getNodeByPath(nodePath?: string): Promise<IOPCNode | void>;
     getNodeIdByPath(nodePath?: string): Promise<string | void>;

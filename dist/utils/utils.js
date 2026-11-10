@@ -30,29 +30,13 @@ function getConfig() {
 }
 exports.getConfig = getConfig;
 function convertToBrowseDescription(node) {
-    return [
-        {
-            nodeId: node.nodeId,
-            referenceTypeId: node_opcua_1.ReferenceTypeIds.Organizes,
-            includeSubtypes: true,
-            browseDirection: node_opcua_1.BrowseDirection.Forward,
-            resultMask: 0x3f,
-        },
-        {
-            nodeId: node.nodeId,
-            referenceTypeId: node_opcua_1.ReferenceTypeIds.Aggregates,
-            includeSubtypes: true,
-            browseDirection: node_opcua_1.BrowseDirection.Forward,
-            resultMask: 0x3f,
-        },
-        {
-            nodeId: node.nodeId,
-            referenceTypeId: node_opcua_1.ReferenceTypeIds.HasSubtype,
-            includeSubtypes: true,
-            browseDirection: node_opcua_1.BrowseDirection.Forward,
-            resultMask: 0x3f,
-        },
-    ];
+    return {
+        nodeId: node.nodeId,
+        referenceTypeId: node_opcua_1.ReferenceTypeIds.HierarchicalReferences,
+        includeSubtypes: true,
+        browseDirection: node_opcua_1.BrowseDirection.Forward,
+        resultMask: 0x1c,
+    };
 }
 exports.convertToBrowseDescription = convertToBrowseDescription;
 function convertSpinalNodeToOPCNode(node) {

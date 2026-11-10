@@ -16,17 +16,13 @@ function clearOrgan(organModel) {
     return __awaiter(this, void 0, void 0, function* () {
         const references = yield getAllOrganReferences(organModel);
         const promises = references.map(clearReference);
-        return Promise.all(promises)
-            .then((result) => {
+        return Promise.all(promises).then((result) => {
             organModel.rem_attr("discover");
             organModel.rem_attr("listener");
             organModel.rem_attr("pilot");
             organModel.initializeModelsList(); // Reinitialize the models list after clearing the organ model
             displayLog_1.default.log("Successfully cleared organ references:", result);
             return result;
-        })
-            .catch((err) => {
-            displayLog_1.default.error("Failed to clear organ references:", err);
         });
     });
 }
